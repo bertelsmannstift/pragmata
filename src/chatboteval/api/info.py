@@ -1,3 +1,5 @@
+"""Version resolution utilities for chatboteval."""
+
 from __future__ import annotations
 
 from importlib import metadata

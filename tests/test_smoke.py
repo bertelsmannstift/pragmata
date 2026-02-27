@@ -5,6 +5,8 @@ def test_package_importable() -> None:
     import chatboteval
 
     assert chatboteval is not None
+    
+    
 def test_curated_symbols_exist() -> None:
     """Smoke: curated public symbols are accessible at the top level."""
     import chatboteval
