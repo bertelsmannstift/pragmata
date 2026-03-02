@@ -5,6 +5,7 @@ import pathlib
 
 from typer.testing import CliRunner
 
+import chatboteval.cli
 from chatboteval import get_version
 from chatboteval.cli.app import app
 
@@ -38,7 +39,7 @@ def test_cli_version() -> None:
 
 def test_cli_does_not_import_core() -> None:
     """Boundary guard: cli layer must not directly import core."""
-    cli_dir = pathlib.Path(__file__).parent.parent / "src" / "chatboteval" / "cli"
+    cli_dir = pathlib.Path(chatboteval.cli.__file__).resolve().parent 
     assert cli_dir.exists(), f"CLI directory not found at {cli_dir}"
     for py_file in cli_dir.rglob("*.py"):
         tree = ast.parse(py_file.read_text())
