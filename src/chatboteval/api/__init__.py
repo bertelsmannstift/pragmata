@@ -1,5 +1,5 @@
-"""Public API surface for chatboteval."""
+"""Internal API layer."""
 
-from .info import get_version
+from .version import get_version
 
 __all__ = ["get_version"]
