@@ -1,4 +1,4 @@
-# 0010: Multi-Dataset Architecture
+# 0010: Annotation Multi-Dataset Architecture
 
 Status: Draft
 
@@ -10,54 +10,54 @@ Three separate Argilla datasets — one per annotation task:
 | Dataset | Task | Record unit |
 |---------|------|-------------|
 | `task1_retrieval` | Retrieval quality | One record per (query, chunk) |
-| `task2_grounding` | Grounding quality | One record per (query, response) |
-| `task3_generation` | Generation quality | One record per (query, response) |
+| `task2_grounding` | Grounding quality | One record per (answer, context set) |
+| `task3_generation` | Generation quality | One record per (query, answer) |
 
-All three datasets are assigned to workspaces (see [Workspace & Task Distribution](../design/annotation-workspace-task-distribution.md)). Records from the same input are linked across datasets via `record_uuid` metadata.
+All datasets are assigned to workspaces (see [Workspace & Task Distribution](../design/annotation-workspace-task-distribution.md)). Records from the same input are linked across datasets via `record_uuid` metadata.
 
 
 ## Rationale
 
-**Task 1 and Task 2 have incompatible record multiplicities.** Task 1 produces K records per input (one per retrieved chunk); Task 2 produces one record per input. This difference in cardinality is the fundamental constraint that prevents sharing a dataset:
+**Retrieval and Grounding have incompatible record multiplicities.** Retrieval produces K records per input (one per retrieved chunk); Grounding produces one record per input. This difference in cardinality is the fundamental constraint that prevents sharing a dataset:
 
-- A unified schema would require either embedding K chunks as separate fields (bounded, inflexible) or repeating the (query, response) pair K times (creates duplicate annotation burden for grounding labels).
-- Argilla datasets enforce a single fixed schema, so all records must have the same fields. A Task 1 record has a `chunk` field; a Task 2 record has a `context` field. These cannot coexist cleanly in one schema.
+- A unified schema would require either embedding K chunks as separate fields (bounded, inflexible) or repeating the (answer, context set) pair K times (creates duplicate annotation burden for grounding labels).
+- Argilla datasets enforce a single fixed schema, so all records must have the same fields. A Retrieval record has a `chunk` field; a Grounding record has a `context` field. These cannot coexist cleanly in one schema.
 
-**Task 3 is separated from Task 2 to enable flexible workspace assignment.** Although Tasks 2 and 3 share the same record structure (`query` + `response`), their question sets are entirely disjoint. Separate datasets allow operators to assign tasks to workspaces freely - e.g., grouping by annotator expertise, splitting across teams, or consolidating into a single workspace. Dataset-to-workspace mapping is deployment configuration (see [Workspace & Task Distribution](../design/annotation-workspace-task-distribution.md)).
+**Generation is separated from Grounding to enable flexible workspace assignment.** Although Grounding and Generation share similar record structures, their question sets are entirely disjoint. Separate datasets allow operators to assign tasks to workspaces freely - e.g., grouping by annotator expertise, splitting across teams, or consolidating into a single workspace. Dataset-to-workspace mapping is deployment configuration (see [Workspace & Task Distribution](../design/annotation-workspace-task-distribution.md)).
 
-**Three datasets is the minimum needed, no more.** The multiplicity constraint forces Tasks 1 and 2 apart; the disjoint question sets make a Task 2 + Task 3 merge pointless (annotators would see irrelevant questions). Three datasets keeps schema and task cleanly aligned while leaving workspace assignment unconstrained.
+**Three datasets is the minimum needed, no more.** The multiplicity constraint forces Retrieval and Grounding apart; the disjoint question sets make a Grounding + Generation merge pointless (annotators would see irrelevant questions). Three datasets keeps schema and task cleanly aligned while leaving workspace assignment unconstrained.
 
 
 ## Alternatives Considered
 
 **Unified schema with optional/conditional fields**
 
-One dataset with all fields (`query`, `chunk`, `response`, `context`) and questions for all tasks. Annotators see all fields regardless of their task.
+One dataset with all fields (`query`, `chunk`, `answer`, `context_set`) and questions for all tasks. Annotators see all fields regardless of their task.
 
 Rejected:
 - Argilla v2 has no conditional question display — annotators would see irrelevant fields
-- K chunk-level records would exist alongside response-level records in the same dataset, confusing annotators
+- K Retrieval records (chunk-level) would exist alongside Grounding records (answer-level) in the same dataset, confusing annotators
 - IAA computation becomes harder when record structure is heterogeneous
 
 **Two datasets: one per annotator group**
 
-`retrieval_grounding` dataset for Tasks 1+2 combined; `generation` for Task 3.
+`retrieval_grounding` dataset for Retrieval + Grounding combined; `generation` for Generation.
 
 Rejected:
-- Task 1 produces K records per input; Task 2 produces 1. If loaded into the same dataset, the schema must accommodate both structures, reintroducing the multiplicity problem.
-- Annotation UX is worse: annotators see questions for both Task 1 and Task 2 on every record, but most records are relevant only to one.
+- Retrieval produces K records per input; Grounding produces 1. If loaded into the same dataset, the schema must accommodate both structures, reintroducing the multiplicity problem.
+- Annotation UX is worse: annotators see questions for both Retrieval and Grounding on every record, but most records are relevant only to one.
 
 **Dynamic dataset routing at import time only**
 
 Create a single logical dataset per annotator group and route records at import, without encoding task separation in schema.
 
-Rejected: same problem — Argilla schemas are static. You cannot route Task 1 and Task 2 records into the same dataset without schema conflicts.
+Rejected: same problem — Argilla schemas are static. You cannot route Retrieval and Grounding records into the same dataset without schema conflicts.
 
 
 ## Consequences
 
-- Import pipeline must route each input into multiple datasets: K task1 records + 1 task2 record + 1 task3 record per input
-- Export pipeline produces three separate CSVs; merged view is post-hoc (joined on `record_uuid`)
+- Import pipeline must route each input into multiple datasets: K Retrieval records + 1 Grounding record + 1 Generation record per input
+- Export pipeline exports each dataset independently; cross-dataset joining is a downstream concern
 - `record_uuid` is a required metadata field on all three datasets — it is the only cross-dataset link
 - IAA is computed per-dataset, not cross-dataset (each task converges independently)
 

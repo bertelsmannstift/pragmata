@@ -1,13 +1,12 @@
 # Export Pipeline
 
-Data pipeline to export completed annotations from Argilla recoords to structured CSV files for downstream use.
+Data pipeline to export completed annotations from Argilla records to structured CSV files for downstream use.
 
 ## Responsibilities
 
 **In scope:**
 - Fetch submitted annotations from all three Argilla datasets
 - Output one flat CSV per task (primary export)
-- Produce an optional merged view joining all tasks on `record_uuid`
 - Validate export schema before write
 - Post-submission constraint validation (flag logical violations before metric computation)
 
@@ -26,17 +25,11 @@ Argilla PostgreSQL
         │                                                    chunk_rank, labels...)
         │
         ├── task2_grounding ──────────────────────────────► grounding.csv
-        │   (workspace_a)                    (query, answer,
-        │                                                    context_set, labels...)
+        │   (workspace_a)                    (answer, context_set,
+        │                                                    labels...)
         │
         └── task3_generation ─────────────────────────────► generation.csv
             (workspace_b)                      (query, answer, labels...)
-                    │
-                    │  
-                    ▼
-           Merged view (join on record_uuid)
-           ─ Task 1 aggregated per query before join
-           ─ NULLs for missing cross-task annotations
 ```
 >**Pending** - exact API / CLI wrapper wording below are TBC, TODO update when decided.
 
@@ -44,13 +37,13 @@ Argilla PostgreSQL
 
 ## Inputs
 
-Three Argilla dataset, accessed via Argilla SDK. Filter: `status == "submitted"` only (exclude draft, discarded). 
+Three Argilla datasets, accessed via Argilla SDK. Filter: `status == "submitted"` only (exclude draft, discarded). 
 
 
 | Dataset | Records |
 |---------|---------|
 | `task1_retrieval` | One record per query–chunk pair |
-| `task2_grounding` | One record per query–answer pair |
+| `task2_grounding` | One record per answer-context set pair |
 | `task3_generation` | One record per query–answer pair |
 
 > NB: Workspace setup and associated task assignment are deployment configuration, not fixed architecture (see [Workspace & Task Distribution](annotation-workspace-task-distribution.md)).
@@ -108,7 +101,7 @@ Unit: one row per `(answer, context_set, annotator)` triple.
 
 | Column | Type | Description |
 |--------|------|-------------|
-| `answer` | string | System response |
+| `answer` | string | Generated answer |
 | `context_set` | string | Full retrieved context as injected in the prompt, concatenated as a single string with `[CTX_SEP]` separators |
 | `support_present` | bool | At least one answer claim is supported by evidence in the context set |
 | `unsupported_claim_present` | bool | Answer contains at least one claim not supported by the context set |
@@ -125,7 +118,7 @@ Unit: one row per `(query, answer, annotator)` triple.
 | Column | Type | Description |
 |--------|------|-------------|
 | `query` | string | Input query |
-| `answer` | string | System response |
+| `answer` | string | Generated answer |
 | `proper_action` | bool | Response selects the appropriate type (answer, refusal, clarification) given the query |
 | `response_on_topic` | bool | Response substantively addresses the user's request |
 | `helpful` | bool | Response would enable a typical user to make progress on their task |

@@ -13,7 +13,7 @@ Any future schema change is a breaking design decision requiring a new ADR and n
 
 **Argilla is code-first by design:** `Settings` objects are Python — adding a config layer re-implements the SDK in a different format with no benefit.
 
-**Schemas encode the label set from [ADR-0002](0002-eval-metrics-taxonomy.md) and [Annotation Protocol](../methodology/annotation-protocol.md):** user-configurability would undermine result comparability across annotators and datasets.
+**Schemas encode the label set from [Annotation Protocol](../methodology/annotation-protocol.md):** user-configurability would undermine result comparability across annotators and datasets.
 
 
 >## Alternatives considered
