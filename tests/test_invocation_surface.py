@@ -19,7 +19,7 @@ def test_cli_help() -> None:
     """CLI smoke: chatboteval --help exits 0."""
     from typer.testing import CliRunner
 
-    from chatboteval.cli import app
+    from chatboteval.cli.app import app
 
     result = CliRunner().invoke(app, ["--help"])
     assert result.exit_code == 0
@@ -30,7 +30,7 @@ def test_cli_version() -> None:
     from typer.testing import CliRunner
 
     from chatboteval import get_version
-    from chatboteval.cli import app
+    from chatboteval.cli.app import app
 
     result = CliRunner().invoke(app, ["--version"])
     assert result.exit_code == 0
