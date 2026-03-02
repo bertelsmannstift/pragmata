@@ -66,7 +66,7 @@ Data pipeline to load captured chatbot query-response data into Argilla annotati
 
 ## Source Adapter & Canonical Schema
 
-The import pipeline operates exclusively against a canonical import schema. Source-system-specific logic lives in external adapter modules - one adapter per source system (out of scope). The adapter transforms the source system's output into our canonical records; the pipeline never touches source-system internals. Adding a new source system requires only a new adapter.
+The import pipeline operates exclusively against a canonical import schema. Adapter modules (out of scope) transforms the source system's output into our canonical records; the pipeline never touches source-system internals. Adding a new source system requires only a new adapter.
 
 ### Canonical record
 
@@ -76,9 +76,9 @@ One record per RAG query-response cycle:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `query` | string | yes | Original user query |
+| `query` | string | yes | Original or LLM-refined user query |
 | `answer` | string | yes | Generated answer |
-| `chunks` | list[Chunk] | yes | Retriever-level segments used for retrieval metrics |
+| `chunks` | list[Chunk] | yes | Selected/Top-K retriever-level segments used during retrieval |
 | `context_set` | string | yes | Prompt-inserted context string, as the model saw it; documents separated by `[CTX_SEP]` |
 | `language` | string | no | Detected language code |
 
@@ -88,20 +88,8 @@ One record per RAG query-response cycle:
 |-------|------|-------------|
 | `chunk_id` | string | Stable unique identifier for this chunk |
 | `doc_id` | string | Source document/publication identifier |
-| `chunk_rank` | int | Position in the flat post-rerank chunk list |
+| `chunk_rank` | int | Position in the flat (post-rerank) chunk list |
 | `text` | string | Chunk text content |
-
-### chunk_rank
-
-Retrieval metrics (MRR@K, NDCG@K) require a flat, ordered list of K chunks. When a reranker scores at document level (not chunk level), chunk rank is derived as:
-
-1. Sort documents by reranker score (descending)
-2. For each document in rank order, enumerate its selected chunks in document order
-3. `chunk_rank` = 1-indexed position in the resulting flat list
-
-This treats all chunks from a higher-ranked document as more relevant than chunks from a lower-ranked document (=consistent with the reranker's signal). 
-
->If the source system provides per-chunk scores directly, `chunk_rank` can be derived from those instead.
 
 ## Outputs
 
@@ -125,7 +113,7 @@ Three Argilla datasets, each receiving records from every import:
 
 ---
 
-### `task2_grounding` — one record per query-answer pair
+### `task2_grounding` — one record per answer-context set pair
 
 **Fields (shown to annotators):**
 - `query` ← canonical `query`
