@@ -2,8 +2,6 @@
 
 from importlib import metadata
 
-__all__ = ["get_version"]
-
 
 def get_version(dist_name: str = "chatboteval") -> str:
     """Return installed distribution version."""
