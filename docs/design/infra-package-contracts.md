@@ -2,20 +2,36 @@
 
 ## Purpose
 
-Scaffolds the contract layer for `chatboteval` — canonical types, schemas, path conventions, and config structures that all internal modules depend on. Each section is a stub to be developed during implementation. Together they form the shared vocabulary and structural conventions for the whole package.
+Scaffolds the contract layer for `chatboteval` — canonical schemas, path conventions, and config structures that all internal modules depend on. Each section is a stub to be developed during implementation. Together they form the shared vocabulary and structural conventions for the whole package.
 
-Architectural choices underpinning this layer (Pydantic everywhere, dependency direction, contract types over raw dicts, frozen models, CSV interchange) are captured in [ADR-0005](../decisions/0005-contract-layer-tooling.md).
+Architectural choices underpinning this layer (Pydantic at boundaries, frozen dataclasses for runtime types, dependency direction, CSV interchange) are captured in [ADR-0005](../decisions/0005-contract-layer-tooling.md).
 
 
 ---
 
-## 1. Domain Types
+## Directory structure
 
-Core data structures shared across pipeline stages. Defined as frozen Pydantic models in `src/chatboteval/core/types.py`.
+```
+src/chatboteval/core/
+├── schema/               # Boundary contracts — Pydantic SSOT
+│   ├── __init__.py         # Re-exports for clean imports
+│   ├── base.py             # Task enum and shared schema types
+│   ├── annotations.py      # Import record + annotation schemas
+│   └── csv_io.py           # CSV read/write & serialisation logic
+├── types/                # Runtime types (frozen dataclasses)
+│   └── __init__.py         # e.g. run result types, internal helpers
+├── paths.py              # PathResolver
+├── settings_base.py      # ResolvableSettings base class
+└── settings.py           # Global config (Pydantic Settings)
+```
 
-> In-memory Python objects — not on-disk formats (see Section 2 for serialisation).
+---
 
-**Controlled vocabulary:**
+## 1. Boundary Schemas
+
+> Pydantic models in `core/schema/` — the single source of truth for all inter-module contracts. CSV/JSON are downstream serialisations of these models.
+
+### Controlled vocabulary
 
 ```python
 class Task(StrEnum):
@@ -24,7 +40,9 @@ class Task(StrEnum):
     GENERATION = "generation"
 ```
 
-**Unit of annotation:**
+### Import record
+
+Input format to `generate` and `annotation import`. Canonical contract for data arriving from a source adapter:
 
 ```
 QueryResponsePair
@@ -34,6 +52,8 @@ QueryResponsePair
   source_id: str               # opaque identifier from source system
   metadata: dict               # pass-through from source (timestamps, model id, etc.)
 ```
+
+### Annotation schemas
 
 **Annotation base:**
 
@@ -48,7 +68,7 @@ class AnnotationBase(BaseModel, frozen=True):
     notes: str | None
 ```
 
-**Task-specific annotation types** — inherit from `AnnotationBase`, add task-specific labels. Match the [export schema](annotation-export-schema.md).
+**Task-specific annotation schemas** — inherit from `AnnotationBase`, add task-specific labels. Match the [export schema](annotation-export-schema.md).
 
 ```
 RetrievalAnnotation(AnnotationBase)        # unit: (query, chunk)
@@ -87,31 +107,31 @@ GenerationAnnotation(AnnotationBase)       # unit: (query, answer)
 
 ---
 
-## 2. Data Schemas
+## 2. CSV Serialisation
 
-> On-disk serialisation formats — what file readers/writers expect. String types, flat structure.
+> On-disk format — downstream of the Pydantic schemas above. Flat, string-typed, one row per record.
 
-CSV for all interchange. The domain types in Section 1 are the source of truth for field names and semantics — each CSV schema is a flat serialisation of the corresponding Pydantic model. This section documents only the file-level structure and serialisation rules that differ from the in-memory representation.
+`core/schema/csv_io.py` handles serialisation/deserialisation. This section documents only the differences between the in-memory schema and the on-disk representation.
 
-### RAG input format — input to `generate` and `annotation import`
+### Import record CSV
 
-Flat serialisation of `QueryResponsePair`, plus an `id` and `source` column:
+Flat serialisation of `QueryResponsePair`, plus an `id` column:
 
 | Column | Type | Notes |
 |---|---|---|
-| `id` | str | Unique identifier for the QR pair (not on the domain type) |
+| `id` | str | Unique identifier for the QR pair (not on the schema model) |
 | `query` | str | |
 | `response` | str | |
 | `context_set` | str (JSON array) | `list[str]` serialised as JSON array |
-| `source` | str | `source_id` on the domain type |
+| `source` | str | `source_id` on the schema model |
 
-### Annotation export format
+### Annotation export CSVs
 
-Three task-specific CSVs, one per task. Each CSV contains the flat serialisation of the corresponding annotation type — all fields from `AnnotationBase` plus task-specific fields. See [Annotation Export Schema](annotation-export-schema.md) for full column definitions.
+Three task-specific CSVs, one per task. Each is a flat serialisation of the corresponding annotation schema. See [Annotation Export Schema](annotation-export-schema.md) for full column definitions.
 
-Serialisation differences from the domain types:
+Serialisation differences from the schema models:
 
-| Domain type field | CSV column | Difference |
+| Schema field | CSV column | Difference |
 |---|---|---|
 | `Task` enum | `task` (str) | Enum serialised as string value |
 | `UUID` | `record_uuid` (str) | UUID serialised as string |
@@ -120,25 +140,38 @@ Serialisation differences from the domain types:
 
 File naming: `retrieval.csv`, `grounding.csv`, `generation.csv`.
 
-Serialisation logic lives in `src/chatboteval/core/schema/` — separate from the domain types in `core/types.py`.
+
+---
+
+## 3. Runtime Types
+
+> Frozen dataclasses in `core/types/` — internal ergonomic types that don't cross module boundaries and don't need Pydantic validation.
+
+Examples: run result objects (run_id, output paths, counts, summary stats). These may reference schema models (e.g. `spec: QueryGenerationSpec`) but do not duplicate field definitions or add validation constraints. They are not contracts — they're implementation conveniences.
+
+```python
+@dataclass(frozen=True)
+class QueryGenRunResult:
+    run_id: str
+    output_path: Path
+    spec: QueryGenerationSpec       # references the boundary schema
+    row_count: int
+```
 
 
 ---
 
-## 3. File Path Conventions
+## 4. File Path Conventions
 
 Canonical locations for data artefacts produced and consumed by the pipeline (not source code layout — see [ADR-0007](../decisions/0007-packaging-invocation-surface.md) for package structure).
 
 ```
-<project_root>/
+<workspace_dir>/
   data/                 # datasets (versionable, shareable)
-    input/              # raw RAG output to annotate
-    generated/          # synthetic test set from `chatboteval generate`
-    annotated/          # annotation exports from `chatboteval annotation export`
   outputs/              # computed results (reproducible from data)
 
 ~/.chatboteval/
-  config.yaml           # user config (optional — see Section 4)
+  config.yaml           # user config (optional — see Section 5)
 
 ./apps/
   annotation/
@@ -151,35 +184,29 @@ Paths are exposed via a `PathResolver` dataclass in `src/chatboteval/core/paths.
 ```python
 @dataclass
 class PathResolver:
-    base_dir: Path = Path(".")
+    workspace_dir: Path
 
     @property
-    def data_input(self) -> Path:
-        return self.base_dir / "data" / "input"
-
-    @property
-    def data_generated(self) -> Path:
-        return self.base_dir / "data" / "generated"
-
-    @property
-    def data_annotated(self) -> Path:
-        return self.base_dir / "data" / "annotated"
+    def data(self) -> Path:
+        return self.workspace_dir / "data"
 
     @property
     def outputs(self) -> Path:
-        return self.base_dir / "outputs"
+        return self.workspace_dir / "outputs"
 ```
 
-The resolver takes `base_dir` (project root by default) and exposes resolved paths. Consuming code imports the resolver rather than constructing paths — single resolution point, easy to override in tests or via config.
+The resolver is initialised at the API/CLI entrypoint using `Path.cwd()` (or a user-provided path). Consuming code imports the resolver rather than constructing paths — single resolution point, easy to override in tests or via config.
 
-> Directory structure is fixed by convention (no configuration). Only override is `base_dir` itself, which shifts the entire tree.
+> Directory structure is fixed by convention. Only override is `workspace_dir` itself, which shifts the entire tree.
 
 
 ---
 
-## 4. Core Config Schema
+## 5. Config & Settings
 
-Structure of `~/.chatboteval/config.yaml`, parsed at startup by `src/chatboteval/core/settings.py` using Pydantic Settings.
+### Global config
+
+Structure of `~/.chatboteval/config.yaml`, parsed at startup by `core/settings.py` using Pydantic Settings.
 
 **The config file is optional.** Built-in defaults mean the tool works with zero config — the file is only needed when overriding defaults (e.g. Argilla credentials, custom output paths).
 
@@ -190,24 +217,85 @@ argilla:
   api_key: owner.apikey
 
 output:
-  base_dir: ./outputs      # override default output path
+  workspace_dir: ./my_workspace
 ```
 
-Precedence chain (highest to lowest):
+Full precedence chain (highest to lowest):
 ```
-CLI flags
+CLI flags / API call overrides          ← one-off overrides
+        ↓
 CHATBOTEVAL_* env vars
-~/.chatboteval/config.yaml
+        ↓
+./my_project/querygen.yaml              ← optional project-level tool config
+        ↓
+~/.chatboteval/config.yaml              ← user-global (argilla creds, output paths)
+        ↓
 built-in defaults
 ```
 
-Defaults belong on the settings model fields — Pydantic Settings handles the precedence chain natively. If no config file exists and no env vars are set, the built-in defaults apply.
+`resolve()` accepts a `config: dict | None` — the caller loads whichever config file is relevant (global, project-level, or none) and passes it in. The merge is the same regardless of source.
 
-> Global config only at `~/.chatboteval/config.yaml` for v1.0. Follows the dbt/AWS CLI pattern, appropriate for a tool with credentials.
+> Global config only at `~/.chatboteval/config.yaml` for v1.0. Follows the dbt/AWS CLI pattern, appropriate for a tool with credentials. Project-level tool configs are optional and caller-supplied.
 
-> **Task-specific configuration** (active tasks, stratification rules, distribution overlap targets) is not runtime config — it's applied at dataset creation time during `chatboteval annotation import`.
-> - `Task` enum defines the fixed set of tasks
-> - Argilla dataset settings (workspace assignment, `TaskDistribution` overlap) are configured via the import pipeline when datasets are created (see [Workspace & Task Distribution](annotation-workspace-task-distribution.md) and [Import Pipeline](annotation-import-pipeline.md))
+### Tool-specific settings
+
+Settings modules live alongside their tool, not in `core/`:
+
+```
+src/chatboteval/
+├── core/
+│   ├── settings_base.py      # ResolvableSettings base class (shared)
+│   └── settings.py           # Global config (argilla, output paths)
+├── querygen/
+│   ├── querygen_settings.py  # QueryGenRunSettings
+│   └── ...
+└── api/
+    ├── querygen.py           # calls QueryGenRunSettings.resolve()
+    └── ...
+```
+
+Each tool's settings module contains:
+
+- **Semantically scoped settings classes** for logical groupings (e.g. `QueryGenSettings`, `LangChainModelSettings`)
+- **A `RunSettings` class** that bundles the above plus tool-level fields (`work_dir`, `run_id`, etc.) and exposes a `resolve()` class method
+
+The `resolve()` merge logic lives once in `ResolvableSettings` in `core/settings_base.py`; each `RunSettings` class inherits it:
+
+```python
+# core/settings_base.py
+class ResolvableSettings(BaseModel):
+    @classmethod
+    def resolve(cls, *, config: dict | None, overrides: dict) -> "ResolvableSettings":
+        # Precedence: overrides > config > defaults
+        # Recursive merge so nested dicts don't clobber each other
+        merged = deep_merge(config or {}, strip_none(overrides))
+        return cls.model_validate(merged)
+```
+
+```python
+# querygen_settings.py
+class QueryGenSettings(BaseModel):
+    diversity: float = 0.7
+    n_candidates: int = 5
+
+class QueryGenRunSettings(ResolvableSettings):
+    work_dir: Path = Field(default_factory=lambda: Path(".").resolve())
+    run_id: str | None = None
+    gen: QueryGenSettings = Field(default_factory=QueryGenSettings)
+```
+
+```python
+# api/querygen.py
+def run_querygen(raw_csv, *, work_dir=None, run_id=None, diversity=None, config_path=None):
+    config = load_yaml(config_path) if config_path else None
+    cfg = QueryGenRunSettings.resolve(
+        config=config,
+        overrides={"work_dir": work_dir, "run_id": run_id, "gen": {"diversity": diversity}},
+    )
+    # orchestrator uses cfg.gen.diversity, cfg.work_dir, etc.
+```
+
+> Task-specific configuration (active tasks, stratification rules, distribution overlap targets) is not runtime config — it is applied at dataset creation time during `chatboteval annotation import`. See [Workspace & Task Distribution](annotation-workspace-task-distribution.md).
 
 
 ---
