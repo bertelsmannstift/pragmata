@@ -16,7 +16,9 @@ src/chatboteval/
 ├── core/
 │   ├── schemas/                   # Boundary schemas (Pydantic SSOT)
 |   |   ├── __init__.py
-│   │   └── <tool>_*.py            
+│   │   ├── base.py                # Shared StrEnums and common types
+│   │   ├── csv_io.py              # CSV serialisation helpers
+│   │   └── <tool>_*.py
 │   ├── types/                     # Runtime types (frozen dataclasses)
 │   │   └── __init__.py
 │   ├── settings/
@@ -46,13 +48,6 @@ Dependency direction: `core/ ← api/ ← cli/` (per [ADR-0007](../decisions/000
 ## 1. Boundary Schemas
 
 Pydantic models in `core/schemas/` — the single source of truth for all inter-module contracts. CSV/JSON are downstream serialisations of these models, not parallel definitions.
-
-Schema categories:
-
-- **Controlled vocabularies** — `StrEnum` types for fixed enumerations. Centralises renaming, catches typos at import time, enables IDE autocomplete.
-- **Input specs** — user-facing configuration contracts (e.g. generation parameters, sampling distributions).
-- **LLM structured outputs** — contracts for model responses at LLM boundaries. Fields carry `Field(description=...)` as instructions to the model.
-- **Output records** — contracts for on-disk artefacts (CSV rows, metadata sidecars).
 
 Per-tool schemas are organised by tool prefix (e.g. `querygen_input.py`, `querygen_output.py`, `querygen_plan.py`).
 
