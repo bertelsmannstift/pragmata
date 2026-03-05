@@ -7,6 +7,7 @@ Thumbs.db
 *.swp
 *.swo
 *~
+.vscode/
 
 # Python
 __pycache__/
