@@ -1,0 +1,96 @@
+services:
+  argilla:
+    image: argilla/argilla-server:latest
+    restart: unless-stopped
+    ports:
+      - "${ARGILLA_PORT:-6900}:6900"
+    environment:
+      ARGILLA_DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:-postgres}@postgres/argilla
+      ARGILLA_ELASTICSEARCH: http://elasticsearch:9200
+      ARGILLA_REDIS_URL: redis://redis:6379/0
+      USERNAME: ${ARGILLA_USERNAME:-argilla}
+      PASSWORD: ${ARGILLA_PASSWORD:-argilla123}
+      API_KEY: ${ARGILLA_API_KEY:-argilla.apikey}
+    volumes:
+      - argilladata:/var/lib/argilla
+    depends_on:
+      postgres:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6900/api/v1/status"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - argilla
+
+  worker:
+    image: argilla/argilla-server:latest
+    restart: unless-stopped
+    command: ["python", "-m", "argilla_server.cli", "worker", "--num-workers", "2"]
+    environment:
+      ARGILLA_DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:-postgres}@postgres/argilla
+      ARGILLA_ELASTICSEARCH: http://elasticsearch:9200
+      ARGILLA_REDIS_URL: redis://redis:6379/0
+    depends_on:
+      argilla:
+        condition: service_healthy
+    networks:
+      - argilla
+
+  postgres:
+    image: postgres:14
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: argilla
+    volumes:
+      - postgresdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - argilla
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.17.0
+    restart: unless-stopped
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: -Xms512m -Xmx512m
+    volumes:
+      - elasticdata:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9200/_cluster/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - argilla
+
+  redis:
+    image: redis:latest
+    restart: unless-stopped
+    volumes:
+      - redisdata:/data
+    networks:
+      - argilla
+
+volumes:
+  argilladata:
+  postgresdata:
+  elasticdata:
+  redisdata:
+
+networks:
+  argilla:
