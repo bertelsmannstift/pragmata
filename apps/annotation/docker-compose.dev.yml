@@ -79,7 +79,7 @@ services:
       - argilla
 
   redis:
-    image: redis:latest
+    image: redis:7
     restart: unless-stopped
     volumes:
       - redisdata:/data
