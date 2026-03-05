@@ -7,6 +7,7 @@ import pytest
 
 def pytest_configure(config: pytest.Config) -> None:
     """Register custom markers.
+
     - registers integration marker programmatically.
     - belt-and-suspenders w/ pyproject.toml registration
     — = ensures no "unknown marker" warnings regardless of how pytest invoked
@@ -23,8 +24,8 @@ def _docker_available() -> bool:
 
 @pytest.fixture(autouse=True)
 def _skip_without_docker(request: pytest.FixtureRequest) -> None:
-    """Runs before every test -> checks if test is marked as "integration" and if Docker is available.
-    If not, skips the test.
+    """Check for Docker availability before integration tests.
+
+    Runs before every test -> checks if test is marked as "integration"
+    and if Docker is available. If not, skips the test.
     """
-    if request.node.get_closest_marker("integration") and not _docker_available():
-        pytest.skip("Docker not available")
