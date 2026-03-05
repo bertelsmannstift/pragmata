@@ -16,7 +16,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-test = ["pytest>=9.0",]
+test = ["pytest>=9.0", "pyyaml>=6.0"]
 lint = ["ruff>=0.14",]
 type = ["mypy>=1.19",]
 dev  = ["chatboteval[test,lint,type]"]
