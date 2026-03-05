@@ -11,6 +11,52 @@ Web-based annotation UI for labelling RAG chatbot outputs across three annotatio
 - Export annotations to CSV/Parquet for evaluation framework
 
 
+## Architecture
+
+>**NB:** this workflow depends on further decisions to be made re: CLI commands and low-config setup; this represents the latest thinking but is likely to further changes.
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  One-time setup:                                             │
+│    docker compose up                — start Argilla stack    │
+│    chatboteval annotation init      — configure Argilla      │
+│                   (workspaces, dataset schemas, users)       │
+│                                                              │
+│  UI access (annotation):                                     │
+│    1. Browser URL  — direct navigation to Argilla instance   │
+│    2. Python API   — chatboteval.annotation.open()           │
+│    3. CLI          — chatboteval annotation open             │
+│                                                              │
+│  Data management:                                            │
+│    Python API  — chatboteval.annotation.import/export()      │
+│    CLI         — chatboteval annotation import/export        │
+└──────────────────────────────────────────────────────────────┘
+                          ▼
+          ┌───────────────────────┐
+          │ Argilla Stack         │
+          │ (Docker Compose)      │
+          ├───────────────────────┤
+          │ • Argilla Server      │
+          │ • PostgreSQL          │
+          │ • Elasticsearch       │
+          └───────────────────────┘
+```
+
+**Installation:** `pip install chatboteval[annotation]`
+
+**`chatboteval annotation init`** configures the Argilla application (workspaces, dataset schemas, users). Docker lifecycle is separate (`docker compose up`):
+- **Local:** `--local` — connects to local Docker Compose instance
+- **Hosted:** `--hosted --url <argilla_api_url>` — connects to remote Argilla instance; writes `~/.chatboteval/config.yaml`
+- **Cloud:** out of scope
+
+> **NB:** as above, exact command name (`init` vs `setup`), flag design, and zero-config default behaviour (guided wizard vs auto-detect) are still under discussion. Current intent: `init` (no flags) defaults to a guided setup; `--local`/`--hosted` are explicit overrides.
+
+**Package structure:**
+- `/deploy/annotation/` — Docker Compose configs for Argilla stack
+- `src/chatboteval/argilla_client.py` — SDK wrappers for import/export/fetch
+
+**Usage:** Annotation happens in browser via Argilla web UI. Python API and CLI handle setup, data management, and opening the UI.
+
 ## Inputs / Outputs
 
 **Input:** Query-response pairs (JSON) with associated metadata, conforming to the canonical import schema (see [Import Pipeline](annotation-import-pipeline.md)). Retrieved context (RAG chunks and source documents) is required for Tasks 1 and 2; not required for Task 3.

@@ -1,6 +1,6 @@
-COMPOSE_FILE := apps/annotation/docker-compose.dev.yml
-ENV_FILE     := apps/annotation/.env
-ENV_EXAMPLE  := apps/annotation/.env.dev.example
+COMPOSE_FILE := deploy/annotation/docker-compose.dev.yml
+ENV_FILE     := deploy/annotation/.env
+ENV_EXAMPLE  := deploy/annotation/.env.dev.example
 
 .PHONY: setup teardown stop logs status test-stack
 
