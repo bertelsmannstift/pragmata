@@ -53,3 +53,22 @@ def test_weighted_list_rejects_sum_not_one(base_payload: dict) -> None:
     ]
     with pytest.raises(ValidationError):
         QueryGenSpec.model_validate(base_payload)
+
+
+def test_weighted_list_rejects_negative_weight(base_payload: dict) -> None:
+    """Weighted list rejects negative weights."""
+    base_payload["knowledge_scope"]["topics"] = [
+        {"value": "housing", "weight": 1.1},
+        {"value": "energy", "weight": -0.1},
+    ]
+    with pytest.raises(ValidationError):
+        QueryGenSpec.model_validate(base_payload)
+
+
+def test_optional_choice_fields_accept_none(base_payload: dict) -> None:
+    """Optional ChoiceStr fields accept None."""
+    base_payload["scenario"]["difficulty"] = None
+    base_payload["format_requests"] = {"formats": None}
+    spec = QueryGenSpec.model_validate(base_payload)
+    assert spec.scenario.difficulty is None
+    assert spec.format_requests.formats is None
