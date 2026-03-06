@@ -12,3 +12,5 @@
 
 - **Evaluation framework** — ML pipeline for training and inference on evaluation models (DeBERTa, SBERT, cross-encoders).
 
+- **MAMA cycle** (Model-Annotate-Measure-Adjust) — Iterative annotation quality loop: load a batch with full annotator overlap, measure inter-annotator agreement (Krippendorff's Alpha), revise guidelines if below threshold, repeat until convergence.
+

@@ -13,7 +13,7 @@ Any future schema change is a breaking design decision requiring a new ADR and n
 
 **Argilla is code-first by design:** `Settings` objects are Python — adding a config layer re-implements the SDK in a different format with no benefit.
 
-**Schemas encode the label set from [ADR-0002](0002-eval-metrics-taxonomy.md) and [Annotation Tasks](../methodology/annotation-tasks.md):** user-configurability would undermine result comparability across annotators and datasets.
+**Schemas encode the label set from [Annotation Protocol](../methodology/annotation-protocol.md):** user-configurability would undermine result comparability across annotators and datasets.
 
 
 >## Alternatives considered
@@ -30,4 +30,4 @@ Any future schema change is a breaking design decision requiring a new ADR and n
 - Changing annotation dimensions requires modifying setup code and re-creating Argilla datasets
 - Schema definitions should live in a dedicated module, not inline with orchestration logic, to make the fork-and-modify path obvious
 - Any schema change requires updating/reviewing the annotation-related ADRs first (metrics taxonomy + annotation tasks + presentation), then updating the code implementation
-- See [Annotation Tasks](../methodology/annotation-tasks.md) and [Annotation UI Presentation](../design/annotation-presentation.md) for current schema definitions
+- See [Annotation Protocol](../methodology/annotation-protocol.md) and [Annotation Interface](../design/annotation-interface.md) for current schema definitions

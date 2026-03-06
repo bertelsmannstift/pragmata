@@ -17,19 +17,22 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-test = [
-    "pytest>=9.0",
-]
-lint = [
-    "ruff>=0.14",
-]
-type = [
-    "mypy>=1.19",
-]
+test = ["pytest>=9.0",]
+lint = ["ruff>=0.14",]
+type = ["mypy>=1.19",]
+annotation = ["argilla>=2.0,<3.0",]
+dev  = ["chatboteval[test,lint,type,annotation]"]
+
+[project.scripts]
+chatboteval = "chatboteval.cli.app:app"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["integration: mark test as requiring a live Docker/Argilla stack"]
 
 [tool.ruff]
 line-length = 120

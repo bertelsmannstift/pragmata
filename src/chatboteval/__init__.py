@@ -1,5 +1,8 @@
-"""chatboteval package."""
+"""Top-level public interface for chatboteval.
 
-__version__ = "0.0.1"
+Only curated, stable symbols should be exposed here.
+"""
 
-__all__ = []
+from .api import get_version
+
+__all__ = ["get_version"]
