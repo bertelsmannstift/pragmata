@@ -71,7 +71,7 @@ Conventions:
 - List fields serialised as JSON arrays (e.g. `context_set`)
 - Enums serialised as string values
 - UUIDs and datetimes serialised as strings (ISO 8601 for dates)
-- Canonical column order defined per schema as a module-level constant
+- Column order derived from Pydantic model field definition order (model_fields.keys())
 
 Serialisation/deserialisation logic lives in dedicated helpers, not on the schema models themselves.
 
