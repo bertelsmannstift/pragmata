@@ -65,6 +65,41 @@ def test_weighted_list_rejects_negative_weight(base_payload: dict) -> None:
         QueryGenSpec.model_validate(base_payload)
 
 
+def test_choice_str_rejects_empty_list() -> None:
+    """ChoiceStr rejects empty lists."""
+    with pytest.raises(ValidationError, match="ChoiceStr list must not be empty"):
+        QueryGenSpec.model_validate(
+            {
+                "domain_context": {
+                    "domains": [],
+                    "roles": ["caseworker"],
+                    "languages": ["en"],
+                },
+                "knowledge_scope": {"topics": ["eligibility"]},
+                "scenario": {"intents": ["ask"], "tasks": ["check"]},
+            }
+        )
+
+
+def test_choice_str_rejects_mixed_list() -> None:
+    """ChoiceStr rejects lists mixing strings and weighted values."""
+    with pytest.raises(
+        ValidationError,
+        match="ChoiceStr list must contain either only strings or only weighted values",
+    ):
+        QueryGenSpec.model_validate(
+            {
+                "domain_context": {
+                    "domains": ["policy", {"value": "benefits", "weight": 0.5}],
+                    "roles": ["caseworker"],
+                    "languages": ["en"],
+                },
+                "knowledge_scope": {"topics": ["eligibility"]},
+                "scenario": {"intents": ["ask"], "tasks": ["check"]},
+            }
+        )
+
+
 def test_optional_choice_fields_accept_none(base_payload: dict) -> None:
     """Optional ChoiceStr fields accept None."""
     base_payload["scenario"]["difficulty"] = None
@@ -72,3 +107,17 @@ def test_optional_choice_fields_accept_none(base_payload: dict) -> None:
     spec = QueryGenSpec.model_validate(base_payload)
     assert spec.scenario.difficulty is None
     assert spec.format_requests.formats is None
+
+
+def test_choice_str_rejects_none_for_required_field(base_payload: dict) -> None:
+    """Required ChoiceStr fields reject None."""
+    base_payload["domain_context"]["languages"] = None
+    with pytest.raises(ValidationError, match="ChoiceStr must not be None"):
+        QueryGenSpec.model_validate(base_payload)
+
+
+def test_querygen_spec_rejects_extra_keys(base_payload: dict) -> None:
+    """Schema rejects unexpected extra keys."""
+    base_payload["unexpected"] = "boom"
+    with pytest.raises(ValidationError):
+        QueryGenSpec.model_validate(base_payload)
