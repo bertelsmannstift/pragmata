@@ -1,27 +1,21 @@
-"""Input contract for synthetic query generation (Pydantic v2)."""
+"""Input contract for synthetic query generation."""
 
 from typing import Annotated, Any, TypeAlias
 
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, field_validator
 
-WEIGHT_SUM_TOL: float = 1e-6
 
-
-class _StrictModel(BaseModel):
-    """Base model with a strict contract (no extra keys)."""
+class WeightedValue(BaseModel):
+    """A weighted categorical choice."""
 
     model_config = ConfigDict(extra="forbid")
-
-
-class WeightedValue(_StrictModel):
-    """A weighted categorical choice."""
 
     value: str
     weight: float
 
     @field_validator("value")
     @classmethod
-    def _value_non_empty(cls, v: str) -> str:
+    def value_non_empty(cls, v: str) -> str:
         v = v.strip()
         if not v:
             raise ValueError("value must be a non-empty string")
@@ -29,13 +23,10 @@ class WeightedValue(_StrictModel):
 
     @field_validator("weight")
     @classmethod
-    def _weight_non_negative(cls, v: float) -> float:
+    def weight_non_negative(cls, v: float) -> float:
         if v < 0:
             raise ValueError("weight must be non-negative")
         return float(v)
-
-
-ChoiceStr: TypeAlias = str | list[str] | list[WeightedValue]
 
 
 def validate_choice_str(value: Any) -> list[WeightedValue]:
@@ -56,11 +47,16 @@ def validate_choice_str(value: Any) -> list[WeightedValue]:
         w = 1.0 / float(len(value))
         return [WeightedValue(value=v, weight=w) for v in value]
 
-    items: list[WeightedValue] = [v if isinstance(v, WeightedValue) else WeightedValue.model_validate(v) for v in value]
-    total = sum(i.weight for i in items)
-    if abs(total - 1.0) > WEIGHT_SUM_TOL:
-        raise ValueError("ChoiceStr weighted list must have weights summing to 1")
-    return items
+    if all(isinstance(v, (WeightedValue, dict)) for v in value):
+        items: list[WeightedValue] = [
+            v if isinstance(v, WeightedValue) else WeightedValue.model_validate(v) for v in value
+        ]
+        total = sum(i.weight for i in items)
+        if abs(total - 1.0) > 1e-6:
+            raise ValueError("ChoiceStr weighted list must have weights summing to 1")
+        return items
+
+    raise ValueError("ChoiceStr list must contain either only strings or only weighted values")
 
 
 def validate_choice_str_optional(value: Any) -> list[WeightedValue] | None:
@@ -70,46 +66,62 @@ def validate_choice_str_optional(value: Any) -> list[WeightedValue] | None:
     return validate_choice_str(value)
 
 
-ChoiceStrField: TypeAlias = Annotated[list[WeightedValue], BeforeValidator(validate_choice_str)]
-ChoiceStrFieldOptional: TypeAlias = Annotated[list[WeightedValue] | None, BeforeValidator(validate_choice_str_optional)]
+ChoiceStrField: TypeAlias = Annotated[
+    list[WeightedValue],
+    BeforeValidator(validate_choice_str),
+]
+ChoiceStrFieldOptional: TypeAlias = Annotated[
+    list[WeightedValue] | None,
+    BeforeValidator(validate_choice_str_optional),
+]
 
 
-class DomainContextSpec(_StrictModel):
+class DomainContextSpec(BaseModel):
     """Domain and audience knobs."""
+
+    model_config = ConfigDict(extra="forbid")
 
     domains: ChoiceStrField
     roles: ChoiceStrField
     languages: ChoiceStrField
 
 
-class KnowledgeScopeSpec(_StrictModel):
+class KnowledgeScopeSpec(BaseModel):
     """Knowledge scope knobs."""
+
+    model_config = ConfigDict(extra="forbid")
 
     topics: ChoiceStrField
 
 
-class ScenarioSpec(_StrictModel):
+class ScenarioSpec(BaseModel):
     """Scenario knobs."""
+
+    model_config = ConfigDict(extra="forbid")
 
     intents: ChoiceStrField
     tasks: ChoiceStrField
     difficulty: ChoiceStrFieldOptional = None
 
 
-class FormatRequestsSpec(_StrictModel):
+class FormatRequestsSpec(BaseModel):
     """Output formatting knobs."""
+
+    model_config = ConfigDict(extra="forbid")
 
     formats: ChoiceStrFieldOptional = None
 
 
-class SafetySpec(_StrictModel):
+class SafetySpec(BaseModel):
     """Safety constraints."""
+
+    model_config = ConfigDict(extra="forbid")
 
     disallowed_topics: list[str] | None = None
 
     @field_validator("disallowed_topics")
     @classmethod
-    def _disallowed_topics_non_empty(cls, v: list[str] | None) -> list[str] | None:
+    def disallowed_topics_non_empty(cls, v: list[str] | None) -> list[str] | None:
         if v is None:
             return None
         cleaned = [s.strip() for s in v]
@@ -118,8 +130,10 @@ class SafetySpec(_StrictModel):
         return cleaned
 
 
-class QueryGenSpec(_StrictModel):
-    """Top-level synthetic query generation spec."""
+class QueryGenSpec(BaseModel):
+    """Synthetic query generation input schema."""
+
+    model_config = ConfigDict(extra="forbid")
 
     domain_context: DomainContextSpec
     knowledge_scope: KnowledgeScopeSpec
