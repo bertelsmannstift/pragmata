@@ -19,12 +19,8 @@ def base_payload() -> dict[str, object]:
         "task": "literature search",
         "difficulty": "medium",
         "format": "short list of publications",
-        "user_scenario": (
-            "I am preparing a briefing and need sources on teacher shortages in public schools."
-        ),
-        "information_need": (
-            "Find relevant publications on the causes of teacher shortages in rural areas."
-        ),
+        "user_scenario": ("I am preparing a briefing and need sources on teacher shortages in public schools."),
+        "information_need": ("Find relevant publications on the causes of teacher shortages in rural areas."),
     }
 
 
@@ -107,14 +103,10 @@ def test_query_blueprint_list_accepts_valid_candidates(
         "candidate_id": "candidate-002",
         "domain": "labour market policy",
         "topic": "minimum wage effects",
-        "information_need": (
-            "Find publications on employment effects of minimum wage increases."
-        ),
+        "information_need": ("Find publications on employment effects of minimum wage increases."),
     }
 
-    result = QueryBlueprintList.model_validate(
-        {"candidates": [base_payload, second_payload]}
-    )
+    result = QueryBlueprintList.model_validate({"candidates": [base_payload, second_payload]})
 
     assert len(result.candidates) == 2
     assert result.candidates[1].domain == "labour market policy"
@@ -141,9 +133,7 @@ def test_query_blueprint_list_rejects_invalid_nested_candidate(
     invalid_payload = {**base_payload, "candidate_id": "candidate-002", "user_scenario": "x" * 201}
 
     with pytest.raises(ValidationError) as exc_info:
-        QueryBlueprintList.model_validate(
-            {"candidates": [base_payload, invalid_payload]}
-        )
+        QueryBlueprintList.model_validate({"candidates": [base_payload, invalid_payload]})
 
     errors = exc_info.value.errors()
     assert len(errors) == 1
