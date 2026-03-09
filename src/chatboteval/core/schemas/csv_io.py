@@ -1,4 +1,4 @@
-"""CSV serialisation helpers for annotation export records."""
+"""CSV serialisation helpers for boundary contract models."""
 
 import csv
 import typing
