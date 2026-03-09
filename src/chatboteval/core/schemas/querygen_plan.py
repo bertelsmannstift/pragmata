@@ -8,7 +8,7 @@ class QueryBlueprint(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    candidate_id: str = Field(..., description="Stable UUID assigned to this candidate query.")
+    candidate_id: str = Field(..., description="Stable ID assigned to this candidate query.")
     domain: str = Field(..., description="The setting or subject area assigned to this candidate query.")
     role: str = Field(..., description="The specific persona or perspective assigned to this candidate query.")
     language: str = Field(..., description="The language assigned to this candidate query.")
