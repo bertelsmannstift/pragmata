@@ -6,7 +6,6 @@ from typing import Any, Self
 import yaml
 from pydantic import BaseModel, ConfigDict
 
-
 UNSET = object()
 
 
@@ -26,11 +25,7 @@ def deep_merge(
     merged: dict[str, Any] = dict(base)
 
     for key, value in incoming.items():
-        if (
-            key in merged
-            and isinstance(merged[key], dict)
-            and isinstance(value, dict)
-        ):
+        if key in merged and isinstance(merged[key], dict) and isinstance(value, dict):
             merged[key] = deep_merge(merged[key], value)
         else:
             merged[key] = value
@@ -43,18 +38,10 @@ def prune_unset(
 ) -> Any:
     """Recursively remove values marked as UNSET from override data."""
     if isinstance(value, dict):
-        return {
-            key: prune_unset(item)
-            for key, item in value.items()
-            if item is not UNSET
-        }
+        return {key: prune_unset(item) for key, item in value.items() if item is not UNSET}
 
     if isinstance(value, list):
-        return [
-            prune_unset(item)
-            for item in value
-            if item is not UNSET
-        ]
+        return [prune_unset(item) for item in value if item is not UNSET]
 
     return value
 
@@ -86,9 +73,7 @@ def load_config_file(
         return {}
 
     if not isinstance(data, dict):
-        raise TypeError(
-            f"Config file root must be a mapping, got {type(data).__name__}: {config_path}"
-        )
+        raise TypeError(f"Config file root must be a mapping, got {type(data).__name__}: {config_path}")
 
     return data
 
