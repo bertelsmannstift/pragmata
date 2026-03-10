@@ -11,10 +11,10 @@ from chatboteval.core.paths.paths import WorkspacePaths
 class QueryGenRunPaths:
     """Path bundle for a synthetic query generation run.
 
-     Attributes:
-        run_dir: Root directory for the query generation run.
-        synthetic_queries_csv: Output path for the generated query rows CSV.
-        synthetic_queries_meta_json: Output path for the dataset metadata.
+    Attributes:
+       run_dir: Root directory for the query generation run.
+       synthetic_queries_csv: Output path for the generated query rows CSV.
+       synthetic_queries_meta_json: Output path for the dataset metadata.
     """
 
     run_dir: Path
