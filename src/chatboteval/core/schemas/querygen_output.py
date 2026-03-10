@@ -5,7 +5,6 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, PositiveInt, StringConstraints
 
-
 NonEmptyStr = Annotated[
     str,
     StringConstraints(strip_whitespace=True, min_length=1),
