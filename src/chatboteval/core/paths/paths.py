@@ -1,4 +1,4 @@
-"""Shared workspace path resolver"""
+"""Shared workspace path resolver."""
 
 from dataclasses import dataclass
 from pathlib import Path
@@ -24,9 +24,7 @@ def coerce_path(
     if isinstance(input_path, str):
         return Path(input_path)
 
-    raise TypeError(
-        f"Expected path as str or Path, got {type(input_path).__name__}."
-    )
+    raise TypeError(f"Expected path as str or Path, got {type(input_path).__name__}.")
 
 
 @dataclass(frozen=True)
@@ -104,8 +102,4 @@ class WorkspacePaths:
             The resolved absolute path.
         """
         path_obj = coerce_path(input_path).expanduser()
-        return (
-            (self.base_dir / path_obj).resolve()
-            if not path_obj.is_absolute()
-            else path_obj.resolve()
-        )
+        return (self.base_dir / path_obj).resolve() if not path_obj.is_absolute() else path_obj.resolve()

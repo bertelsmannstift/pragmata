@@ -64,18 +64,14 @@ def test_tool_root_returns_tool_directory(workspace: WorkspacePaths) -> None:
 
 def test_run_root_returns_run_directory(workspace: WorkspacePaths) -> None:
     """Bundle returns the default run root under the tool runs directory."""
-    assert workspace.run_root(tool="my_tool", run_id="id-1") == (
-        workspace.base_dir / "my_tool" / "runs" / "id-1"
-    )
+    assert workspace.run_root(tool="my_tool", run_id="id-1") == (workspace.base_dir / "my_tool" / "runs" / "id-1")
 
 
 def test_under_base_resolves_relative_path_under_workspace(
     workspace: WorkspacePaths,
 ) -> None:
     """Bundle resolves relative paths under the workspace base directory."""
-    assert workspace.under_base("sub/file.txt") == (
-        workspace.base_dir / "sub/file.txt"
-    ).resolve()
+    assert workspace.under_base("sub/file.txt") == (workspace.base_dir / "sub/file.txt").resolve()
 
 
 def test_under_base_returns_absolute_path_as_resolved(
