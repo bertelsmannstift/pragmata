@@ -214,7 +214,7 @@ Each task dataset includes one optional free-text field per annotated unit:
 
 **Package structure:**
 - `/apps/annotation/` — Docker Compose configs for Argilla stack
-- `src/chatboteval/argilla_client.py` — SDK wrappers for import/export/fetch
+- `src/chatboteval/api/annotation/` — SDK wrappers for import/export/fetch
 
 **Usage:** Annotation happens in browser via Argilla web UI. Python API and CLI handle setup, data management, and opening the UI.
 
