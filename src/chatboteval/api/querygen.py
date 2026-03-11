@@ -80,15 +80,25 @@ def gen_queries(
         env=os.environ,
         overrides={
             "spec": {
-                "domains": domains,
-                "roles": roles,
-                "languages": languages,
-                "topics": topics,
-                "intents": intents,
-                "tasks": tasks,
-                "disallowed_topics": disallowed_topics,
-                "difficulty": difficulty,
-                "formats": formats,
+                "domain_context": {
+                    "domains": domains,
+                    "roles": roles,
+                    "languages": languages,
+                },
+                "knowledge_scope": {
+                    "topics": topics,
+                },
+                "scenario": {
+                    "intents": intents,
+                    "tasks": tasks,
+                    "difficulty": difficulty,
+                },
+                "format_requests": {
+                    "formats": formats,
+                },
+                "safety": {
+                    "disallowed_topics": disallowed_topics,
+                },
             },
             "llm": {
                 "model_provider": model_provider,
