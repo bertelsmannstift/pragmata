@@ -61,7 +61,7 @@ def load_config_file(
         FileNotFoundError: If the config file does not exist.
         TypeError: If the YAML root is not a mapping.
     """
-    config_path = Path(path)
+    config_path = Path(path).expanduser()
 
     if not config_path.is_file():
         raise FileNotFoundError(f"Config file does not exist: {config_path}")
