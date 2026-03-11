@@ -20,7 +20,7 @@ def test_from_base_dir_resolves_relative_path(
     """Factory resolves relative base directories to absolute paths."""
     monkeypatch.chdir(tmp_path)
 
-    workspace_paths = WorkspacePaths.from_base_dir("relative_dir")
+    workspace_paths = WorkspacePaths.from_base_dir(Path("relative_dir"))
 
     assert workspace_paths.base_dir == (tmp_path / "relative_dir").resolve()
     assert workspace_paths.base_dir.is_absolute()

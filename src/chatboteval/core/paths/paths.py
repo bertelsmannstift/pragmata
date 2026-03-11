@@ -18,7 +18,7 @@ class WorkspacePaths:
     @classmethod
     def from_base_dir(
         cls,
-        base_dir: str | Path,
+        base_dir: Path,
     ) -> Self:
         """Create a workspace path bundle from a base directory.
 
