@@ -29,6 +29,8 @@ _PASSWORD_CHARS = string.ascii_letters + string.digits + "!@#$%"
 
 @dataclass
 class SetupResult:
+    """Tracks resources created and skipped during a setup or provision call."""
+
     created_workspaces: list[str] = field(default_factory=list)
     skipped_workspaces: list[str] = field(default_factory=list)
     created_datasets: list[str] = field(default_factory=list)
@@ -206,9 +208,6 @@ def teardown(
             ds_name = _apply_prefix(settings.workspace_prefix, ds_base)
             dataset = client.datasets(ds_name, workspace=ws_name)
             if dataset is not None:
-                if include_users:
-                    for rec in getattr(dataset, "records", []):
-                        pass  # No user IDs from records
                 dataset.delete()
                 logger.info("Deleted dataset %r from workspace %r", ds_name, ws_name)
 
@@ -222,7 +221,7 @@ def teardown(
 
     if include_users:
         for user_id in deleted_user_ids:
-            user = client.users(user_id)
+            user = client.users(id=user_id)
             if user is not None:
                 logger.info("Deleted user %r", user.username)
                 user.delete()
