@@ -4,9 +4,17 @@ Per ADR-0009: schemas are defined as Python objects, not user-configurable.
 Any schema change requires a new ADR and major version bump.
 """
 
+from unittest.mock import MagicMock
+
 import argilla as rg
 
 from chatboteval.core.schemas.annotation_task import Task
+
+# Argilla v2 requires a client connection to construct field/question objects.
+# These are pure schema definitions — no server needed. Patch temporarily.
+_needs_patch = rg.Argilla._default_client is None
+if _needs_patch:
+    rg.Argilla._default_client = MagicMock()
 
 _COLLAPSIBLE_TEMPLATE = """\
 <!DOCTYPE html>
@@ -186,3 +194,7 @@ DATASET_NAMES: dict[Task, str] = {
     Task.GROUNDING: "task2_grounding",
     Task.GENERATION: "task3_generation",
 }
+
+if _needs_patch:
+    rg.Argilla._default_client = None
+del _needs_patch
