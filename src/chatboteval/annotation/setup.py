@@ -165,7 +165,7 @@ def provision_users(
                 ws_name = _apply_prefix(settings.workspace_prefix, ws_base)
                 workspace = client.workspaces(ws_name)
                 if workspace is not None:
-                    workspace.add_user(user.id)
+                    workspace.add_user(user)
                 else:
                     logger.warning("Workspace %r not found when assigning user %r", ws_name, spec.username)
 
@@ -202,6 +202,9 @@ def teardown(
     for ws_base, tasks in settings.workspace_dataset_map.items():
         ws_name = _apply_prefix(settings.workspace_prefix, ws_base)
         workspace = client.workspaces(ws_name)
+        if workspace is None:
+            logger.info("Workspace %r not found — skipping", ws_name)
+            continue
 
         for task in tasks:
             ds_base = DATASET_NAMES[task]
@@ -211,7 +214,7 @@ def teardown(
                 dataset.delete()
                 logger.info("Deleted dataset %r from workspace %r", ds_name, ws_name)
 
-        if include_users and workspace is not None:
+        if include_users:
             for user in list(workspace.users):
                 deleted_user_ids.add(user.id)
 
