@@ -46,6 +46,9 @@ target-version = "py312"
 [tool.ruff.lint]
 select = ["E", "F", "I", "D"]
 
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["D100", "D101", "D102", "D103"]
+
 [tool.ruff.lint.pydocstyle]
 convention = "google"
 ignore-var-parameters = true
