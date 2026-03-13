@@ -26,12 +26,12 @@ class QueryGenRunResult(BaseModel):
 
 def gen_queries(
     *,
-    domains: str | list[str] | list[dict[str, object]],
-    roles: str | list[str] | list[dict[str, object]],
-    languages: str | list[str] | list[dict[str, object]],
-    topics: str | list[str] | list[dict[str, object]],
-    intents: str | list[str] | list[dict[str, object]],
-    tasks: str | list[str] | list[dict[str, object]],
+    domains: str | list[str] | list[dict[str, object]] | object = UNSET,
+    roles: str | list[str] | list[dict[str, object]] | object = UNSET,
+    languages: str | list[str] | list[dict[str, object]] | object = UNSET,
+    topics: str | list[str] | list[dict[str, object]] | object = UNSET,
+    intents: str | list[str] | list[dict[str, object]] | object = UNSET,
+    tasks: str | list[str] | list[dict[str, object]] | object = UNSET,
     disallowed_topics: str | list[str] | list[dict[str, object]] | object = UNSET,
     difficulty: str | list[str] | list[dict[str, object]] | object = UNSET,
     formats: str | list[str] | list[dict[str, object]] | object = UNSET,
