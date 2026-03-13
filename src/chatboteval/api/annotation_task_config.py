@@ -7,7 +7,7 @@ protocol (fields, questions, labels) and are hardcoded per ADR-0009: any change
 requires a new ADR and major version bump.
 
 Distribution (min_submitted) is intentionally omitted — it is an operational
-setting controlled by AnnotationSetupSettings.min_submitted and applied at
+setting controlled by AnnotationSettings.min_submitted and applied at
 dataset creation time in annotation_setup.py.
 """
 
@@ -73,7 +73,7 @@ def _collapsible_field(name: str, title: str) -> rg.CustomField:
     )
 
 
-# Distribution is omitted — applied from AnnotationSetupSettings at creation time.
+# Distribution is omitted — applied from AnnotationSettings at creation time.
 
 TASK1_RETRIEVAL_SETTINGS = rg.Settings(
     fields=[

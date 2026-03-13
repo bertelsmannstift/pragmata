@@ -1,4 +1,4 @@
-"""Operational settings for annotation setup (workspace topology, distribution)."""
+"""Operational settings for annotation (workspace topology, distribution)."""
 
 from dataclasses import dataclass, field
 from typing import Literal
@@ -7,8 +7,8 @@ from chatboteval.core.schemas.annotation_task import Task
 from chatboteval.core.settings.settings_base import ResolveSettings
 
 
-class AnnotationSetupSettings(ResolveSettings):
-    """Configurable runtime settings for annotation setup.
+class AnnotationSettings(ResolveSettings):
+    """Configurable runtime settings for annotation (setup, import, export).
 
     Controls workspace topology and task-distribution thresholds.
     Task definitions (Argilla rg.Settings per task) are hardcoded — see

@@ -13,7 +13,7 @@ from chatboteval.api.annotation_setup import (
     setup_datasets,
     teardown,
 )
-from chatboteval.core.settings.annotation_settings import AnnotationSetupSettings, UserSpec
+from chatboteval.core.settings.annotation_settings import AnnotationSettings, UserSpec
 
 _API_URL = "http://localhost:6900"
 _API_KEY = "argilla.apikey"
@@ -182,7 +182,7 @@ def test_rerun_after_teardown(client: rg.Argilla) -> None:
 
 @pytest.mark.integration
 def test_prefix_support(client: rg.Argilla) -> None:
-    prefixed_settings = AnnotationSetupSettings(workspace_prefix="test")
+    prefixed_settings = AnnotationSettings(workspace_prefix="test")
     teardown(client, settings=prefixed_settings, include_users=True)
 
     result = setup_datasets(client, settings=prefixed_settings)

@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 import argilla as rg
 
 from chatboteval.api.annotation_task_config import DATASET_NAMES, TASK_SETTINGS
-from chatboteval.core.settings.annotation_settings import AnnotationSetupSettings, UserSpec
+from chatboteval.core.settings.annotation_settings import AnnotationSettings, UserSpec
 
 logger = logging.getLogger(__name__)
 
@@ -112,11 +112,11 @@ def _create_user(
 
 def setup_datasets(
     client: rg.Argilla,
-    settings: AnnotationSetupSettings | None = None,
+    settings: AnnotationSettings | None = None,
 ) -> SetupResult:
     """Create all workspaces and datasets idempotently per settings topology."""
     if settings is None:
-        settings = AnnotationSetupSettings()
+        settings = AnnotationSettings()
 
     result = SetupResult()
 
@@ -146,11 +146,11 @@ def setup_datasets(
 def provision_users(
     client: rg.Argilla,
     users: list[UserSpec],
-    settings: AnnotationSetupSettings | None = None,
+    settings: AnnotationSettings | None = None,
 ) -> SetupResult:
     """Create user accounts and assign to workspaces idempotently."""
     if settings is None:
-        settings = AnnotationSetupSettings()
+        settings = AnnotationSettings()
 
     result = SetupResult()
 
@@ -174,7 +174,7 @@ def provision_users(
 
 def setup(
     client: rg.Argilla,
-    settings: AnnotationSetupSettings | None = None,
+    settings: AnnotationSettings | None = None,
     users: list[UserSpec] | None = None,
 ) -> SetupResult:
     """Orchestrate full annotation setup: workspaces, datasets, users."""
@@ -185,7 +185,7 @@ def setup(
 
 def teardown(
     client: rg.Argilla,
-    settings: AnnotationSetupSettings | None = None,
+    settings: AnnotationSettings | None = None,
     *,
     include_users: bool = False,
 ) -> None:
@@ -195,7 +195,7 @@ def teardown(
     Missing resources are silently skipped.
     """
     if settings is None:
-        settings = AnnotationSetupSettings()
+        settings = AnnotationSettings()
 
     deleted_user_ids: set = set()
 

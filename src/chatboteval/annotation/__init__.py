@@ -31,7 +31,7 @@ from chatboteval.api.annotation_task_config import (
     TASK_SETTINGS as TASK_SETTINGS,
 )
 from chatboteval.core.settings.annotation_settings import (
-    AnnotationSetupSettings as AnnotationSetupSettings,
+    AnnotationSettings as AnnotationSettings,
 )
 from chatboteval.core.settings.annotation_settings import (
     UserSpec as UserSpec,
