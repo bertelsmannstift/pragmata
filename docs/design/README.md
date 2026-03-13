@@ -21,4 +21,5 @@ Design documents focus on (this is guidance, not a required section template):
 - [Annotation Workspace & Task Distribution](annotation-workspace-task-distribution.md) — Workspace structure, dataset mapping, task distribution
 - [Annotation User Management](annotation-user-management.md) — Account provisioning and credential management
 - [Synthetic Test Set](synthetic-test-set.md) — Query generation, prompt variation, and response collection
+- [Package Contracts](infra-package-contracts.md) — Contract layer layout: canonical types, schemas, path conventions, and config
 - [Packaging and Invocation Surface](packaging-invocation-surface.md) — Package structure, module boundaries, and invocation bindings
