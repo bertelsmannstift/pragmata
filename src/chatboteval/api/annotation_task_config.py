@@ -1,7 +1,14 @@
-"""Hardcoded Argilla dataset schemas for the three annotation tasks.
+"""Hardcoded Argilla dataset definitions for the three annotation tasks.
 
-Per ADR-0009: schemas are defined as Python objects, not user-configurable.
-Any schema change requires a new ADR and major version bump.
+These are Argilla rg.Settings objects — runtime task definitions consumed by
+annotation_setup.py, NOT boundary schemas (those live in core/schemas/) or
+configurable settings (those live in core/settings/). They encode the annotation
+protocol (fields, questions, labels) and are hardcoded per ADR-0009: any change
+requires a new ADR and major version bump.
+
+Distribution (min_submitted) is intentionally omitted — it is an operational
+setting controlled by AnnotationSetupSettings.min_submitted and applied at
+dataset creation time in annotation_setup.py.
 """
 
 from unittest.mock import MagicMock
@@ -11,7 +18,7 @@ import argilla as rg
 from chatboteval.core.schemas.annotation_task import Task
 
 # Argilla v2 requires a client connection to construct field/question objects.
-# These are pure schema definitions — no server needed. Patch temporarily.
+# These are pure definitions — no server needed. Patch temporarily.
 _needs_patch = rg.Argilla._default_client is None
 if _needs_patch:
     rg.Argilla._default_client = MagicMock()
@@ -66,6 +73,8 @@ def _collapsible_field(name: str, title: str) -> rg.CustomField:
     )
 
 
+# Distribution is omitted — applied from AnnotationSetupSettings at creation time.
+
 TASK1_RETRIEVAL_SETTINGS = rg.Settings(
     fields=[
         rg.TextField(name="query", title="Query", required=True),
@@ -93,7 +102,6 @@ TASK1_RETRIEVAL_SETTINGS = rg.Settings(
         ),
         rg.TextQuestion(name="notes", title="Notes (optional)", required=False),
     ],
-    distribution=rg.TaskDistribution(min_submitted=1),
     guidelines="Task 1 — Retrieval. TODO: Revisit after first annotation iteration.",
 )
 
@@ -136,7 +144,6 @@ TASK2_GROUNDING_SETTINGS = rg.Settings(
         ),
         rg.TextQuestion(name="notes", title="Notes (optional)", required=False),
     ],
-    distribution=rg.TaskDistribution(min_submitted=1),
     guidelines="Task 2 — Grounding. TODO: Revisit after first annotation iteration.",
 )
 
@@ -179,7 +186,6 @@ TASK3_GENERATION_SETTINGS = rg.Settings(
         ),
         rg.TextQuestion(name="notes", title="Notes (optional)", required=False),
     ],
-    distribution=rg.TaskDistribution(min_submitted=1),
     guidelines="Task 3 — Generation. TODO: Revisit after first annotation iteration.",
 )
 

@@ -3,15 +3,16 @@
 import pytest
 from pydantic import ValidationError
 
-from chatboteval.annotation.settings import AnnotationSetupSettings, UserSpec
 from chatboteval.core.schemas.annotation_task import Task
+from chatboteval.core.settings.annotation_settings import AnnotationSetupSettings, UserSpec
 
 
 class TestAnnotationSetupSettingsDefaults:
     def test_workspace_dataset_map_default(self):
         s = AnnotationSetupSettings()
         assert s.workspace_dataset_map == {
-            "retrieval_grounding": [Task.RETRIEVAL, Task.GROUNDING],
+            "retrieval": [Task.RETRIEVAL],
+            "grounding": [Task.GROUNDING],
             "generation": [Task.GENERATION],
         }
 

@@ -7,13 +7,13 @@ Requires: make setup (Argilla stack running on localhost:6900)
 import argilla as rg
 import pytest
 
-from chatboteval.annotation.settings import AnnotationSetupSettings, UserSpec
-from chatboteval.annotation.setup import (
+from chatboteval.api.annotation_setup import (
     SetupResult,
     provision_users,
     setup_datasets,
     teardown,
 )
+from chatboteval.core.settings.annotation_settings import AnnotationSetupSettings, UserSpec
 
 _API_URL = "http://localhost:6900"
 _API_KEY = "argilla.apikey"
@@ -46,17 +46,18 @@ def test_full_setup_creates_workspaces_and_datasets(client: rg.Argilla) -> None:
 
     assert isinstance(result, SetupResult)
 
-    # 2 workspaces
-    assert client.workspaces("retrieval_grounding") is not None
+    # 3 workspaces (one per task)
+    assert client.workspaces("retrieval") is not None
+    assert client.workspaces("grounding") is not None
     assert client.workspaces("generation") is not None
 
     # 3 datasets
-    assert client.datasets("task1_retrieval", workspace="retrieval_grounding") is not None
-    assert client.datasets("task2_grounding", workspace="retrieval_grounding") is not None
+    assert client.datasets("task1_retrieval", workspace="retrieval") is not None
+    assert client.datasets("task2_grounding", workspace="grounding") is not None
     assert client.datasets("task3_generation", workspace="generation") is not None
 
     # Result accounting
-    assert set(result.created_workspaces) == {"retrieval_grounding", "generation"}
+    assert set(result.created_workspaces) == {"retrieval", "grounding", "generation"}
     assert result.skipped_workspaces == []
     assert set(result.created_datasets) == {
         "task1_retrieval",
@@ -70,13 +71,13 @@ def test_full_setup_creates_workspaces_and_datasets(client: rg.Argilla) -> None:
 def test_dataset_field_and_question_counts(client: rg.Argilla) -> None:
     """Verify datasets have the expected schema shape from annotation-interface.md."""
     # Retrieval: 3 fields (query, chunk, generated_answer), 4 questions (3 label + 1 text)
-    ds1 = client.datasets("task1_retrieval", workspace="retrieval_grounding")
+    ds1 = client.datasets("task1_retrieval", workspace="retrieval")
     assert ds1 is not None
     assert len(ds1.settings.fields) == 3
     assert len(ds1.settings.questions) == 4
 
     # Grounding: 3 fields (answer, context_set, query), 6 questions (5 label + 1 text)
-    ds2 = client.datasets("task2_grounding", workspace="retrieval_grounding")
+    ds2 = client.datasets("task2_grounding", workspace="grounding")
     assert ds2 is not None
     assert len(ds2.settings.fields) == 3
     assert len(ds2.settings.questions) == 6
@@ -90,7 +91,7 @@ def test_dataset_field_and_question_counts(client: rg.Argilla) -> None:
 
 @pytest.mark.integration
 def test_dataset_min_submitted(client: rg.Argilla) -> None:
-    ds1 = client.datasets("task1_retrieval", workspace="retrieval_grounding")
+    ds1 = client.datasets("task1_retrieval", workspace="retrieval")
     assert ds1 is not None
     assert ds1.settings.distribution.min_submitted == 1
 
@@ -102,7 +103,7 @@ def test_idempotent_rerun(client: rg.Argilla) -> None:
 
     assert result.created_workspaces == []
     assert result.created_datasets == []
-    assert set(result.skipped_workspaces) == {"retrieval_grounding", "generation"}
+    assert set(result.skipped_workspaces) == {"retrieval", "grounding", "generation"}
     assert set(result.skipped_datasets) == {
         "task1_retrieval",
         "task2_grounding",
@@ -114,7 +115,7 @@ def test_idempotent_rerun(client: rg.Argilla) -> None:
 def test_user_provisioning(client: rg.Argilla) -> None:
     result = provision_users(
         client,
-        [UserSpec(username=_TEST_USER, role="annotator", workspaces=["retrieval_grounding"])],
+        [UserSpec(username=_TEST_USER, role="annotator", workspaces=["retrieval"])],
     )
 
     assert _TEST_USER in result.created_users
@@ -131,15 +132,16 @@ def test_teardown_without_users_retains_accounts(client: rg.Argilla) -> None:
     # Ensure user exists first
     provision_users(
         client,
-        [UserSpec(username=_TEST_USER, role="annotator", workspaces=["retrieval_grounding"])],
+        [UserSpec(username=_TEST_USER, role="annotator", workspaces=["retrieval"])],
     )
 
     teardown(client, include_users=False)
 
     # Workspaces and datasets gone
-    assert client.workspaces("retrieval_grounding") is None
+    assert client.workspaces("retrieval") is None
+    assert client.workspaces("grounding") is None
     assert client.workspaces("generation") is None
-    assert client.datasets("task1_retrieval", workspace="retrieval_grounding") is None
+    assert client.datasets("task1_retrieval", workspace="retrieval") is None
 
     # User still exists
     assert client.users(_TEST_USER) is not None
@@ -151,13 +153,14 @@ def test_teardown_with_users_deletes_accounts(client: rg.Argilla) -> None:
     setup_datasets(client)
     provision_users(
         client,
-        [UserSpec(username=_TEST_USER, role="annotator", workspaces=["retrieval_grounding"])],
+        [UserSpec(username=_TEST_USER, role="annotator", workspaces=["retrieval"])],
     )
 
     teardown(client, include_users=True)
 
     # Workspaces, datasets, and user all gone
-    assert client.workspaces("retrieval_grounding") is None
+    assert client.workspaces("retrieval") is None
+    assert client.workspaces("grounding") is None
     assert client.workspaces("generation") is None
     assert client.users(_TEST_USER) is None
 
@@ -167,7 +170,7 @@ def test_rerun_after_teardown(client: rg.Argilla) -> None:
     # Clean slate (teardown already ran above)
     result = setup_datasets(client)
 
-    assert set(result.created_workspaces) == {"retrieval_grounding", "generation"}
+    assert set(result.created_workspaces) == {"retrieval", "grounding", "generation"}
     assert set(result.created_datasets) == {
         "task1_retrieval",
         "task2_grounding",
@@ -184,13 +187,14 @@ def test_prefix_support(client: rg.Argilla) -> None:
 
     result = setup_datasets(client, settings=prefixed_settings)
 
-    assert client.workspaces("test_retrieval_grounding") is not None
+    assert client.workspaces("test_retrieval") is not None
+    assert client.workspaces("test_grounding") is not None
     assert client.workspaces("test_generation") is not None
-    assert client.datasets("test_task1_retrieval", workspace="test_retrieval_grounding") is not None
-    assert client.datasets("test_task2_grounding", workspace="test_retrieval_grounding") is not None
+    assert client.datasets("test_task1_retrieval", workspace="test_retrieval") is not None
+    assert client.datasets("test_task2_grounding", workspace="test_grounding") is not None
     assert client.datasets("test_task3_generation", workspace="test_generation") is not None
 
-    assert set(result.created_workspaces) == {"test_retrieval_grounding", "test_generation"}
+    assert set(result.created_workspaces) == {"test_retrieval", "test_grounding", "test_generation"}
     assert set(result.created_datasets) == {
         "test_task1_retrieval",
         "test_task2_grounding",

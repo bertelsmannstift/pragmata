@@ -14,8 +14,8 @@ from dataclasses import dataclass, field
 
 import argilla as rg
 
-from chatboteval.annotation.schemas import DATASET_NAMES, TASK_SETTINGS
-from chatboteval.annotation.settings import AnnotationSetupSettings, UserSpec
+from chatboteval.api.annotation_task_config import DATASET_NAMES, TASK_SETTINGS
+from chatboteval.core.settings.annotation_settings import AnnotationSetupSettings, UserSpec
 
 logger = logging.getLogger(__name__)
 

@@ -1,8 +1,8 @@
-"""Unit tests for Argilla dataset schema constants."""
+"""Unit tests for Argilla dataset task config constants."""
 
 import argilla as rg
 
-from chatboteval.annotation.schemas import (
+from chatboteval.api.annotation_task_config import (
     DATASET_NAMES,
     TASK1_RETRIEVAL_SETTINGS,
     TASK2_GROUNDING_SETTINGS,
@@ -68,9 +68,6 @@ class TestTask1RetrievalSettings:
         assert isinstance(q, rg.TextQuestion)
         assert q.required is False
 
-    def test_distribution(self):
-        assert TASK1_RETRIEVAL_SETTINGS.distribution.min_submitted == 1
-
     def test_guidelines_non_empty(self):
         assert TASK1_RETRIEVAL_SETTINGS.guidelines
         assert len(TASK1_RETRIEVAL_SETTINGS.guidelines) > 0
@@ -128,9 +125,6 @@ class TestTask2GroundingSettings:
         assert isinstance(q, rg.TextQuestion)
         assert q.required is False
 
-    def test_distribution(self):
-        assert TASK2_GROUNDING_SETTINGS.distribution.min_submitted == 1
-
     def test_guidelines_non_empty(self):
         assert TASK2_GROUNDING_SETTINGS.guidelines
 
@@ -173,9 +167,6 @@ class TestTask3GenerationSettings:
         q = _get_question(TASK3_GENERATION_SETTINGS, "notes")
         assert isinstance(q, rg.TextQuestion)
         assert q.required is False
-
-    def test_distribution(self):
-        assert TASK3_GENERATION_SETTINGS.distribution.min_submitted == 1
 
     def test_guidelines_non_empty(self):
         assert TASK3_GENERATION_SETTINGS.guidelines

@@ -11,12 +11,14 @@ class AnnotationSetupSettings(ResolveSettings):
     """Configurable runtime settings for annotation setup.
 
     Controls workspace topology and task-distribution thresholds.
-    Schema definitions (rg.Settings per task) are hardcoded — see schemas.py.
+    Task definitions (Argilla rg.Settings per task) are hardcoded — see
+    api/annotation_task_config.py.
     """
 
     workspace_prefix: str = ""
     workspace_dataset_map: dict[str, list[Task]] = {
-        "retrieval_grounding": [Task.RETRIEVAL, Task.GROUNDING],
+        "retrieval": [Task.RETRIEVAL],
+        "grounding": [Task.GROUNDING],
         "generation": [Task.GENERATION],
     }
     min_submitted: int = 1

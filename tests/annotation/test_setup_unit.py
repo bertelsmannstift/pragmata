@@ -5,15 +5,15 @@ No Argilla server required; these tests exercise pure Python logic only.
 
 from dataclasses import fields
 
-from chatboteval.annotation.setup import SetupResult, _apply_prefix, _generate_password
+from chatboteval.api.annotation_setup import SetupResult, _apply_prefix, _generate_password
 
 
 class TestApplyPrefix:
     def test_empty_prefix_returns_name(self) -> None:
-        assert _apply_prefix("", "retrieval_grounding") == "retrieval_grounding"
+        assert _apply_prefix("", "retrieval") == "retrieval"
 
     def test_non_empty_prefix_prepends(self) -> None:
-        assert _apply_prefix("pb", "retrieval_grounding") == "pb_retrieval_grounding"
+        assert _apply_prefix("pb", "retrieval") == "pb_retrieval"
 
     def test_non_empty_prefix_any_name(self) -> None:
         assert _apply_prefix("test", "generation") == "test_generation"
