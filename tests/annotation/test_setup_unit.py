@@ -6,6 +6,8 @@ No Argilla server required; these tests exercise pure Python logic only.
 from dataclasses import fields
 
 from chatboteval.api.annotation_setup import SetupResult, _apply_prefix, _generate_password
+from chatboteval.api.annotation_task_config import TASK_SETTINGS
+from chatboteval.core.schemas.annotation_task import Task
 
 
 class TestApplyPrefix:
@@ -67,3 +69,17 @@ class TestSetupResult:
         r2 = SetupResult()
         r1.created_workspaces.append("ws")
         assert r2.created_workspaces == []
+
+
+class TestTaskSettingsMetadata:
+    def test_retrieval_has_five_metadata_properties(self) -> None:
+        meta_names = [m.name for m in TASK_SETTINGS[Task.RETRIEVAL].metadata]
+        assert meta_names == ["record_uuid", "language", "chunk_id", "doc_id", "chunk_rank"]
+
+    def test_grounding_has_two_metadata_properties(self) -> None:
+        meta_names = [m.name for m in TASK_SETTINGS[Task.GROUNDING].metadata]
+        assert meta_names == ["record_uuid", "language"]
+
+    def test_generation_has_two_metadata_properties(self) -> None:
+        meta_names = [m.name for m in TASK_SETTINGS[Task.GENERATION].metadata]
+        assert meta_names == ["record_uuid", "language"]

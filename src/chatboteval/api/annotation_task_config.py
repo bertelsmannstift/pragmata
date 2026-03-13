@@ -102,6 +102,13 @@ TASK1_RETRIEVAL_SETTINGS = rg.Settings(
         ),
         rg.TextQuestion(name="notes", title="Notes (optional)", required=False),
     ],
+    metadata=[
+        rg.TermsMetadataProperty("record_uuid", visible_for_annotators=False),
+        rg.TermsMetadataProperty("language", visible_for_annotators=False),
+        rg.TermsMetadataProperty("chunk_id", visible_for_annotators=False),
+        rg.TermsMetadataProperty("doc_id", visible_for_annotators=False),
+        rg.IntegerMetadataProperty("chunk_rank", min=1, visible_for_annotators=False),
+    ],
     guidelines="Task 1 — Retrieval. TODO: Revisit after first annotation iteration.",
 )
 
@@ -144,6 +151,10 @@ TASK2_GROUNDING_SETTINGS = rg.Settings(
         ),
         rg.TextQuestion(name="notes", title="Notes (optional)", required=False),
     ],
+    metadata=[
+        rg.TermsMetadataProperty("record_uuid", visible_for_annotators=False),
+        rg.TermsMetadataProperty("language", visible_for_annotators=False),
+    ],
     guidelines="Task 2 — Grounding. TODO: Revisit after first annotation iteration.",
 )
 
@@ -185,6 +196,10 @@ TASK3_GENERATION_SETTINGS = rg.Settings(
             required=True,
         ),
         rg.TextQuestion(name="notes", title="Notes (optional)", required=False),
+    ],
+    metadata=[
+        rg.TermsMetadataProperty("record_uuid", visible_for_annotators=False),
+        rg.TermsMetadataProperty("language", visible_for_annotators=False),
     ],
     guidelines="Task 3 — Generation. TODO: Revisit after first annotation iteration.",
 )
