@@ -11,6 +11,7 @@ from chatboteval.api.annotation_import import (
     _build_generation_record,
     _build_grounding_record,
     _build_retrieval_records,
+    _derive_record_uuid,
     validate_records,
 )
 from chatboteval.core.schemas.annotation_import import QueryResponsePair
@@ -191,6 +192,31 @@ class TestBuildGroundingRecord:
 # ---------------------------------------------------------------------------
 # _build_generation_record
 # ---------------------------------------------------------------------------
+
+
+class TestDeriveRecordUuid:
+    def test_deterministic(self) -> None:
+        pair = _make_pair()
+        assert _derive_record_uuid(pair) == _derive_record_uuid(pair)
+
+    def test_different_content_different_uuid(self) -> None:
+        pair_a = _make_pair()
+        pair_b = QueryResponsePair.model_validate({**_valid_raw(), "query": "Different query?"})
+        assert _derive_record_uuid(pair_a) != _derive_record_uuid(pair_b)
+
+    def test_chunk_order_independent(self) -> None:
+        raw = _valid_raw()
+        pair_a = QueryResponsePair.model_validate(raw)
+        raw_reversed = {**raw, "chunks": list(reversed(raw["chunks"]))}
+        pair_b = QueryResponsePair.model_validate(raw_reversed)
+        assert _derive_record_uuid(pair_a) == _derive_record_uuid(pair_b)
+
+    def test_returns_hex_string(self) -> None:
+        result = _derive_record_uuid(_make_pair())
+        assert isinstance(result, str)
+        assert len(result) > 0
+        # SHA-256 hex digest is 64 chars
+        assert all(c in "0123456789abcdef" for c in result)
 
 
 class TestBuildGenerationRecord:

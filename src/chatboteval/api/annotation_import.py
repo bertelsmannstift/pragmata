@@ -5,8 +5,8 @@ Public API:
     import_records(client, records, settings=None) -> ImportResult
 """
 
+import hashlib
 import logging
-import uuid
 from dataclasses import dataclass
 
 import argilla as rg
@@ -50,6 +50,18 @@ class ImportResult:
     imported_records: int
     skipped_records: int
     dataset_counts: dict[str, int]
+
+
+# ---------------------------------------------------------------------------
+# UUID derivation
+# ---------------------------------------------------------------------------
+
+
+def _derive_record_uuid(pair: QueryResponsePair) -> str:
+    """SHA-256 digest of canonical content fields — stable across calls for identical pairs."""
+    chunk_ids = "|".join(sorted(c.chunk_id for c in pair.chunks))
+    canonical = f"{pair.query}\x00{pair.answer}\x00{pair.context_set}\x00{chunk_ids}"
+    return hashlib.sha256(canonical.encode()).hexdigest()
 
 
 # ---------------------------------------------------------------------------
@@ -150,7 +162,7 @@ def import_records(
     batches: dict[Task, list[rg.Record]] = {task: [] for task in Task}
 
     for pair in records:
-        record_uuid = str(uuid.uuid4())
+        record_uuid = _derive_record_uuid(pair)
         batches[Task.RETRIEVAL].extend(_build_retrieval_records(pair, record_uuid))
         batches[Task.GROUNDING].append(_build_grounding_record(pair, record_uuid))
         batches[Task.GENERATION].append(_build_generation_record(pair, record_uuid))
