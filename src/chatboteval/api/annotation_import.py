@@ -28,18 +28,24 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class RecordError:
+    """Validation failure for a single input record."""
+
     index: int
     detail: str
 
 
 @dataclass(frozen=True)
 class ValidationResult:
+    """Outcome of validate_records(): typed pairs and per-index errors."""
+
     valid: list[QueryResponsePair]
     errors: list[RecordError]
 
 
 @dataclass(frozen=True)
 class ImportResult:
+    """Outcome of import_records(): counts per dataset and overall totals."""
+
     total_records: int
     imported_records: int
     skipped_records: int
