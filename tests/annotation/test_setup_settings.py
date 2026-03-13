@@ -1,15 +1,15 @@
-"""Unit tests for AnnotationSettings and UserSpec."""
+"""Unit tests for AnnotationSetupSettings and UserSpec."""
 
 import pytest
 from pydantic import ValidationError
 
 from chatboteval.core.schemas.annotation_task import Task
-from chatboteval.core.settings.annotation_settings import AnnotationSettings, UserSpec
+from chatboteval.core.settings.annotation_settings import AnnotationSetupSettings, UserSpec
 
 
-class TestAnnotationSettingsDefaults:
+class TestAnnotationSetupSettingsDefaults:
     def test_workspace_dataset_map_default(self):
-        s = AnnotationSettings()
+        s = AnnotationSetupSettings()
         assert s.workspace_dataset_map == {
             "retrieval": [Task.RETRIEVAL],
             "grounding": [Task.GROUNDING],
@@ -17,38 +17,38 @@ class TestAnnotationSettingsDefaults:
         }
 
     def test_workspace_prefix_default(self):
-        s = AnnotationSettings()
+        s = AnnotationSetupSettings()
         assert s.workspace_prefix == ""
 
     def test_min_submitted_default(self):
-        s = AnnotationSettings()
+        s = AnnotationSetupSettings()
         assert s.min_submitted == 1
 
     def test_extra_fields_forbidden(self):
         with pytest.raises(ValidationError):
-            AnnotationSettings(nonexistent_field="value")
+            AnnotationSetupSettings(nonexistent_field="value")
 
 
-class TestAnnotationSettingsResolve:
+class TestAnnotationSetupSettingsResolve:
     def test_resolve_with_no_args_returns_defaults(self):
-        s = AnnotationSettings.resolve()
+        s = AnnotationSetupSettings.resolve()
         assert s.min_submitted == 1
         assert s.workspace_prefix == ""
 
     def test_resolve_overrides_min_submitted(self):
-        s = AnnotationSettings.resolve(overrides={"min_submitted": 3})
+        s = AnnotationSetupSettings.resolve(overrides={"min_submitted": 3})
         assert s.min_submitted == 3
 
     def test_resolve_overrides_prefix(self):
-        s = AnnotationSettings.resolve(overrides={"workspace_prefix": "pb"})
+        s = AnnotationSetupSettings.resolve(overrides={"workspace_prefix": "pb"})
         assert s.workspace_prefix == "pb"
 
     def test_resolve_config_layer(self):
-        s = AnnotationSettings.resolve(config={"min_submitted": 2})
+        s = AnnotationSetupSettings.resolve(config={"min_submitted": 2})
         assert s.min_submitted == 2
 
     def test_resolve_overrides_win_over_config(self):
-        s = AnnotationSettings.resolve(
+        s = AnnotationSetupSettings.resolve(
             config={"min_submitted": 2},
             overrides={"min_submitted": 5},
         )
