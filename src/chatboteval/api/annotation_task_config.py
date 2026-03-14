@@ -53,7 +53,8 @@ _COLLAPSIBLE_TEMPLATE = """\
 </details>
 <script>
   var field = record.fields["{field_name}"];
-  document.getElementById("content").textContent = field || "";
+  var text = (field && typeof field === "object") ? field.text : (field || "");
+  document.getElementById("content").textContent = text;
   document.getElementById("wrapper").addEventListener("toggle", function () {{
     parent.postMessage({{ type: "resize" }}, "*");
   }});

@@ -74,7 +74,7 @@ def _build_retrieval_records(pair: QueryResponsePair, record_uuid: str) -> list[
                 fields={
                     "query": pair.query,
                     "chunk": chunk.text,
-                    "generated_answer": pair.answer,
+                    "generated_answer": {"text": pair.answer},
                 },
                 metadata=metadata,
             )
@@ -91,7 +91,7 @@ def _build_grounding_record(pair: QueryResponsePair, record_uuid: str) -> rg.Rec
         fields={
             "answer": pair.answer,
             "context_set": pair.context_set,
-            "query": pair.query,
+            "query": {"text": pair.query},
         },
         metadata=metadata,
     )
@@ -106,7 +106,7 @@ def _build_generation_record(pair: QueryResponsePair, record_uuid: str) -> rg.Re
         fields={
             "query": pair.query,
             "answer": pair.answer,
-            "context_set": pair.context_set,
+            "context_set": {"text": pair.context_set},
         },
         metadata=metadata,
     )
