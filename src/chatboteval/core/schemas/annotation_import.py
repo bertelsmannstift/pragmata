@@ -1,13 +1,8 @@
 """Boundary schemas for canonical annotation import records."""
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field
 
-
-def _non_empty(v: str) -> str:
-    v = v.strip()
-    if not v:
-        raise ValueError("must not be empty or whitespace-only")
-    return v
+from chatboteval.core.types import NonEmptyStr
 
 
 class Chunk(BaseModel):
@@ -15,15 +10,10 @@ class Chunk(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    chunk_id: str
-    doc_id: str
+    chunk_id: NonEmptyStr
+    doc_id: NonEmptyStr
     chunk_rank: int = Field(ge=1)
-    text: str
-
-    @field_validator("chunk_id", "doc_id", "text", mode="before")
-    @classmethod
-    def _non_empty(cls, v: str) -> str:
-        return _non_empty(v)
+    text: NonEmptyStr
 
 
 class QueryResponsePair(BaseModel):
@@ -31,13 +21,8 @@ class QueryResponsePair(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    query: str
-    answer: str
+    query: NonEmptyStr
+    answer: NonEmptyStr
     chunks: list[Chunk] = Field(min_length=1)
-    context_set: str
+    context_set: NonEmptyStr
     language: str | None = None
-
-    @field_validator("query", "answer", "context_set", mode="before")
-    @classmethod
-    def _non_empty(cls, v: str) -> str:
-        return _non_empty(v)

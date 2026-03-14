@@ -1,14 +1,10 @@
 """Output contract for synthetic query generation."""
 
 from datetime import datetime
-from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, PositiveInt, StringConstraints
+from pydantic import BaseModel, ConfigDict, PositiveInt
 
-NonEmptyStr = Annotated[
-    str,
-    StringConstraints(strip_whitespace=True, min_length=1),
-]
+from chatboteval.core.types import NonEmptyStr
 
 
 class SyntheticQueryRow(BaseModel):
