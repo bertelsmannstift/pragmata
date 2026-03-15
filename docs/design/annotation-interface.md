@@ -167,7 +167,7 @@ Each task dataset includes one optional free-text field per annotated unit:
 
 - Supporting context fields (`answer` for Task 1; `query` for Task 2; `retrieved_passages` for Task 3) must be included in the Argilla field configuration, positioned after primary content fields
 - Workspace and annotator group assignment (who sees which dataset) is a configurable operational decision - see [Workspace & Task Distribution](annotation-workspace-task-distribution.md)
-- Three Argilla datasets required: `task1_retrieval`, `task2_grounding`, `task3_generation`
+- Three Argilla datasets required: `task_retrieval`, `task_grounding`, `task_generation`
 - Export schema ([Export Pipeline](annotation-export-pipeline.md)) must include one binary field per label and the optional notes field
 - Schema can be revised after the first annotation iteration based on IAA results and annotator feedback
 
