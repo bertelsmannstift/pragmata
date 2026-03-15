@@ -20,15 +20,15 @@ Data pipeline to export completed annotations from Argilla records to structured
 ```
 Argilla PostgreSQL
         │
-        ├── task1_retrieval ──────────────────────────────► retrieval.csv
+        ├── task_retrieval ───────────────────────────────► retrieval.csv
         │   (workspace_a)                    (query, chunk, chunk_id,
         │                                                    chunk_rank, labels...)
         │
-        ├── task2_grounding ──────────────────────────────► grounding.csv
+        ├── task_grounding ───────────────────────────────► grounding.csv
         │   (workspace_a)                    (answer, context_set,
         │                                                    labels...)
         │
-        └── task3_generation ─────────────────────────────► generation.csv
+        └── task_generation ──────────────────────────────► generation.csv
             (workspace_b)                      (query, answer, labels...)
 ```
 >**Pending** - exact API / CLI wrapper wording below are TBC, TODO update when decided.
@@ -42,9 +42,9 @@ Three Argilla datasets, accessed via Argilla SDK. Filter: `status == "submitted"
 
 | Dataset | Records |
 |---------|---------|
-| `task1_retrieval` | One record per query–chunk pair |
-| `task2_grounding` | One record per answer-context set pair |
-| `task3_generation` | One record per query–answer pair |
+| `task_retrieval` | One record per query–chunk pair |
+| `task_grounding` | One record per answer-context set pair |
+| `task_generation` | One record per query–answer pair |
 
 > NB: Workspace setup and associated task assignment are deployment configuration, not fixed architecture (see [Workspace & Task Distribution](annotation-workspace-task-distribution.md)).
 

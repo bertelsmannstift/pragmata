@@ -9,9 +9,9 @@ Three separate Argilla datasets — one per annotation task:
 
 | Dataset | Task | Record unit |
 |---------|------|-------------|
-| `task1_retrieval` | Retrieval quality | One record per (query, chunk) |
-| `task2_grounding` | Grounding quality | One record per (answer, context set) |
-| `task3_generation` | Generation quality | One record per (query, answer) |
+| `task_retrieval` | Retrieval quality | One record per (query, chunk) |
+| `task_grounding` | Grounding quality | One record per (answer, context set) |
+| `task_generation` | Generation quality | One record per (query, answer) |
 
 All datasets are assigned to workspaces (see [Workspace & Task Distribution](../design/annotation-workspace-task-distribution.md)). Records from the same input are linked across datasets via `record_uuid` metadata.
 
