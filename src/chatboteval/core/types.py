@@ -1,4 +1,4 @@
-"""Shared type aliases andy typing utilities for core modules."""
+"""Shared type aliases and typing utilities for core modules."""
 
 from typing import Annotated, TypeVar
 
