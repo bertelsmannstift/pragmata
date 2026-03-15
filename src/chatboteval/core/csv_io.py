@@ -3,11 +3,8 @@
 import csv
 import typing
 from pathlib import Path
-from typing import TypeVar
 
-from pydantic import BaseModel
-
-M = TypeVar("M", bound=BaseModel)
+from chatboteval.core.types import M
 
 
 def _to_csv_value(v: object) -> str:
