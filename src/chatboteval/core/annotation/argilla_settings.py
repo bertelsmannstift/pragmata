@@ -21,9 +21,9 @@ from chatboteval.core.schemas.annotation_task import Task
 _TEMPLATE_PATH = Path(__file__).parent / "collapsible_field.html"
 
 DATASET_NAMES: dict[Task, str] = {
-    Task.RETRIEVAL: "task1_retrieval",
-    Task.GROUNDING: "task2_grounding",
-    Task.GENERATION: "task3_generation",
+    Task.RETRIEVAL: "task_retrieval",
+    Task.GROUNDING: "task_grounding",
+    Task.GENERATION: "task_generation",
 }
 
 
@@ -81,7 +81,7 @@ def build_task_settings() -> dict[Task, rg.Settings]:
                     ),
                     rg.TextQuestion(name="notes", title="Notes (optional)", required=False),
                 ],
-                guidelines="Task 1 — Retrieval. TODO: Revisit after first annotation iteration.",
+                guidelines="Retrieval. TODO: Revisit after first annotation iteration.",
             ),
             Task.GROUNDING: rg.Settings(
                 fields=[
@@ -122,7 +122,7 @@ def build_task_settings() -> dict[Task, rg.Settings]:
                     ),
                     rg.TextQuestion(name="notes", title="Notes (optional)", required=False),
                 ],
-                guidelines="Task 2 — Grounding. TODO: Revisit after first annotation iteration.",
+                guidelines="Grounding. TODO: Revisit after first annotation iteration.",
             ),
             Task.GENERATION: rg.Settings(
                 fields=[
@@ -163,7 +163,7 @@ def build_task_settings() -> dict[Task, rg.Settings]:
                     ),
                     rg.TextQuestion(name="notes", title="Notes (optional)", required=False),
                 ],
-                guidelines="Task 3 — Generation. TODO: Revisit after first annotation iteration.",
+                guidelines="Generation. TODO: Revisit after first annotation iteration.",
             ),
         }
     finally:
