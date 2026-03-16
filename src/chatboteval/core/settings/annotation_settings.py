@@ -12,7 +12,7 @@ class AnnotationSetupSettings(ResolveSettings):
 
     Controls workspace topology and task-distribution thresholds.
     Task definitions (Argilla rg.Settings per task) are hardcoded — see
-    api/annotation_task_config.py.
+    core/annotation/argilla_settings.py.
     """
 
     workspace_prefix: str = ""

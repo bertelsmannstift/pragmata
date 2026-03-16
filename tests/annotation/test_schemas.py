@@ -2,14 +2,16 @@
 
 import argilla as rg
 
-from chatboteval.api.annotation_task_config import (
+from chatboteval.core.annotation.argilla_settings import (
     DATASET_NAMES,
-    TASK1_RETRIEVAL_SETTINGS,
-    TASK2_GROUNDING_SETTINGS,
-    TASK3_GENERATION_SETTINGS,
-    TASK_SETTINGS,
+    build_task_settings,
 )
 from chatboteval.core.schemas.annotation_task import Task
+
+_TASK_SETTINGS = build_task_settings()
+_RETRIEVAL = _TASK_SETTINGS[Task.RETRIEVAL]
+_GROUNDING = _TASK_SETTINGS[Task.GROUNDING]
+_GENERATION = _TASK_SETTINGS[Task.GENERATION]
 
 
 def _field_names(settings: rg.Settings) -> list[str]:
@@ -30,27 +32,27 @@ def _get_question(settings: rg.Settings, name: str):
 
 class TestTask1RetrievalSettings:
     def test_fields_present(self):
-        names = _field_names(TASK1_RETRIEVAL_SETTINGS)
+        names = _field_names(_RETRIEVAL)
         assert "query" in names
         assert "chunk" in names
         assert "generated_answer" in names
 
     def test_query_and_chunk_are_textfields(self):
-        assert isinstance(_get_field(TASK1_RETRIEVAL_SETTINGS, "query"), rg.TextField)
-        assert isinstance(_get_field(TASK1_RETRIEVAL_SETTINGS, "chunk"), rg.TextField)
+        assert isinstance(_get_field(_RETRIEVAL, "query"), rg.TextField)
+        assert isinstance(_get_field(_RETRIEVAL, "chunk"), rg.TextField)
 
     def test_generated_answer_is_customfield(self):
-        field = _get_field(TASK1_RETRIEVAL_SETTINGS, "generated_answer")
+        field = _get_field(_RETRIEVAL, "generated_answer")
         assert isinstance(field, rg.CustomField)
         assert field.advanced_mode is True
 
     def test_customfield_has_details_summary(self):
-        field = _get_field(TASK1_RETRIEVAL_SETTINGS, "generated_answer")
+        field = _get_field(_RETRIEVAL, "generated_answer")
         assert "<details" in field.template
         assert "<summary>" in field.template
 
     def test_questions(self):
-        names = _question_names(TASK1_RETRIEVAL_SETTINGS)
+        names = _question_names(_RETRIEVAL)
         assert "topically_relevant" in names
         assert "evidence_sufficient" in names
         assert "misleading" in names
@@ -58,44 +60,44 @@ class TestTask1RetrievalSettings:
 
     def test_label_questions_are_binary(self):
         for qname in ("topically_relevant", "evidence_sufficient", "misleading"):
-            q = _get_question(TASK1_RETRIEVAL_SETTINGS, qname)
+            q = _get_question(_RETRIEVAL, qname)
             assert isinstance(q, rg.LabelQuestion)
             assert set(q.labels) == {"yes", "no"}
             assert q.required is True
 
     def test_notes_question(self):
-        q = _get_question(TASK1_RETRIEVAL_SETTINGS, "notes")
+        q = _get_question(_RETRIEVAL, "notes")
         assert isinstance(q, rg.TextQuestion)
         assert q.required is False
 
     def test_guidelines_non_empty(self):
-        assert TASK1_RETRIEVAL_SETTINGS.guidelines
-        assert len(TASK1_RETRIEVAL_SETTINGS.guidelines) > 0
+        assert _RETRIEVAL.guidelines
+        assert len(_RETRIEVAL.guidelines) > 0
 
 
 class TestTask2GroundingSettings:
     def test_fields_present(self):
-        names = _field_names(TASK2_GROUNDING_SETTINGS)
+        names = _field_names(_GROUNDING)
         assert "answer" in names
         assert "context_set" in names
         assert "query" in names
 
     def test_answer_and_context_set_are_textfields(self):
-        assert isinstance(_get_field(TASK2_GROUNDING_SETTINGS, "answer"), rg.TextField)
-        assert isinstance(_get_field(TASK2_GROUNDING_SETTINGS, "context_set"), rg.TextField)
+        assert isinstance(_get_field(_GROUNDING, "answer"), rg.TextField)
+        assert isinstance(_get_field(_GROUNDING, "context_set"), rg.TextField)
 
     def test_query_is_customfield(self):
-        field = _get_field(TASK2_GROUNDING_SETTINGS, "query")
+        field = _get_field(_GROUNDING, "query")
         assert isinstance(field, rg.CustomField)
         assert field.advanced_mode is True
 
     def test_customfield_has_details_summary(self):
-        field = _get_field(TASK2_GROUNDING_SETTINGS, "query")
+        field = _get_field(_GROUNDING, "query")
         assert "<details" in field.template
         assert "<summary>" in field.template
 
     def test_questions(self):
-        names = _question_names(TASK2_GROUNDING_SETTINGS)
+        names = _question_names(_GROUNDING)
         for label in (
             "support_present",
             "unsupported_claim_present",
@@ -115,71 +117,71 @@ class TestTask2GroundingSettings:
             "fabricated_source",
         )
         for qname in labels:
-            q = _get_question(TASK2_GROUNDING_SETTINGS, qname)
+            q = _get_question(_GROUNDING, qname)
             assert isinstance(q, rg.LabelQuestion)
             assert set(q.labels) == {"yes", "no"}
             assert q.required is True
 
     def test_notes_question(self):
-        q = _get_question(TASK2_GROUNDING_SETTINGS, "notes")
+        q = _get_question(_GROUNDING, "notes")
         assert isinstance(q, rg.TextQuestion)
         assert q.required is False
 
     def test_guidelines_non_empty(self):
-        assert TASK2_GROUNDING_SETTINGS.guidelines
+        assert _GROUNDING.guidelines
 
 
 class TestTask3GenerationSettings:
     def test_fields_present(self):
-        names = _field_names(TASK3_GENERATION_SETTINGS)
+        names = _field_names(_GENERATION)
         assert "query" in names
         assert "answer" in names
         assert "context_set" in names
 
     def test_query_and_answer_are_textfields(self):
-        assert isinstance(_get_field(TASK3_GENERATION_SETTINGS, "query"), rg.TextField)
-        assert isinstance(_get_field(TASK3_GENERATION_SETTINGS, "answer"), rg.TextField)
+        assert isinstance(_get_field(_GENERATION, "query"), rg.TextField)
+        assert isinstance(_get_field(_GENERATION, "answer"), rg.TextField)
 
     def test_context_set_is_customfield(self):
-        field = _get_field(TASK3_GENERATION_SETTINGS, "context_set")
+        field = _get_field(_GENERATION, "context_set")
         assert isinstance(field, rg.CustomField)
         assert field.advanced_mode is True
 
     def test_customfield_has_details_summary(self):
-        field = _get_field(TASK3_GENERATION_SETTINGS, "context_set")
+        field = _get_field(_GENERATION, "context_set")
         assert "<details" in field.template
         assert "<summary>" in field.template
 
     def test_questions(self):
-        names = _question_names(TASK3_GENERATION_SETTINGS)
+        names = _question_names(_GENERATION)
         for label in ("proper_action", "response_on_topic", "helpful", "incomplete", "unsafe_content"):
             assert label in names
         assert "notes" in names
 
     def test_label_questions_are_binary(self):
         for qname in ("proper_action", "response_on_topic", "helpful", "incomplete", "unsafe_content"):
-            q = _get_question(TASK3_GENERATION_SETTINGS, qname)
+            q = _get_question(_GENERATION, qname)
             assert isinstance(q, rg.LabelQuestion)
             assert set(q.labels) == {"yes", "no"}
             assert q.required is True
 
     def test_notes_question(self):
-        q = _get_question(TASK3_GENERATION_SETTINGS, "notes")
+        q = _get_question(_GENERATION, "notes")
         assert isinstance(q, rg.TextQuestion)
         assert q.required is False
 
     def test_guidelines_non_empty(self):
-        assert TASK3_GENERATION_SETTINGS.guidelines
+        assert _GENERATION.guidelines
 
 
 class TestTaskSettingsLookup:
     def test_task_settings_covers_all_tasks(self):
-        assert set(TASK_SETTINGS.keys()) == {Task.RETRIEVAL, Task.GROUNDING, Task.GENERATION}
+        assert set(_TASK_SETTINGS.keys()) == {Task.RETRIEVAL, Task.GROUNDING, Task.GENERATION}
 
     def test_task_settings_values(self):
-        assert TASK_SETTINGS[Task.RETRIEVAL] is TASK1_RETRIEVAL_SETTINGS
-        assert TASK_SETTINGS[Task.GROUNDING] is TASK2_GROUNDING_SETTINGS
-        assert TASK_SETTINGS[Task.GENERATION] is TASK3_GENERATION_SETTINGS
+        assert _TASK_SETTINGS[Task.RETRIEVAL] is _RETRIEVAL
+        assert _TASK_SETTINGS[Task.GROUNDING] is _GROUNDING
+        assert _TASK_SETTINGS[Task.GENERATION] is _GENERATION
 
 
 class TestDatasetNames:
