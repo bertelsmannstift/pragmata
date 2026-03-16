@@ -101,7 +101,7 @@ class ResolveSettings(BaseModel):
         Returns:
             A validated settings instance.
         """
-        resolved = cls().model_dump(mode="python")
+        resolved: dict[str, Any] = {}
         resolved = deep_merge(resolved, config or {})
         resolved = deep_merge(resolved, env or {})
         resolved = deep_merge(resolved, prune_unset(overrides or {}))
