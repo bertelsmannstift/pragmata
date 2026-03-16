@@ -9,33 +9,10 @@ from chatboteval.core.schemas.annotation_export import (
     GenerationAnnotation,
     GroundingAnnotation,
     RetrievalAnnotation,
-    Task,
 )
+from chatboteval.core.schemas.annotation_task import Task
 
 NOW = datetime.now(tz=timezone.utc)
-
-
-def test_task_values():
-    """Task enum members have expected string values."""
-    assert Task.RETRIEVAL == "retrieval"
-    assert Task.GROUNDING == "grounding"
-    assert Task.GENERATION == "generation"
-
-
-def test_task_from_string():
-    """Task can be constructed from its string value."""
-    assert Task("retrieval") is Task.RETRIEVAL
-
-
-def test_task_invalid_raises():
-    """Invalid string raises ValueError."""
-    with pytest.raises(ValueError):
-        Task("invalid")
-
-
-def test_task_has_three_members():
-    """Task enum has exactly three members."""
-    assert len(list(Task)) == 3
 
 
 @pytest.fixture()
@@ -44,7 +21,6 @@ def base_fields():
     return {
         "record_uuid": "uuid-1",
         "annotator_id": "ann-1",
-        "task": Task.RETRIEVAL,
         "language": "en",
         "inserted_at": NOW,
         "created_at": NOW,
@@ -57,8 +33,7 @@ def valid_retrieval(base_fields):
     """Valid retrieval annotation fields."""
     return {
         **base_fields,
-        "task": Task.RETRIEVAL,
-        "input_query": "Q?",
+        "query": "Q?",
         "chunk": "Some chunk text.",
         "chunk_id": "c1",
         "doc_id": "d1",
@@ -74,7 +49,6 @@ def valid_grounding(base_fields):
     """Valid grounding annotation fields."""
     return {
         **base_fields,
-        "task": Task.GROUNDING,
         "answer": "The answer.",
         "context_set": "ctx-001",
         "support_present": True,
@@ -90,7 +64,6 @@ def valid_generation(base_fields):
     """Valid generation annotation fields."""
     return {
         **base_fields,
-        "task": Task.GENERATION,
         "query": "Q?",
         "answer": "A.",
         "proper_action": True,
@@ -105,6 +78,7 @@ def test_retrieval_constructs(valid_retrieval):
     """Retrieval annotation constructs from valid fields."""
     r = RetrievalAnnotation(**valid_retrieval)
     assert r.chunk_id == "c1"
+    assert r.task == Task.RETRIEVAL
     assert r.notes == ""
 
 
@@ -112,6 +86,7 @@ def test_grounding_constructs(valid_grounding):
     """Grounding annotation constructs from valid fields."""
     g = GroundingAnnotation(**valid_grounding)
     assert g.context_set == "ctx-001"
+    assert g.task == Task.GROUNDING
     assert g.notes == ""
 
 
@@ -119,7 +94,29 @@ def test_generation_constructs(valid_generation):
     """Generation annotation constructs from valid fields."""
     g = GenerationAnnotation(**valid_generation)
     assert g.query == "Q?"
+    assert g.task == Task.GENERATION
     assert g.notes == ""
+
+
+def test_retrieval_rejects_wrong_task(valid_retrieval):
+    """RetrievalAnnotation rejects non-retrieval task values."""
+    valid_retrieval["task"] = Task.GROUNDING
+    with pytest.raises(ValidationError):
+        RetrievalAnnotation(**valid_retrieval)
+
+
+def test_grounding_rejects_wrong_task(valid_grounding):
+    """GroundingAnnotation rejects non-grounding task values."""
+    valid_grounding["task"] = Task.RETRIEVAL
+    with pytest.raises(ValidationError):
+        GroundingAnnotation(**valid_grounding)
+
+
+def test_generation_rejects_wrong_task(valid_generation):
+    """GenerationAnnotation rejects non-generation task values."""
+    valid_generation["task"] = Task.GROUNDING
+    with pytest.raises(ValidationError):
+        GenerationAnnotation(**valid_generation)
 
 
 def test_notes_default_empty(valid_retrieval):
@@ -133,13 +130,6 @@ def test_notes_explicit(valid_retrieval):
     valid_retrieval["notes"] = "comment"
     r = RetrievalAnnotation(**valid_retrieval)
     assert r.notes == "comment"
-
-
-def test_annotation_base_field_order(base_fields):
-    """AnnotationBase fields appear before task-specific fields."""
-    keys = list(RetrievalAnnotation.model_fields.keys())
-    base_keys = ["record_uuid", "annotator_id", "task", "language", "inserted_at", "created_at", "record_status"]
-    assert keys[: len(base_keys)] == base_keys
 
 
 def test_retrieval_bool_labels(valid_retrieval):

@@ -1,6 +1,7 @@
 """Boundary schemas for annotation export records (one per task type)."""
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -24,7 +25,8 @@ class AnnotationBase(BaseModel):
 class RetrievalAnnotation(AnnotationBase):
     """Exported annotation for a single retrieval judgement."""
 
-    input_query: str
+    task: Literal[Task.RETRIEVAL] = Task.RETRIEVAL
+    query: str
     chunk: str
     chunk_id: str
     doc_id: str
@@ -38,6 +40,7 @@ class RetrievalAnnotation(AnnotationBase):
 class GroundingAnnotation(AnnotationBase):
     """Exported annotation for a single grounding judgement."""
 
+    task: Literal[Task.GROUNDING] = Task.GROUNDING
     answer: str
     context_set: str
     support_present: bool
@@ -51,6 +54,7 @@ class GroundingAnnotation(AnnotationBase):
 class GenerationAnnotation(AnnotationBase):
     """Exported annotation for a single generation judgement."""
 
+    task: Literal[Task.GENERATION] = Task.GENERATION
     query: str
     answer: str
     proper_action: bool
