@@ -39,6 +39,35 @@ _UUID = "test-uuid-1234"
 
 
 # ---------------------------------------------------------------------------
+# derive_record_uuid
+# ---------------------------------------------------------------------------
+
+
+class TestDeriveRecordUuid:
+    def test_deterministic(self) -> None:
+        pair = _make_pair()
+        assert derive_record_uuid(pair) == derive_record_uuid(pair)
+
+    def test_different_content_different_uuid(self) -> None:
+        pair_a = _make_pair()
+        pair_b = QueryResponsePair.model_validate({**_valid_raw(), "query": "Different query?"})
+        assert derive_record_uuid(pair_a) != derive_record_uuid(pair_b)
+
+    def test_chunk_order_independent(self) -> None:
+        raw = _valid_raw()
+        pair_a = QueryResponsePair.model_validate(raw)
+        raw_reversed = {**raw, "chunks": list(reversed(raw["chunks"]))}
+        pair_b = QueryResponsePair.model_validate(raw_reversed)
+        assert derive_record_uuid(pair_a) == derive_record_uuid(pair_b)
+
+    def test_returns_hex_string(self) -> None:
+        result = derive_record_uuid(_make_pair())
+        assert isinstance(result, str)
+        assert len(result) > 0
+        assert all(c in "0123456789abcdef" for c in result)
+
+
+# ---------------------------------------------------------------------------
 # build_retrieval_records
 # ---------------------------------------------------------------------------
 
@@ -129,35 +158,6 @@ class TestBuildGroundingRecord:
     def test_language_omitted_when_none(self) -> None:
         rec = build_grounding_record(_make_pair(language=None), _UUID)
         assert "language" not in rec.metadata
-
-
-# ---------------------------------------------------------------------------
-# derive_record_uuid
-# ---------------------------------------------------------------------------
-
-
-class TestDeriveRecordUuid:
-    def test_deterministic(self) -> None:
-        pair = _make_pair()
-        assert derive_record_uuid(pair) == derive_record_uuid(pair)
-
-    def test_different_content_different_uuid(self) -> None:
-        pair_a = _make_pair()
-        pair_b = QueryResponsePair.model_validate({**_valid_raw(), "query": "Different query?"})
-        assert derive_record_uuid(pair_a) != derive_record_uuid(pair_b)
-
-    def test_chunk_order_independent(self) -> None:
-        raw = _valid_raw()
-        pair_a = QueryResponsePair.model_validate(raw)
-        raw_reversed = {**raw, "chunks": list(reversed(raw["chunks"]))}
-        pair_b = QueryResponsePair.model_validate(raw_reversed)
-        assert derive_record_uuid(pair_a) == derive_record_uuid(pair_b)
-
-    def test_returns_hex_string(self) -> None:
-        result = derive_record_uuid(_make_pair())
-        assert isinstance(result, str)
-        assert len(result) > 0
-        assert all(c in "0123456789abcdef" for c in result)
 
 
 # ---------------------------------------------------------------------------

@@ -127,9 +127,9 @@ Three Argilla datasets, each receiving records from every import:
 ### `task_grounding` — one record per answer-context set pair
 
 **Fields (shown to annotators):**
+- `query` ← canonical `query`
 - `answer` ← canonical `answer`
 - `context_set` ← canonical `context_set`
-- `query` ← canonical `query` (supporting context, collapsible)
 
 **Metadata (stored, not shown):**
 - `record_uuid`
