@@ -11,8 +11,8 @@ import logging
 import argilla as rg
 from argilla.records._dataset_records import RecordErrorHandling
 
+from chatboteval.core.annotation.argilla_ops import apply_prefix
 from chatboteval.core.annotation.argilla_settings import DATASET_NAMES
-from chatboteval.core.annotation_argilla_ops import apply_prefix
 from chatboteval.core.schemas.annotation_import import QueryResponsePair
 from chatboteval.core.schemas.annotation_task import Task
 from chatboteval.core.settings.annotation_settings import AnnotationSettings
