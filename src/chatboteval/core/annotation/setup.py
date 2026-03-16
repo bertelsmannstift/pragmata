@@ -28,17 +28,6 @@ class SetupResult:
     skipped_users: list[str] = field(default_factory=list)
     generated_passwords: dict[str, str] = field(default_factory=dict)
 
-    def _merge(self, other: "SetupResult") -> "SetupResult":
-        return SetupResult(
-            created_workspaces=self.created_workspaces + other.created_workspaces,
-            skipped_workspaces=self.skipped_workspaces + other.skipped_workspaces,
-            created_datasets=self.created_datasets + other.created_datasets,
-            skipped_datasets=self.skipped_datasets + other.skipped_datasets,
-            created_users=self.created_users + other.created_users,
-            skipped_users=self.skipped_users + other.skipped_users,
-            generated_passwords={**self.generated_passwords, **other.generated_passwords},
-        )
-
 
 def setup_datasets(
     client: rg.Argilla,
