@@ -5,8 +5,8 @@ No Argilla server required; these tests exercise pure Python logic only.
 
 from dataclasses import fields
 
-from chatboteval.core.annotation_argilla_ops import apply_prefix, generate_password
-from chatboteval.core.annotation_setup import SetupResult
+from chatboteval.core.annotation.argilla_ops import apply_prefix, generate_password
+from chatboteval.core.annotation.setup import SetupResult
 
 
 class TestApplyPrefix:

@@ -7,7 +7,7 @@ Requires: make setup (Argilla stack running on localhost:6900)
 import argilla as rg
 import pytest
 
-from chatboteval.core.annotation_setup import (
+from chatboteval.core.annotation.setup import (
     SetupResult,
     provision_users,
     setup_datasets,

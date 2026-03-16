@@ -9,8 +9,8 @@ from dataclasses import dataclass, field
 
 import argilla as rg
 
+from chatboteval.core.annotation.argilla_ops import apply_prefix, create_dataset, create_user, create_workspace
 from chatboteval.core.annotation.argilla_settings import DATASET_NAMES, build_task_settings
-from chatboteval.core.annotation_argilla_ops import apply_prefix, create_dataset, create_user, create_workspace
 from chatboteval.core.settings.annotation_settings import AnnotationSettings, UserSpec
 
 logger = logging.getLogger(__name__)
@@ -86,14 +86,13 @@ def provision_users(
         if generated_pw is not None:
             result.generated_passwords[spec.username] = generated_pw
 
-        if created:
-            for ws_base in spec.workspaces:
-                ws_name = apply_prefix(settings.workspace_prefix, ws_base)
-                workspace = client.workspaces(ws_name)
-                if workspace is not None:
-                    workspace.add_user(user)
-                else:
-                    logger.warning("Workspace %r not found when assigning user %r", ws_name, spec.username)
+        for ws_base in spec.workspaces:
+            ws_name = apply_prefix(settings.workspace_prefix, ws_base)
+            workspace = client.workspaces(ws_name)
+            if workspace is None:
+                logger.warning("Workspace %r not found when assigning user %r", ws_name, spec.username)
+            elif user not in workspace.users:
+                workspace.add_user(user)
 
     return result
 
