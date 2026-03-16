@@ -8,12 +8,8 @@ class RealizedQuery(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    candidate_id: str = Field(
-        description="Candidate identifier preserved from the stage 2 input blueprint."
-    )
-    query: str = Field(
-        description="Realized user query text for the stage 2 candidate."
-    )
+    candidate_id: str = Field(description="Candidate identifier preserved from the stage 2 input blueprint.")
+    query: str = Field(description="Realized user query text for the stage 2 candidate.")
 
 
 class RealizedQueryList(BaseModel):
@@ -21,6 +17,4 @@ class RealizedQueryList(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    queries: list[RealizedQuery] = Field(
-        description="Realized queries aligned one-to-one with the stage 2 candidates."
-    )
+    queries: list[RealizedQuery] = Field(description="Realized queries aligned one-to-one with the stage 2 candidates.")

@@ -17,7 +17,7 @@ def valid_realized_query_payload() -> dict[str, str]:
 
 @pytest.fixture()
 def valid_realized_query_list_payload() -> dict[str, list[dict[str, str]]]:
-    """Return a valid realized query batch payload."""
+    """Return a valid realized query list payload."""
     return {
         "queries": [
             {
@@ -50,7 +50,7 @@ def test_realized_query_rejects_extra_keys(valid_realized_query_payload: dict[st
 def test_realized_query_list_accepts_valid_payload(
     valid_realized_query_list_payload: dict[str, list[dict[str, str]]],
 ) -> None:
-    """RealizedQueryList validates a complete batch payload."""
+    """RealizedQueryList validates a complete payload."""
     realized_query_list = RealizedQueryList.model_validate(valid_realized_query_list_payload)
     assert len(realized_query_list.queries) == 2
     assert realized_query_list.queries[0].candidate_id == "cand_001"
@@ -71,16 +71,16 @@ def test_realized_query_field_descriptions_are_defined() -> None:
     """RealizedQuery fields include explicit descriptions."""
     assert (
         RealizedQuery.model_fields["candidate_id"].description
-        == "Return the candidate_id exactly as provided in the stage 2 input blueprint."
+        == "Candidate identifier preserved from the stage 2 input blueprint."
     )
-    assert RealizedQuery.model_fields["query"].description == "Return the realized user query text for this candidate."
+    assert RealizedQuery.model_fields["query"].description == "Realized user query text for the stage 2 candidate."
 
 
 def test_realized_query_list_field_descriptions_are_defined() -> None:
     """RealizedQueryList fields include explicit descriptions."""
     assert (
         RealizedQueryList.model_fields["queries"].description
-        == "Return a queries list containing one realized query object for each candidate in this batch."
+        == "Realized queries aligned one-to-one with the stage 2 candidates."
     )
 
 
