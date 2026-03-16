@@ -108,7 +108,7 @@ One record per RAG query-response cycle:
 
 Three Argilla datasets, each receiving records from every import:
 
-### `task1_retrieval` — one record per chunk
+### `task_retrieval` — one record per chunk
 
 **Fields (shown to annotators):**
 - `query` ← canonical `query`
@@ -124,7 +124,7 @@ Three Argilla datasets, each receiving records from every import:
 
 ---
 
-### `task2_grounding` — one record per answer-context set pair
+### `task_grounding` — one record per answer-context set pair
 
 **Fields (shown to annotators):**
 - `query` ← canonical `query`
@@ -137,7 +137,7 @@ Three Argilla datasets, each receiving records from every import:
 
 ---
 
-### `task3_generation` — one record per query-answer pair
+### `task_generation` — one record per query-answer pair
 
 **Fields (shown to annotators):**
 - `query` ← canonical `query`

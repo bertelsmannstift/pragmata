@@ -11,6 +11,52 @@ Web-based annotation UI for labelling RAG chatbot outputs across three annotatio
 - Export annotations to CSV/Parquet for evaluation framework
 
 
+## Architecture
+
+>**NB:** this workflow depends on further decisions to be made re: CLI commands and low-config setup; this represents the latest thinking but is subject to further changes.
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  One-time setup:                                             │
+│    docker compose up                — start Argilla stack    │
+│    chatboteval annotation init      — configure Argilla      │
+│                   (workspaces, dataset schemas, users)       │
+│                                                              │
+│  UI access (annotation):                                     │
+│    1. Browser URL  — direct navigation to Argilla instance   │
+│    2. Python API   — chatboteval.annotation.open()           │
+│    3. CLI          — chatboteval annotation open             │
+│                                                              │
+│  Data management:                                            │
+│    Python API  — chatboteval.annotation.import/export()      │
+│    CLI         — chatboteval annotation import/export        │
+└──────────────────────────────────────────────────────────────┘
+                          ▼
+          ┌───────────────────────┐
+          │ Argilla Stack         │
+          │ (Docker Compose)      │
+          ├───────────────────────┤
+          │ • Argilla Server      │
+          │ • PostgreSQL          │
+          │ • Elasticsearch       │
+          └───────────────────────┘
+```
+
+**Installation:** `pip install chatboteval[annotation]`
+
+**`chatboteval annotation init`** configures the Argilla application (workspaces, dataset schemas, users). Annotation happens in browser via Argilla web UI. Python API and CLI handle setup, data management, and opening the UI.
+
+**NB:** as above, exact command names (`init` vs `setup`), flag design, workflow and zero-config default behaviour (guided wizard vs auto-detect) remain open design questions. 
+
+>Docker lifecycle is separate:
+>- **Local:** — connects to local Docker Compose instance
+>- **Hosted:** — connects to remote Argilla instance
+>- **Cloud:** out of scope
+
+**Package structure:**
+- `/deploy/annotation/` — Docker Compose configs for Argilla stack
+- `src/chatboteval/argilla_client.py` — SDK wrappers for import/export/fetch
+
 ## Inputs / Outputs
 
 **Input:** Query-response pairs (JSON) with associated metadata, conforming to the canonical import schema (see [Import Pipeline](annotation-import-pipeline.md)). Retrieved context (RAG chunks and source documents) is required for Tasks 1 and 2; not required for Task 3.
@@ -121,7 +167,7 @@ Each task dataset includes one optional free-text field per annotated unit:
 
 - Supporting context fields (`answer` for Task 1; `query` for Task 2; `retrieved_passages` for Task 3) must be included in the Argilla field configuration, positioned after primary content fields
 - Workspace and annotator group assignment (who sees which dataset) is a configurable operational decision - see [Workspace & Task Distribution](annotation-workspace-task-distribution.md)
-- Three Argilla datasets required: `task1_retrieval`, `task2_grounding`, `task3_generation`
+- Three Argilla datasets required: `task_retrieval`, `task_grounding`, `task_generation`
 - Export schema ([Export Pipeline](annotation-export-pipeline.md)) must include one binary field per label and the optional notes field
 - Schema can be revised after the first annotation iteration based on IAA results and annotator feedback
 
@@ -168,7 +214,7 @@ Each task dataset includes one optional free-text field per annotated unit:
 
 **Package structure:**
 - `/apps/annotation/` — Docker Compose configs for Argilla stack
-- `src/chatboteval/argilla_client.py` — SDK wrappers for import/export/fetch
+- `src/chatboteval/api/annotation/` — SDK wrappers for import/export/fetch
 
 **Usage:** Annotation happens in browser via Argilla web UI. Python API and CLI handle setup, data management, and opening the UI.
 
