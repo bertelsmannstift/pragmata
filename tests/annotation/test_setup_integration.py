@@ -131,6 +131,27 @@ def test_user_provisioning(client: rg.Argilla) -> None:
 
 
 @pytest.mark.integration
+def test_user_workspace_reconciliation_on_rerun(client: rg.Argilla) -> None:
+    """Rerunning provision_users assigns existing user to newly-requested workspace."""
+    # First run: user in retrieval only
+    provision_users(
+        client,
+        [UserSpec(username=_TEST_USER, role="annotator", workspaces=["retrieval"])],
+        _DEFAULT_SETTINGS,
+    )
+    # Second run: user now also in grounding
+    provision_users(
+        client,
+        [UserSpec(username=_TEST_USER, role="annotator", workspaces=["retrieval", "grounding"])],
+        _DEFAULT_SETTINGS,
+    )
+    ws_grounding = client.workspaces("grounding")
+    assert ws_grounding is not None
+    user = client.users(_TEST_USER)
+    assert user in ws_grounding.users
+
+
+@pytest.mark.integration
 def test_teardown_retains_user_accounts(client: rg.Argilla) -> None:
     provision_users(
         client,
