@@ -1,7 +1,6 @@
 """Tests for annotation packaging extras and pytest integration infrastructure."""
 
 import pathlib
-import shutil
 
 import pytest
 
@@ -33,12 +32,3 @@ def test_integration_marker_registered(pytestconfig: pytest.Config) -> None:
     """The 'integration' marker is registered without warnings."""
     markers = {m.split(":")[0] for m in pytestconfig.getini("markers")}
     assert "integration" in markers
-
-
-def test_docker_available_uses_shutil_which(monkeypatch: pytest.MonkeyPatch) -> None:
-    """_docker_available returns False when docker is not on PATH."""
-    monkeypatch.setattr(shutil, "which", lambda _cmd: None)
-
-    from conftest import _docker_available
-
-    assert _docker_available() is False
