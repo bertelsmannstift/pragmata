@@ -174,6 +174,20 @@ class TestTask3GenerationSettings:
         assert _GENERATION.guidelines
 
 
+class TestMetadataProperties:
+    def test_retrieval_metadata(self):
+        meta = [m.name for m in _RETRIEVAL.metadata]
+        assert meta == ["record_uuid", "language", "chunk_id", "doc_id", "chunk_rank"]
+
+    def test_grounding_metadata(self):
+        meta = [m.name for m in _GROUNDING.metadata]
+        assert meta == ["record_uuid", "language"]
+
+    def test_generation_metadata(self):
+        meta = [m.name for m in _GENERATION.metadata]
+        assert meta == ["record_uuid", "language"]
+
+
 class TestTaskSettingsLookup:
     def test_task_settings_covers_all_tasks(self):
         assert set(_TASK_SETTINGS.keys()) == {Task.RETRIEVAL, Task.GROUNDING, Task.GENERATION}

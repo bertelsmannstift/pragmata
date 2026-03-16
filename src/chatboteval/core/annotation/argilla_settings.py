@@ -75,6 +75,13 @@ def build_task_settings() -> dict[Task, rg.Settings]:
                 ),
                 rg.TextQuestion(name="notes", title="Notes (optional)", required=False),
             ],
+            metadata=[
+                rg.TermsMetadataProperty("record_uuid", visible_for_annotators=False),
+                rg.TermsMetadataProperty("language", visible_for_annotators=False),
+                rg.TermsMetadataProperty("chunk_id", visible_for_annotators=False),
+                rg.TermsMetadataProperty("doc_id", visible_for_annotators=False),
+                rg.IntegerMetadataProperty("chunk_rank", min=1, visible_for_annotators=False),
+            ],
             guidelines="Retrieval. TODO: Revisit after first annotation iteration.",
         ),
         Task.GROUNDING: rg.Settings(
@@ -116,6 +123,10 @@ def build_task_settings() -> dict[Task, rg.Settings]:
                 ),
                 rg.TextQuestion(name="notes", title="Notes (optional)", required=False),
             ],
+            metadata=[
+                rg.TermsMetadataProperty("record_uuid", visible_for_annotators=False),
+                rg.TermsMetadataProperty("language", visible_for_annotators=False),
+            ],
             guidelines="Grounding. TODO: Revisit after first annotation iteration.",
         ),
         Task.GENERATION: rg.Settings(
@@ -156,6 +167,10 @@ def build_task_settings() -> dict[Task, rg.Settings]:
                     required=True,
                 ),
                 rg.TextQuestion(name="notes", title="Notes (optional)", required=False),
+            ],
+            metadata=[
+                rg.TermsMetadataProperty("record_uuid", visible_for_annotators=False),
+                rg.TermsMetadataProperty("language", visible_for_annotators=False),
             ],
             guidelines="Generation. TODO: Revisit after first annotation iteration.",
         ),
