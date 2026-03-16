@@ -30,9 +30,9 @@ def client() -> rg.Argilla:
 @pytest.fixture(autouse=True, scope="module")
 def clean_slate(client: rg.Argilla):
     """Tear down before and after the full module so tests start and end clean."""
-    teardown_resources(client, _DEFAULT_SETTINGS, include_users=True)
+    teardown_resources(client, _DEFAULT_SETTINGS)
     yield
-    teardown_resources(client, _DEFAULT_SETTINGS, include_users=True)
+    teardown_resources(client, _DEFAULT_SETTINGS)
 
 
 # ---------------------------------------------------------------------------
@@ -42,7 +42,7 @@ def clean_slate(client: rg.Argilla):
 
 @pytest.mark.integration
 def test_full_setup_creates_workspaces_and_datasets(client: rg.Argilla) -> None:
-    teardown_resources(client, _DEFAULT_SETTINGS, include_users=True)
+    teardown_resources(client, _DEFAULT_SETTINGS)
 
     result = setup_datasets(client, _DEFAULT_SETTINGS)
 
@@ -131,15 +131,14 @@ def test_user_provisioning(client: rg.Argilla) -> None:
 
 
 @pytest.mark.integration
-def test_teardown_without_users_retains_accounts(client: rg.Argilla) -> None:
-    # Ensure user exists first
+def test_teardown_retains_user_accounts(client: rg.Argilla) -> None:
     provision_users(
         client,
         [UserSpec(username=_TEST_USER, role="annotator", workspaces=["retrieval"])],
         _DEFAULT_SETTINGS,
     )
 
-    teardown_resources(client, _DEFAULT_SETTINGS, include_users=False)
+    teardown_resources(client, _DEFAULT_SETTINGS)
 
     # Workspaces and datasets gone
     assert client.workspaces("retrieval") is None
@@ -152,27 +151,7 @@ def test_teardown_without_users_retains_accounts(client: rg.Argilla) -> None:
 
 
 @pytest.mark.integration
-def test_teardown_with_users_deletes_accounts(client: rg.Argilla) -> None:
-    # Re-setup for this test
-    setup_datasets(client, _DEFAULT_SETTINGS)
-    provision_users(
-        client,
-        [UserSpec(username=_TEST_USER, role="annotator", workspaces=["retrieval"])],
-        _DEFAULT_SETTINGS,
-    )
-
-    teardown_resources(client, _DEFAULT_SETTINGS, include_users=True)
-
-    # Workspaces, datasets, and user all gone
-    assert client.workspaces("retrieval") is None
-    assert client.workspaces("grounding") is None
-    assert client.workspaces("generation") is None
-    assert client.users(_TEST_USER) is None
-
-
-@pytest.mark.integration
 def test_rerun_after_teardown(client: rg.Argilla) -> None:
-    # Clean slate (teardown already ran above)
     result = setup_datasets(client, _DEFAULT_SETTINGS)
 
     assert set(result.created_workspaces) == {"retrieval", "grounding", "generation"}
@@ -188,7 +167,7 @@ def test_rerun_after_teardown(client: rg.Argilla) -> None:
 @pytest.mark.integration
 def test_prefix_support(client: rg.Argilla) -> None:
     prefixed_settings = AnnotationSettings(workspace_prefix="test")
-    teardown_resources(client, prefixed_settings, include_users=True)
+    teardown_resources(client, prefixed_settings)
 
     result = setup_datasets(client, prefixed_settings)
 
@@ -207,4 +186,4 @@ def test_prefix_support(client: rg.Argilla) -> None:
     }
 
     # Cleanup prefixed resources
-    teardown_resources(client, prefixed_settings, include_users=True)
+    teardown_resources(client, prefixed_settings)
