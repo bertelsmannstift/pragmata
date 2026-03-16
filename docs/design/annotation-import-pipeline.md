@@ -113,7 +113,7 @@ Three Argilla datasets, each receiving records from every import:
 **Fields (shown to annotators):**
 - `query` ← canonical `query`
 - `chunk` ← canonical `chunks[k].text`
-- `generated_answer` ← canonical `answer` (supporting context, collapsible — per [Annotation Interface §Visibility contract](annotation-interface.md))
+- `answer` ← canonical `answer` (supporting context — positioned last per [Annotation Interface §Visibility contract](annotation-interface.md))
 
 **Metadata (stored, not shown):**
 - `record_uuid` — assigned at import; links same query across all three datasets
