@@ -28,6 +28,17 @@ class SetupResult:
     skipped_users: list[str] = field(default_factory=list)
     generated_passwords: dict[str, str] = field(default_factory=dict)
 
+    def _merge(self, other: "SetupResult") -> "SetupResult":
+        return SetupResult(
+            created_workspaces=self.created_workspaces + other.created_workspaces,
+            skipped_workspaces=self.skipped_workspaces + other.skipped_workspaces,
+            created_datasets=self.created_datasets + other.created_datasets,
+            skipped_datasets=self.skipped_datasets + other.skipped_datasets,
+            created_users=self.created_users + other.created_users,
+            skipped_users=self.skipped_users + other.skipped_users,
+            generated_passwords={**self.generated_passwords, **other.generated_passwords},
+        )
+
 
 def setup_datasets(
     client: rg.Argilla,
@@ -89,12 +100,16 @@ def provision_users(
 def teardown_resources(
     client: rg.Argilla,
     settings: AnnotationSettings,
+    *,
+    include_users: bool = False,
 ) -> None:
-    """Delete datasets and workspaces for the annotation environment.
+    """Delete datasets, workspaces, and optionally users.
 
     Ordering: datasets first (Argilla requires workspace to be empty before deletion).
-    Missing resources are silently skipped. User accounts are not touched.
+    Missing resources are silently skipped.
     """
+    deleted_user_ids: set = set()
+
     for ws_base, tasks in settings.workspace_dataset_map.items():
         ws_name = apply_prefix(settings.workspace_prefix, ws_base)
         workspace = client.workspaces(ws_name)
@@ -110,5 +125,17 @@ def teardown_resources(
                 dataset.delete()
                 logger.info("Deleted dataset %r from workspace %r", ds_name, ws_name)
 
-        workspace.delete()
-        logger.info("Deleted workspace %r", ws_name)
+        if include_users:
+            for user in list(workspace.users):
+                deleted_user_ids.add(user.id)
+
+        if workspace is not None:
+            workspace.delete()
+            logger.info("Deleted workspace %r", ws_name)
+
+    if include_users:
+        for user_id in deleted_user_ids:
+            user = client.users(id=user_id)
+            if user is not None:
+                logger.info("Deleted user %r", user.username)
+                user.delete()
