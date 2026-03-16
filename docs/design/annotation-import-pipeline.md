@@ -142,7 +142,6 @@ Three Argilla datasets, each receiving records from every import:
 **Fields (shown to annotators):**
 - `query` ← canonical `query`
 - `answer` ← canonical `answer`
-- `context_set` ← canonical `context_set` (supporting context, collapsible) <!-- TODO: confirm with SG whether context_set belongs in generation (see PR #64 comment) -->
 
 **Metadata (stored, not shown):**
 - `record_uuid`
