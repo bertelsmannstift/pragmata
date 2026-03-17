@@ -1,12 +1,50 @@
 """Shared settings resolution base for runtime settings."""
 
+import os
 from pathlib import Path
-from typing import Any, Self
+from typing import Any, Final, Literal, Self
 
 import yaml
 from pydantic import BaseModel, ConfigDict
 
 UNSET = object()
+
+Provider = Literal[
+    "mistralai",
+    "cohere",
+    "deepseek",
+    "openai",
+    "anthropic",
+    "google-genai",
+]
+
+PROVIDER_API_KEY_ENV_VARS: Final[dict[Provider, str]] = {
+    "mistralai": "MISTRAL_API_KEY",
+    "cohere": "COHERE_API_KEY",
+    "deepseek": "DEEPSEEK_API_KEY",
+    "openai": "OPENAI_API_KEY",
+    "anthropic": "ANTHROPIC_API_KEY",
+    "google-genai": "GOOGLE_API_KEY",
+}
+
+
+class MissingSecretError(RuntimeError):
+    """Raised when a required secret is missing from the environment."""
+
+
+def resolve_provider_api_key(provider: str) -> str:
+    """Resolve a supported provider API key from process environment."""
+    env_var = PROVIDER_API_KEY_ENV_VARS.get(provider)
+
+    if env_var is None:
+        raise ValueError(f"Unsupported provider: {provider}")
+
+    api_key = os.environ.get(env_var)
+
+    if api_key is None or not api_key.strip():
+        raise MissingSecretError(f"Missing required secret: {env_var}")
+
+    return api_key
 
 
 def deep_merge(
