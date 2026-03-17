@@ -117,12 +117,12 @@ def fan_out_records(
     for task, rg_records in batches.items():
         if not rg_records:
             continue
-        ws_base = task_to_ws.get(task)
-        if ws_base is None:
+        ws_match = task_to_ws.get(task)
+        if ws_match is None:
             logger.warning("Task %r not in workspace_dataset_map — skipping", task)
             continue
 
-        ws_name = apply_prefix(prefix, ws_base)
+        ws_name = apply_prefix(prefix, ws_match)
         ds_name = apply_prefix(prefix, DATASET_NAMES[task])
 
         dataset = client.datasets(ds_name, workspace=ws_name)
