@@ -1,11 +1,12 @@
 """Unit tests for synthetic query generation run settings."""
 
 from pathlib import Path
+from typing import Any
 
 from chatboteval.core.settings.querygen_settings import LlmSettings, QueryGenRunSettings
 
 
-def valid_spec_payload() -> dict:
+def valid_spec_payload() -> dict[str, Any]:
     """Return a minimal valid QueryGenSpec payload."""
     return {
         "domain_context": {

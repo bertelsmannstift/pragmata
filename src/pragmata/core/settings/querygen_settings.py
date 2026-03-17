@@ -23,7 +23,7 @@ class LlmSettings(BaseModel):
 
 
 class QueryGenRunSettings(ResolveSettings):
-    """Run settings for synthetic query generation."""
+    """Synthetic query generation run settings."""
 
     spec: QueryGenSpec
     llm: LlmSettings = Field(default_factory=LlmSettings)
