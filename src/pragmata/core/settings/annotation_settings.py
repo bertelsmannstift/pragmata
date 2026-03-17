@@ -3,6 +3,8 @@
 from dataclasses import dataclass, field
 from typing import Literal
 
+from pydantic import Field
+
 from pragmata.core.schemas.annotation_task import Task
 from pragmata.core.settings.settings_base import ResolveSettings
 
@@ -12,15 +14,17 @@ class AnnotationSettings(ResolveSettings):
 
     Controls workspace topology and task-distribution thresholds.
     Task definitions (Argilla rg.Settings per task) are hardcoded — see
-    core/annotation/argilla_settings.py.
+    core/annotation/argilla_task_definitions.py.
     """
 
     workspace_prefix: str = ""
-    workspace_dataset_map: dict[str, list[Task]] = {
-        "retrieval": [Task.RETRIEVAL],
-        "grounding": [Task.GROUNDING],
-        "generation": [Task.GENERATION],
-    }
+    workspace_dataset_map: dict[str, list[Task]] = Field(
+        default_factory=lambda: {
+            "retrieval": [Task.RETRIEVAL],
+            "grounding": [Task.GROUNDING],
+            "generation": [Task.GENERATION],
+        }
+    )
     min_submitted: int = 1
 
 

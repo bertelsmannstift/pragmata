@@ -11,14 +11,12 @@ dataset creation time.
 """
 
 import functools
-from pathlib import Path
+from importlib.resources import files
 from string import Template
 
 import argilla as rg
 
 from pragmata.core.schemas.annotation_task import Task
-
-_TEMPLATE_PATH = Path(__file__).parent / "collapsible_field.html"
 
 DATASET_NAMES: dict[Task, str] = {
     Task.RETRIEVAL: "task_retrieval",
@@ -45,7 +43,9 @@ def build_task_settings() -> dict[Task, rg.Settings]:
     Deferred construction — call after an Argilla client is connected
     (or with a mock client in tests). Cached after first call.
     """
-    template_text = _TEMPLATE_PATH.read_text()
+    template_text = (
+        files("pragmata.core.annotation").joinpath("collapsible_field.html").read_text(encoding="utf-8")
+    )
 
     return {
         Task.RETRIEVAL: rg.Settings(

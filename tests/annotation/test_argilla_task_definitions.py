@@ -2,7 +2,7 @@
 
 import argilla as rg
 
-from pragmata.core.annotation.argilla_settings import (
+from pragmata.core.annotation.argilla_task_definitions import (
     DATASET_NAMES,
     build_task_settings,
 )
