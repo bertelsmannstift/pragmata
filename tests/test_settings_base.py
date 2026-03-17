@@ -1,5 +1,7 @@
 """Unit tests for shared runtime settings resolution helpers and base model."""
 
+import os
+from unittest.mock import patch
 from pathlib import Path
 from typing import Any, NamedTuple
 
@@ -8,10 +10,13 @@ from pydantic import BaseModel, ValidationError
 
 from pragmata.core.settings.settings_base import (
     UNSET,
+    MissingSecretError,
+    PROVIDER_API_KEY_ENV_VARS,
     ResolveSettings,
     deep_merge,
     load_config_file,
     prune_unset,
+    resolve_provider_api_key,
 )
 
 
@@ -157,3 +162,49 @@ def test_load_config_file_raises_for_non_mapping_root(tmp_path: Path) -> None:
 
     with pytest.raises(TypeError, match="must be a mapping"):
         load_config_file(path)
+
+
+def test_resolve_provider_api_key_reads_supported_provider_secret() -> None:
+    """resolve_provider_api_key returns the secret for a supported provider."""
+    with patch.dict(os.environ, {"OPENAI_API_KEY": "secret-value"}, clear=True):
+        assert resolve_provider_api_key("openai") == "secret-value"
+
+
+def test_resolve_provider_api_key_rejects_unsupported_provider() -> None:
+    """resolve_provider_api_key raises for unsupported providers."""
+    with patch.dict(os.environ, {}, clear=True):
+        with pytest.raises(ValueError, match="Unsupported provider"):
+            resolve_provider_api_key("azure_openai")
+
+
+def test_resolve_provider_api_key_raises_when_env_var_is_missing() -> None:
+    """resolve_provider_api_key raises when the mapped env var is absent."""
+    with patch.dict(os.environ, {}, clear=True):
+        with pytest.raises(MissingSecretError, match="OPENAI_API_KEY"):
+            resolve_provider_api_key("openai")
+
+
+def test_resolve_provider_api_key_raises_when_env_var_is_empty() -> None:
+    """resolve_provider_api_key raises when the mapped env var is empty."""
+    with patch.dict(os.environ, {"OPENAI_API_KEY": ""}, clear=True):
+        with pytest.raises(MissingSecretError, match="OPENAI_API_KEY"):
+            resolve_provider_api_key("openai")
+
+
+def test_provider_api_key_env_vars_maps_supported_querygen_providers() -> None:
+    """PROVIDER_API_KEY_ENV_VARS defines the supported provider mappings."""
+    assert PROVIDER_API_KEY_ENV_VARS == {
+        "mistralai": "MISTRAL_API_KEY",
+        "cohere": "COHERE_API_KEY",
+        "deepseek": "DEEPSEEK_API_KEY",
+        "openai": "OPENAI_API_KEY",
+        "anthropic": "ANTHROPIC_API_KEY",
+        "google-genai": "GOOGLE_API_KEY",
+    }
+    
+
+def test_resolve_provider_api_key_raises_when_env_var_is_whitespace() -> None:
+    """resolve_provider_api_key raises when the mapped env var is only whitespace."""
+    with patch.dict(os.environ, {"OPENAI_API_KEY": "   "}, clear=True):
+        with pytest.raises(MissingSecretError, match="OPENAI_API_KEY"):
+            resolve_provider_api_key("openai")
