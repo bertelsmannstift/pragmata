@@ -101,3 +101,32 @@ specification
 - Do not output explanations, reasoning, markdown, commentary, or extra keys
 - Do not output realized natural-language user queries in this stage
 """
+
+USER_PROMPT_PLANNING = """The following is the structured query-generation specification, providing the target \
+distribution for candidate query blueprints.
+
+QUERY-GENERATION SPECIFICATION
+
+- Domain context:
+  - domains: {domains}
+  - roles: {roles}
+  - languages: {languages}
+
+- Knowledge scope:
+  - topics: {topics}
+
+- Scenario:
+  - intents: {intents}
+  - tasks: {tasks}
+  - difficulty: {difficulty}
+
+- Format requests:
+  - formats: {formats}
+
+- Safety:
+  - disallowed_topics: {disallowed_topics}
+
+TASK
+
+Generate {n_queries} candidate query blueprints from this specification.
+"""
