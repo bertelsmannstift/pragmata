@@ -18,7 +18,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-test = ["pytest>=9.0",]
+test = ["pytest>=9.0", "argilla>=2.0,<3.0"]
 lint = ["ruff>=0.14",]
 type = [
     "mypy>=1.19",
@@ -45,6 +45,9 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "D"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["D100", "D101", "D102", "D103"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"

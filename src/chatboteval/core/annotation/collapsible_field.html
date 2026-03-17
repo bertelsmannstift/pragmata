@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  details {
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 4px 8px;
+    margin-top: 4px;
+  }
+  summary {
+    color: #888;
+    cursor: pointer;
+    font-size: 0.9em;
+    padding: 2px 0;
+  }
+  #content {
+    white-space: pre-wrap;
+    padding: 6px 0;
+  }
+</style>
+</head>
+<body>
+<details id="wrapper">
+  <summary>$summary_text</summary>
+  <div id="content"></div>
+</details>
+<script>
+  var field = record.fields["$field_name"];
+  document.getElementById("content").textContent = field || "";
+  document.getElementById("wrapper").addEventListener("toggle", function () {
+    parent.postMessage({ type: "resize" }, "*");
+  });
+</script>
+</body>
+</html>

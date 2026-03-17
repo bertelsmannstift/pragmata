@@ -267,6 +267,7 @@ lint = [
     { name = "ruff" },
 ]
 test = [
+    { name = "argilla" },
     { name = "pytest" },
 ]
 type = [
@@ -277,6 +278,7 @@ type = [
 [package.metadata]
 requires-dist = [
     { name = "argilla", marker = "extra == 'annotation'", specifier = ">=2.0,<3.0" },
+    { name = "argilla", marker = "extra == 'test'", specifier = ">=2.0,<3.0" },
     { name = "chatboteval", extras = ["test", "lint", "type", "annotation"], marker = "extra == 'dev'" },
     { name = "mypy", marker = "extra == 'type'", specifier = ">=1.19" },
     { name = "pydantic", specifier = ">=2.0,<3.0" },
