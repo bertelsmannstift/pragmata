@@ -9,9 +9,9 @@ This project is delivered as a standard distributable Python package (wheel/sdis
 
 The system exposes two supported invocation surfaces:
 
-1. Python invocation surface: importing and calling functions/classes from `chatboteval`, i.e., `import chatboteval ...`
+1. Python invocation surface: importing and calling functions/classes from `pragmata`, i.e., `import pragmata ...`
 
-2. CLI invocation surface: a single canonical command via a `console_scripts` entry point, i.e., `chatboteval ...`
+2. CLI invocation surface: a single canonical command via a `console_scripts` entry point, i.e., `pragmata ...`
 
 The following architectural constraints apply:
 
@@ -21,10 +21,10 @@ The following architectural constraints apply:
   - All core logic and orchestration lives in library modules 
   - The CLI is a thin wrapper that parses inputs and delegates execution to the same library functions. No business logic is duplicated in the CLI layer.
 - **Single canonical CLI entry point**
-  - Exactly one top-level command (`chatboteval`) is exposed. 
+  - Exactly one top-level command (`pragmata`) is exposed. 
   - Subcommands may exist, but no additional console entry points are defined.
 - **Src-layout repository structure**
-  - The package uses a `src/` layout (`src/chatboteval/`) to enforce clean import boundaries and avoid accidental reliance on repository root paths.
+  - The package uses a `src/` layout (`src/pragmata/`) to enforce clean import boundaries and avoid accidental reliance on repository root paths.
 - **Curated public API surface**:
   - A small, intentionally defined public API is exposed for users, designed to be pleasant from an IDE.
   - Public symbols are documented and re-exported, intentionally concentrated in a small number of modules, and considered stable under semantic versioning.

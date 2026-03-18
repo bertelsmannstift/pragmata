@@ -1,6 +1,6 @@
 # Internal Contributing Guidelines
 
-This document defines mandatory contribution rules for the `chatboteval` repository.
+This document defines mandatory contribution rules for the `pRAGmata` repository.
 It is intended for internal team members only.
 
 External contributions are currently not accepted.

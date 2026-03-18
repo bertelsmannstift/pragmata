@@ -33,7 +33,7 @@ Argilla PostgreSQL
 ```
 >**Pending** - exact API / CLI wrapper wording below are TBC, TODO update when decided.
 
-**Entry point:** `chatboteval export <output_dir>` (CLI) or `chatboteval.export(...)` (Python API)
+**Entry point:** `pragmata export <output_dir>` (CLI) or `pragmata.export(...)` (Python API)
 
 ## Inputs
 

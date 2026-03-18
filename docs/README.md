@@ -1,4 +1,4 @@
-# chatboteval Documentation
+# pRAGmata Documentation
 
 ## What This Is
 
@@ -40,5 +40,5 @@ Scientific and evaluation methodology underlying the framework:
 
 ## Tracking & Contributing
 
-- **Issues:** Track work via [GitHub Issues](https://github.com/bertelsmannstift/chatboteval/issues)
+- **Issues:** Track work via [GitHub Issues](https://github.com/bertelsmannstift/pragmata/issues)
 - **Contributing:** See [CONTRIBUTING.md](../CONTRIBUTING.md) for PR workflow, commit conventions, and code standards

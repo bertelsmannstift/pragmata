@@ -19,17 +19,17 @@ Web-based annotation UI for labelling RAG chatbot outputs across three annotatio
 ┌──────────────────────────────────────────────────────────────┐
 │  One-time setup:                                             │
 │    docker compose up                — start Argilla stack    │
-│    chatboteval annotation init      — configure Argilla      │
+│    pragmata annotation init      — configure Argilla      │
 │                   (workspaces, dataset schemas, users)       │
 │                                                              │
 │  UI access (annotation):                                     │
 │    1. Browser URL  — direct navigation to Argilla instance   │
-│    2. Python API   — chatboteval.annotation.open()           │
-│    3. CLI          — chatboteval annotation open             │
+│    2. Python API   — pragmata.annotation.open()           │
+│    3. CLI          — pragmata annotation open             │
 │                                                              │
 │  Data management:                                            │
-│    Python API  — chatboteval.annotation.import/export()      │
-│    CLI         — chatboteval annotation import/export        │
+│    Python API  — pragmata.annotation.import/export()      │
+│    CLI         — pragmata annotation import/export        │
 └──────────────────────────────────────────────────────────────┘
                           ▼
           ┌───────────────────────┐
@@ -42,9 +42,9 @@ Web-based annotation UI for labelling RAG chatbot outputs across three annotatio
           └───────────────────────┘
 ```
 
-**Installation:** `pip install chatboteval[annotation]`
+**Installation:** `pip install pragmata[annotation]`
 
-**`chatboteval annotation init`** configures the Argilla application (workspaces, dataset schemas, users). Annotation happens in browser via Argilla web UI. Python API and CLI handle setup, data management, and opening the UI.
+**`pragmata annotation init`** configures the Argilla application (workspaces, dataset schemas, users). Annotation happens in browser via Argilla web UI. Python API and CLI handle setup, data management, and opening the UI.
 
 **NB:** as above, exact command names (`init` vs `setup`), flag design, workflow and zero-config default behaviour (guided wizard vs auto-detect) remain open design questions. 
 
@@ -55,7 +55,7 @@ Web-based annotation UI for labelling RAG chatbot outputs across three annotatio
 
 **Package structure:**
 - `/deploy/annotation/` — Docker Compose configs for Argilla stack
-- `src/chatboteval/argilla_client.py` — SDK wrappers for import/export/fetch
+- `src/pragmata/argilla_client.py` — SDK wrappers for import/export/fetch
 
 ## Inputs / Outputs
 
@@ -180,19 +180,19 @@ Each task dataset includes one optional free-text field per annotated unit:
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  First-time setup:                                          │
-│    chatboteval init              — scaffold all config files│
+│    pragmata init              — scaffold all config files│
 │    docker compose up -d          — start Argilla stack      │
-│    chatboteval annotation setup  — provision Argilla        │
+│    pragmata annotation setup  — provision Argilla        │
 │                 (workspaces, dataset schemas, users)        │
 │                                                             │
 │  UI access (annotation):                                    │
 │    1. Browser URL  — direct navigation to Argilla instance  │
-│    2. Python API   — chatboteval.annotation.open()          │
-│    3. CLI          — chatboteval annotation open            │
+│    2. Python API   — pragmata.annotation.open()          │
+│    3. CLI          — pragmata annotation open            │
 │                                                             │
 │  Data management:                                           │
-│    Python API  — chatboteval.annotation.import/export()     │
-│    CLI         — chatboteval annotation import/export       │
+│    Python API  — pragmata.annotation.import/export()     │
+│    CLI         — pragmata annotation import/export       │
 └─────────────────────────────────────────────────────────────┘
                      ▼
           ┌───────────────────────┐
@@ -205,16 +205,16 @@ Each task dataset includes one optional free-text field per annotated unit:
           └───────────────────────┘
 ```
 
-**Installation:** `pip install chatboteval[annotation]`
+**Installation:** `pip install pragmata[annotation]`
 
-**`chatboteval annotation setup`** configures the Argilla application (workspaces, dataset schemas, users). Docker lifecycle is separate (`docker compose up`):
+**`pragmata annotation setup`** configures the Argilla application (workspaces, dataset schemas, users). Docker lifecycle is separate (`docker compose up`):
 - **Local:** `--local` — connects to local Docker Compose instance
-- **Hosted:** `--hosted --url <argilla_api_url>` — connects to remote Argilla instance; writes `~/.chatboteval/config.yaml`
+- **Hosted:** `--hosted --url <argilla_api_url>` — connects to remote Argilla instance; writes `~/.pragmata/config.yaml`
 - **Cloud:** out of scope
 
 **Package structure:**
 - `/apps/annotation/` — Docker Compose configs for Argilla stack
-- `src/chatboteval/api/annotation/` — SDK wrappers for import/export/fetch
+- `src/pragmata/api/annotation/` — SDK wrappers for import/export/fetch
 
 **Usage:** Annotation happens in browser via Argilla web UI. Python API and CLI handle setup, data management, and opening the UI.
 

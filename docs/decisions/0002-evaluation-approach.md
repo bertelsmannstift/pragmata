@@ -39,7 +39,7 @@ The following architectural constraints apply:
   - A single “overall quality” judgment conflates distinct error types, making scores harder to interpret and less diagnostically useful.
   - Decomposed outputs map directly to levers in a RAG system, supporting actionable debugging and regression triage.
 - **Pipeline delegation enforces separation of concerns and reduces maintenance risk**
-  - `tlmtc` encapsulates the transfer-learning lifecycle, allowing `chatboteval` to focus on evaluation methodology, schema contracts, and reporting.
+  - `tlmtc` encapsulates the transfer-learning lifecycle, allowing `pRAGmata` to focus on evaluation methodology, schema contracts, and reporting.
   - Reusing a dedicated transfer-learning pipeline avoids reimplementing complex and error-prone ML infrastructure, reducing technical debt.
 
 

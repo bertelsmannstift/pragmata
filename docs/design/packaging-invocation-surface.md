@@ -26,7 +26,7 @@ Specifies the concrete package structure, module boundaries, and invocation bind
 
 ```
 src/
-└── chatboteval/
+└── pragmata/
     ├── __init__.py              # curated public re-exports only
     ├── api/
     │   ├── __init__.py          # stable, high-level Python entrypoints
@@ -42,9 +42,9 @@ src/
 
 **Boundary rules**
 
-- `chatboteval.cli` is a thin execution layer over the API. May import `api`, but must not import `core` directly.
-- `chatboteval.api` contains internal orchestration. May import `core`, but must not depend on `cli`.
-- `chatboteval.core` contains implementation details and is explicitly not public. Must not depend on `cli` or leak into the public API surface.
+- `pragmata.cli` is a thin execution layer over the API. May import `api`, but must not import `core` directly.
+- `pragmata.api` contains internal orchestration. May import `core`, but must not depend on `cli`.
+- `pragmata.core` contains implementation details and is explicitly not public. Must not depend on `cli` or leak into the public API surface.
 
 Allowed dependency direction:
 
@@ -59,13 +59,13 @@ cli ⟹ api ⟹ core
   - imports and orchestrates functions from `core/`
   - defines internal entrypoints used by the CLI and re-exported selectively at the top-level
   - isolates the CLI and top-level API from internal structure
-- curated API re-exported at the top-level via `chatboteval/__init__.py`
-- Only the top-level `chatboteval` namespace is a supported stable import surface.
-  Imports from `chatboteval.api` are considered internal.
+- curated API re-exported at the top-level via `pragmata/__init__.py`
+- Only the top-level `pragmata` namespace is a supported stable import surface.
+  Imports from `pragmata.api` are considered internal.
 
 **CLI surface**
 
-- Each CLI command is implemented in `cli/commands/` and registered in `chatboteval/cli/app.py`
+- Each CLI command is implemented in `cli/commands/` and registered in `pragmata/cli/app.py`
 - CLI is exposed via a single console-script entry defined in `pyproject.toml`
 
 

@@ -39,7 +39,7 @@ Data pipeline to load captured chatbot query-response data into Argilla annotati
 -──────────────────────────────────-──────────────────────────────
 
 ┌──────────────────────────────────────┐
-│  chatboteval annotation import <file>│
+│  pragmata annotation import <file>│
 └────────────┬─────────────────────────┘
              │
              ▼
@@ -58,7 +58,7 @@ Data pipeline to load captured chatbot query-response data into Argilla annotati
             │ (workspace & task distribution → annotators label via Argilla Web UI)
             ▼
 ```
-**Entry point:** `chatboteval annotation import <file>` — accepts a JSON file conforming to the canonical import schema. JSON because the canonical record contains nested structures (chunk lists with sub-fields) that don't map cleanly to flat CSV rows.
+**Entry point:** `pragmata annotation import <file>` — accepts a JSON file conforming to the canonical import schema. JSON because the canonical record contains nested structures (chunk lists with sub-fields) that don't map cleanly to flat CSV rows.
 
 **Single direction:** JSON → Argilla (no sync, no bidirectional updates)
 

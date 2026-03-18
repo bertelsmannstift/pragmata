@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Scaffolds the contract layer for `chatboteval` — canonical schemas, path conventions, and config structures that all internal modules depend on. Each section describes patterns to be followed during implementation; concrete schemas are defined in tool-specific issue specs and code PRs.
+Scaffolds the contract layer for `pRAGmata` — canonical schemas, path conventions, and config structures that all internal modules depend on. Each section describes patterns to be followed during implementation; concrete schemas are defined in tool-specific issue specs and code PRs.
 
 Tooling choices underpinning this layer (Pydantic @ boundaries, dataclasses for runtime types, dependency dir, CSV interchange) are captured in [ADR-0005](../decisions/0005-contract-layer-tooling.md).
 
@@ -12,7 +12,7 @@ Tooling choices underpinning this layer (Pydantic @ boundaries, dataclasses for 
 ## Contract scaffold
 
 ```
-src/chatboteval/core/
+src/pragmata/core/
 ├── schemas/          # Boundary schemas (Pydantic SSOT)
 ├── types/            # Runtime types (dataclasses)
 ├── settings/         # Per-tool settings + shared resolution base
@@ -25,7 +25,7 @@ src/chatboteval/core/
     runs/
       <run_id>/                    # per-run artefacts
 
-~/.chatboteval/
+~/.pragmata/
   config.yaml                      # user config (optional)
 ```
 
@@ -103,7 +103,7 @@ Canonical locations for data artefacts produced and consumed by the pipeline (no
     runs/
       <run_id>/                   # per-run artefacts (CSV + JSON sidecar)
 
-~/.chatboteval/
+~/.pragmata/
   config.yaml                     # user config (optional — see Section 5)
 ```
 
@@ -118,7 +118,7 @@ Tools with complex output structures may define their own path bundles that buil
 
 ### Global config
 
-Optional user config at `~/.chatboteval/config.yaml`, parsed by `core/settings/` using Pydantic Settings. Built-in defaults mean the tool works with zero config — the file is only needed when overriding defaults (e.g. credentials, custom output paths).
+Optional user config at `~/.pragmata/config.yaml`, parsed by `core/settings/` using Pydantic Settings. Built-in defaults mean the tool works with zero config — the file is only needed when overriding defaults (e.g. credentials, custom output paths).
 
 Full precedence chain (highest to lowest):
 
@@ -127,7 +127,7 @@ CLI flags / API call overrides          ← one-off overrides
         ↓
 Environment variables
         ↓
-Config file (~/.chatboteval/config.yaml)
+Config file (~/.pragmata/config.yaml)
         ↓
 Built-in defaults
 ```
