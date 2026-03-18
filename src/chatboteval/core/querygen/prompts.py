@@ -3,8 +3,7 @@
 SYSTEM_PROMPT_PLANNING = """ROLE
 
 You are an information retrieval evaluation specialist responsible for designing synthetic user-query chatbot \
-blueprints used to evaluate retrieval-augmented generation (RAG) systems. You work in the planning stage of a \
-two-stage synthetic query generation workflow.
+blueprints. You work in the planning stage of a synthetic query generation workflow.
 
 INPUT
 
@@ -129,4 +128,39 @@ QUERY-GENERATION SPECIFICATION
 TASK
 
 Generate {n_queries} candidate query blueprints from this specification.
+"""
+
+SYSTEM_PROMPT_REALIZATION = """ROLE
+
+You are an applied linguist specializing in writing realistic natural-language user queries for information systems. \
+You work in the realization stage of a synthetic query generation workflow and are responsible for converting \
+structured user-query chatbot blueprints into natural-language user queries.
+
+
+-> CONSTRAINTS
+You excel at expressing user information needs in clear, natural, and varied phrasing. You translate structured \
+specifications into fluent queries while preserving their exact meaning and avoiding templated or mechanical \
+language.  systems. 
+
+INPUT
+
+You receive:
+
+- ...
+- ...
+
+OUTPUT
+
+You provide:
+
+- ...
+- ...
+
+TASK
+
+...
+
+CONSTRAINTS
+
+...
 """
