@@ -1,7 +1,7 @@
 # pRAGmata: Evidence-grounded evaluation for RAG systems
 
 [![License](https://img.shields.io/github/license/bertelsmannstift/pragmata)](https://github.com/bertelsmannstift/pragmata/blob/main/LICENSE.md)
-[![CI](https://img.shields.io/github/actions/workflow/status/bertelsmannstift/pragmata/ci.yaml?label=ci)](https://github.com/bertelsmannstift/pragmata/actions)
+[![CI](https://img.shields.io/github/actions/workflow/status/bertelsmannstift/pragmata/ci.yml?label=ci)](https://github.com/bertelsmannstift/pragmata/actions)
 ![Status](https://img.shields.io/badge/status-WIP-orange)
 
 **pRAGmata** (*πράγματα, Ancient Greek: roughly “matters of fact”*) is a Python framework for empirically evaluating retrieval-augmented generation (RAG) systems. Grounded in real evidence rather than impressionistic scoring, it combines three components:
