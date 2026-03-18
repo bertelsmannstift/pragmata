@@ -1,15 +1,16 @@
-"""Annotation import implementation — record building and fan-out logic.
+"""Annotation import implementation — validation, record building, and fan-out.
 
-Builds Argilla Record objects from canonical QueryResponsePair inputs and
-logs them to the appropriate datasets. The api/ layer resolves settings
-and delegates here.
+Validates raw dicts against the canonical schema, builds Argilla Record
+objects from typed QueryResponsePair inputs, and logs them to the
+appropriate datasets. The api/ layer resolves settings and delegates here.
 """
 
 import hashlib
 import logging
+from dataclasses import dataclass
 
 import argilla as rg
-from argilla.records._dataset_records import RecordErrorHandling  # no public import path in argilla v2
+from argilla.records._dataset_records import RecordErrorHandling  # no public re-export in argilla v2; pinned to ==2.6.0
 
 from pragmata.core.annotation.argilla_ops import apply_prefix
 from pragmata.core.annotation.argilla_settings import DATASET_NAMES
@@ -20,8 +21,56 @@ from pragmata.core.settings.annotation_settings import AnnotationSettings
 logger = logging.getLogger(__name__)
 
 
+# ---------------------------------------------------------------------------
+# Validation
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class RecordError:
+    """Validation failure for a single input record."""
+
+    index: int
+    detail: str
+
+
+@dataclass(frozen=True)
+class ValidationResult:
+    """Outcome of validate_records(): typed pairs and per-index errors."""
+
+    valid: list[QueryResponsePair]
+    errors: list[RecordError]
+
+
+def validate_records(records: list[dict]) -> ValidationResult:
+    """Validate raw dicts against the canonical QueryResponsePair schema.
+
+    Pure validation — no Argilla I/O.
+
+    Args:
+        records: Raw dictionaries to validate against QueryResponsePair.
+
+    Returns:
+        ValidationResult with successfully parsed pairs and per-index errors.
+    """
+    valid: list[QueryResponsePair] = []
+    errors: list[RecordError] = []
+    for i, raw in enumerate(records):
+        try:
+            valid.append(QueryResponsePair.model_validate(raw))
+        except Exception as exc:
+            errors.append(RecordError(index=i, detail=str(exc)))
+    return ValidationResult(valid=valid, errors=errors)
+
+
+# ---------------------------------------------------------------------------
+# Record building
+# ---------------------------------------------------------------------------
+
+
 def derive_record_uuid(pair: QueryResponsePair) -> str:
     """SHA-256 digest of canonical content fields — stable across calls for identical pairs."""
+    # chunk_ids sorted for order invariance — same chunks in any order produce the same UUID
     chunk_ids = "|".join(sorted(c.chunk_id for c in pair.chunks))
     canonical = f"{pair.query}\x00{pair.answer}\x00{pair.context_set}\x00{chunk_ids}"
     return hashlib.sha256(canonical.encode()).hexdigest()
@@ -85,6 +134,26 @@ def build_generation_record(pair: QueryResponsePair, record_uuid: str) -> rg.Rec
     )
 
 
+def _invert_workspace_map(workspace_dataset_map: dict[str, list[Task]]) -> dict[Task, str]:
+    """Invert workspace_dataset_map to task → workspace_base lookup."""
+    task_to_ws: dict[Task, str] = {}
+    for ws_base, tasks in workspace_dataset_map.items():
+        for task in tasks:
+            task_to_ws[task] = ws_base
+    return task_to_ws
+
+
+def _build_batches(records: list[QueryResponsePair]) -> dict[Task, list[rg.Record]]:
+    """Build Argilla records per task from canonical input pairs."""
+    batches: dict[Task, list[rg.Record]] = {task: [] for task in Task}
+    for pair in records:
+        record_uuid = derive_record_uuid(pair)
+        batches[Task.RETRIEVAL].extend(build_retrieval_records(pair, record_uuid))
+        batches[Task.GROUNDING].append(build_grounding_record(pair, record_uuid))
+        batches[Task.GENERATION].append(build_generation_record(pair, record_uuid))
+    return batches
+
+
 def fan_out_records(
     client: rg.Argilla,
     records: list[QueryResponsePair],
@@ -96,33 +165,20 @@ def fan_out_records(
     record failures are logged as warnings by Argilla but not reflected in counts).
     """
     prefix = settings.workspace_prefix
-
-    # Build inverse map task -> ws_base from workspace_dataset_map
-    task_to_ws: dict[Task, str] = {}
-    for ws_base, tasks in settings.workspace_dataset_map.items():
-        for task in tasks:
-            task_to_ws[task] = ws_base
-
-    # Accumulate rg.Record objects per task
-    batches: dict[Task, list[rg.Record]] = {task: [] for task in Task}
-
-    for pair in records:
-        record_uuid = derive_record_uuid(pair)
-        batches[Task.RETRIEVAL].extend(build_retrieval_records(pair, record_uuid))
-        batches[Task.GROUNDING].append(build_grounding_record(pair, record_uuid))
-        batches[Task.GENERATION].append(build_generation_record(pair, record_uuid))
+    task_to_ws = _invert_workspace_map(settings.workspace_dataset_map)
+    batches = _build_batches(records)
 
     dataset_counts: dict[str, int] = {}
 
     for task, rg_records in batches.items():
         if not rg_records:
             continue
-        ws_match = task_to_ws.get(task)
-        if ws_match is None:
+        ws_base = task_to_ws.get(task)
+        if ws_base is None:
             logger.warning("Task %r not in workspace_dataset_map — skipping", task)
             continue
 
-        ws_name = apply_prefix(prefix, ws_match)
+        ws_name = apply_prefix(prefix, ws_base)
         ds_name = apply_prefix(prefix, DATASET_NAMES[task])
 
         dataset = client.datasets(ds_name, workspace=ws_name)

@@ -63,7 +63,7 @@ class TestDeriveRecordUuid:
     def test_returns_hex_string(self) -> None:
         result = derive_record_uuid(_make_pair())
         assert isinstance(result, str)
-        assert len(result) > 0
+        assert len(result) == 64
         assert all(c in "0123456789abcdef" for c in result)
 
 

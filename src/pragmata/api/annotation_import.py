@@ -1,7 +1,6 @@
 """Annotation import API — thin orchestration over core/ implementation.
 
 Public API:
-    validate_records(records) -> ValidationResult
     import_records(client, records, *, workspace_prefix=UNSET, ...) -> ImportResult
 """
 
@@ -22,22 +21,6 @@ from pragmata.core.settings.settings_base import UNSET, load_config_file
 
 
 @dataclass(frozen=True)
-class RecordError:
-    """Validation failure for a single input record."""
-
-    index: int
-    detail: str
-
-
-@dataclass(frozen=True)
-class ValidationResult:
-    """Outcome of validate_records(): typed pairs and per-index errors."""
-
-    valid: list[QueryResponsePair]
-    errors: list[RecordError]
-
-
-@dataclass(frozen=True)
 class ImportResult:
     """Outcome of import_records(): counts per dataset and overall totals.
 
@@ -53,28 +36,6 @@ class ImportResult:
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
-
-
-def validate_records(records: list[dict]) -> ValidationResult:
-    """Validate raw dicts against the canonical QueryResponsePair schema.
-
-    Pure validation — no Argilla I/O. Use before import_records() to separate
-    schema errors from import errors.
-
-    Args:
-        records: Raw dictionaries to validate against QueryResponsePair.
-
-    Returns:
-        ValidationResult with successfully parsed pairs and per-index errors.
-    """
-    valid: list[QueryResponsePair] = []
-    errors: list[RecordError] = []
-    for i, raw in enumerate(records):
-        try:
-            valid.append(QueryResponsePair.model_validate(raw))
-        except Exception as exc:
-            errors.append(RecordError(index=i, detail=str(exc)))
-    return ValidationResult(valid=valid, errors=errors)
 
 
 def import_records(

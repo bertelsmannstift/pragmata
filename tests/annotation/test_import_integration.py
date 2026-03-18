@@ -145,7 +145,7 @@ def test_idempotent_reimport(client: rg.Argilla, sample_pairs: list[QueryRespons
 @pytest.mark.integration
 def test_validation_errors_do_not_reach_argilla(client: rg.Argilla) -> None:
     """Invalid raw dicts never trigger Argilla writes."""
-    from pragmata.api.annotation_import import validate_records
+    from pragmata.core.annotation.record_builder import validate_records
 
     invalid_raws = [{"query": "no answer or chunks"}]
     result = validate_records(invalid_raws)
