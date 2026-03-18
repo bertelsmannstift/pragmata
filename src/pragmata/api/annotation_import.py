@@ -1,8 +1,4 @@
-"""Annotation import API — thin orchestration over core/ implementation.
-
-Public API:
-    import_records(client, records, *, workspace_prefix=UNSET, ...) -> ImportResult
-"""
+"""Annotation import API — thin orchestration over core/ implementation."""
 
 from dataclasses import dataclass, field
 from pathlib import Path

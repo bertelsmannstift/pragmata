@@ -1,9 +1,4 @@
-"""Argilla annotation setup API — thin orchestration over core/ implementation.
-
-Public API:
-    setup(client, *, users=None, workspace_prefix=UNSET, ...) -> SetupResult
-    teardown(client, *, workspace_prefix=UNSET, ...) -> None
-"""
+"""Argilla annotation setup API — thin orchestration over core/ implementation."""
 
 from pathlib import Path
 from typing import cast
@@ -51,7 +46,7 @@ def setup(
     )
     ds_result = setup_datasets(client, settings)
     user_result = provision_users(client, users or [], settings)
-    return ds_result._merge(user_result)
+    return ds_result.merge(user_result)
 
 
 def teardown(

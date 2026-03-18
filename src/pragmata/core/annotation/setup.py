@@ -40,7 +40,7 @@ class SetupResult:
     skipped_users: list[str] = field(default_factory=list)
     generated_passwords: dict[str, str] = field(default_factory=dict)
 
-    def _merge(self, other: "SetupResult") -> "SetupResult":
+    def merge(self, other: "SetupResult") -> "SetupResult":
         """Combine two results (e.g. dataset setup + user provisioning)."""
         return SetupResult(
             created_workspaces=self.created_workspaces + other.created_workspaces,
