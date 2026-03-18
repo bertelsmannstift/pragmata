@@ -4,7 +4,7 @@ import pathlib
 
 import pytest
 
-PYPROJECT_PATH = pathlib.Path(__file__).resolve().parents[2] / "pyproject.toml"
+PYPROJECT_PATH = pathlib.Path(__file__).resolve().parents[1] / "pyproject.toml"
 
 
 def _read_pyproject() -> dict:
