@@ -177,3 +177,15 @@ Behavioral guardrails:
 - Return only structured output conforming exactly to the schema
 - Output exactly one realized query per input blueprint
 """
+
+USER_PROMPT_REALIZATION = """The following lists the structured query blueprints to be realized into natural-language \
+user queries.
+
+QUERY BLUEPRINTS
+
+{query blueprints}
+
+TASK
+
+Realize each query blueprint into one natural-language user query.
+"""
