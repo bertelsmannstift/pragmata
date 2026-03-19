@@ -2,10 +2,10 @@
 
 from typing import Any
 
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.runnables.base import RunnableSequence
-from langchain_core.rate_limiters import InMemoryRateLimiter
 from langchain.chat_models import init_chat_model
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.rate_limiters import InMemoryRateLimiter
+from langchain_core.runnables.base import RunnableSerializable
 
 from pragmata.core.types import M
 
@@ -45,7 +45,7 @@ def build_llm_runnable(
     max_bucket_size: int,
     base_url: str | None,
     model_kwargs: dict[str, Any],
-) -> RunnableSequence:
+) -> RunnableSerializable:
     """Compose a schema-constrained LangChain runnable for query generation.
 
     Args:
