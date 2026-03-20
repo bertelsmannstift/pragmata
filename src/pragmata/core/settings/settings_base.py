@@ -50,9 +50,7 @@ def resolve_provider_api_key(provider: str) -> str:
 
     if env_var is None:
         supported_providers = ", ".join(PROVIDER_API_KEY_ENV_VARS)
-        raise ValueError(
-            f"Unsupported provider: {provider}. Supported providers: {supported_providers}"
-        )
+        raise ValueError(f"Unsupported provider: {provider}. Supported providers: {supported_providers}")
 
     api_key = os.environ.get(env_var)
 
@@ -126,10 +124,7 @@ def load_config_file(
         return {}
 
     if not isinstance(data, dict):
-        raise TypeError(
-            "Config file root must be a mapping, " 
-            f"got {type(data).__name__}: {config_path}"
-        )
+        raise TypeError(f"Config file root must be a mapping, got {type(data).__name__}: {config_path}")
 
     return data
 
