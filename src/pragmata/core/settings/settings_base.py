@@ -2,7 +2,7 @@
 
 import os
 from pathlib import Path
-from typing import Any, Final, Literal, Self
+from typing import Any, Final, Literal, Self, TypedDict, cast
 
 import yaml
 from pydantic import BaseModel, ConfigDict
@@ -18,7 +18,19 @@ Provider = Literal[
     "google-genai",
 ]
 
-PROVIDER_API_KEY_ENV_VARS: Final[dict[Provider, str]] = {
+ProviderApiKeyEnvVarMap = TypedDict(
+    "ProviderApiKeyEnvVarMap",
+    {
+        "mistralai": str,
+        "cohere": str,
+        "deepseek": str,
+        "openai": str,
+        "anthropic": str,
+        "google-genai": str,
+    },
+)
+
+PROVIDER_API_KEY_ENV_VARS: Final[ProviderApiKeyEnvVarMap] = {
     "mistralai": "MISTRAL_API_KEY",
     "cohere": "COHERE_API_KEY",
     "deepseek": "DEEPSEEK_API_KEY",
@@ -34,10 +46,13 @@ class MissingSecretError(RuntimeError):
 
 def resolve_provider_api_key(provider: str) -> str:
     """Resolve a supported provider API key from process environment."""
-    env_var = PROVIDER_API_KEY_ENV_VARS.get(provider)
+    env_var = cast(str | None, PROVIDER_API_KEY_ENV_VARS.get(provider))
 
     if env_var is None:
-        raise ValueError(f"Unsupported provider: {provider}")
+        supported_providers = ", ".join(PROVIDER_API_KEY_ENV_VARS)
+        raise ValueError(
+            f"Unsupported provider: {provider}. Supported providers: {supported_providers}"
+        )
 
     api_key = os.environ.get(env_var)
 
@@ -111,7 +126,10 @@ def load_config_file(
         return {}
 
     if not isinstance(data, dict):
-        raise TypeError(f"Config file root must be a mapping, got {type(data).__name__}: {config_path}")
+        raise TypeError(
+            "Config file root must be a mapping, " 
+            f"got {type(data).__name__}: {config_path}"
+        )
 
     return data
 

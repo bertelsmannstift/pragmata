@@ -173,8 +173,15 @@ def test_resolve_provider_api_key_reads_supported_provider_secret() -> None:
 def test_resolve_provider_api_key_rejects_unsupported_provider() -> None:
     """resolve_provider_api_key raises for unsupported providers."""
     with patch.dict(os.environ, {}, clear=True):
-        with pytest.raises(ValueError, match="Unsupported provider"):
+        with pytest.raises(ValueError) as exc_info:
             resolve_provider_api_key("azure_openai")
+
+    message = str(exc_info.value)
+    assert message.startswith("Unsupported provider: azure_openai.")
+    assert "Supported providers:" in message
+
+    for provider in PROVIDER_API_KEY_ENV_VARS:
+        assert provider in message
 
 
 def test_resolve_provider_api_key_raises_when_env_var_is_missing() -> None:
@@ -201,7 +208,7 @@ def test_provider_api_key_env_vars_maps_supported_querygen_providers() -> None:
         "anthropic": "ANTHROPIC_API_KEY",
         "google-genai": "GOOGLE_API_KEY",
     }
-    
+
 
 def test_resolve_provider_api_key_raises_when_env_var_is_whitespace() -> None:
     """resolve_provider_api_key raises when the mapped env var is only whitespace."""
