@@ -1,17 +1,17 @@
 """Unit tests for shared runtime settings resolution helpers and base model."""
 
 import os
-from unittest.mock import patch
 from pathlib import Path
 from typing import Any, NamedTuple
+from unittest.mock import patch
 
 import pytest
 from pydantic import BaseModel, ValidationError
 
 from pragmata.core.settings.settings_base import (
+    PROVIDER_API_KEY_ENV_VARS,
     UNSET,
     MissingSecretError,
-    PROVIDER_API_KEY_ENV_VARS,
     ResolveSettings,
     deep_merge,
     load_config_file,
