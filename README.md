@@ -4,9 +4,9 @@
 [![CI](https://img.shields.io/github/actions/workflow/status/bertelsmannstift/pragmata/ci.yml?label=ci)](https://github.com/bertelsmannstift/pragmata/actions)
 ![Status](https://img.shields.io/badge/status-WIP-orange)
 
-**pRAGmata** (*πράγματα, Ancient Greek: roughly “matters of fact”*) is a Python framework for empirically evaluating retrieval-augmented generation (RAG) systems. It evaluates systems over annotated query–response examples with explicit, decomposed evaluation dimensions, rather than relying on opaque or heuristic scoring, and combines three components:
+**pRAGmata** (*πράγματα, Ancient Greek: roughly “matters of fact”*) is a Python framework for empirically evaluating retrieval-augmented generation (RAG) systems. It evaluates systems over annotated query–response examples with explicit, decomposed evaluation dimensions, rather than relying on opaque or heuristic scoring. The framework consists of three components:
 
-- A structured AI workflow for controlled synthetic query generation and variation
+- An AI workflow for controlled synthetic query generation and variation
 - A web-based annotation interface for domain experts to label query–response pairs across retrieval, grounding, and generation aspects
 - A label-based evaluation pipeline with model-assisted inference using transformer cross-encoders for scalable scoring
 
