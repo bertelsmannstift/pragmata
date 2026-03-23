@@ -103,7 +103,9 @@ Primary content is the minimal unit needed for the labelling task. Supporting co
 |---|---|---|
 | Task 1: Retrieval | Query + chunk | Generated answer |
 | Task 2: Grounding | Answer + retrieved context set | Query |
-| Task 3: Generation | Query + answer | Retrieved context set |
+| Task 3: Generation | Query + answer | Retrieved context set* |
+
+\* Context set in Task 3 is auxiliary UI context to aid annotator judgement — it is not part of the formal annotation unit $(q_i, a_i)$.
 
 Supporting context is collapsed by default and expanded on demand — annotators are not anchored by supporting context unless they choose to view it. Argilla v2 has no native collapsible field support; workaround: `rg.CustomField` with `advanced_mode=True` renders a `<details>`/`<summary>` HTML element for browser-native collapsibility without a custom frontend.
 
