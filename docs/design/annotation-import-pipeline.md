@@ -142,6 +142,7 @@ Three Argilla datasets, each receiving records from every import:
 **Fields (shown to annotators):**
 - `query` ← canonical `query`
 - `answer` ← canonical `answer`
+- `context_set` ← canonical `context_set` (auxiliary UI context, collapsed — not part of the annotation unit; see [Annotation Interface §Visibility contract](annotation-interface.md))
 
 **Metadata (stored, not shown):**
 - `record_uuid`
