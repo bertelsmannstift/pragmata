@@ -2,35 +2,15 @@
 
 import os
 from pathlib import Path
-from typing import Any, Final, Literal, Self, TypedDict, cast
+from typing import Any, Final, Self
 
 import yaml
 from pydantic import BaseModel, ConfigDict
 
 UNSET = object()
 
-Provider = Literal[
-    "mistralai",
-    "cohere",
-    "deepseek",
-    "openai",
-    "anthropic",
-    "google-genai",
-]
 
-ProviderApiKeyEnvVarMap = TypedDict(
-    "ProviderApiKeyEnvVarMap",
-    {
-        "mistralai": str,
-        "cohere": str,
-        "deepseek": str,
-        "openai": str,
-        "anthropic": str,
-        "google-genai": str,
-    },
-)
-
-PROVIDER_API_KEY_ENV_VARS: Final[ProviderApiKeyEnvVarMap] = {
+PROVIDER_API_KEY_ENV_VARS: Final[dict[str, str]] = {
     "mistralai": "MISTRAL_API_KEY",
     "cohere": "COHERE_API_KEY",
     "deepseek": "DEEPSEEK_API_KEY",
@@ -45,13 +25,12 @@ class MissingSecretError(RuntimeError):
 
 
 def resolve_provider_api_key(provider: str) -> str:
-    """Resolve a supported provider API key from process environment."""
-    env_var = cast(str | None, PROVIDER_API_KEY_ENV_VARS.get(provider))
-
-    if env_var is None:
-        supported_providers = ", ".join(PROVIDER_API_KEY_ENV_VARS)
+    """Resolve the API key for a supported provider from the process environment."""
+    if provider not in PROVIDER_API_KEY_ENV_VARS:
+        supported_providers = ", ".join(sorted(PROVIDER_API_KEY_ENV_VARS))
         raise ValueError(f"Unsupported provider: {provider}. Supported providers: {supported_providers}")
 
+    env_var = PROVIDER_API_KEY_ENV_VARS[provider]
     api_key = os.environ.get(env_var)
 
     if api_key is None or not api_key.strip():
