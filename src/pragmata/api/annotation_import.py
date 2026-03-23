@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import argilla as rg
 
@@ -41,7 +41,7 @@ class ImportResult:
 
 def import_records(
     client: rg.Argilla,
-    records: list[dict],
+    records: list[dict[str, Any]],
     *,
     workspace_prefix: str | object = UNSET,
     config_path: str | Path | object = UNSET,

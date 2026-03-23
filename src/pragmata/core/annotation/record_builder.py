@@ -8,6 +8,7 @@ appropriate datasets. The api/ layer resolves settings and delegates here.
 import hashlib
 import logging
 from dataclasses import dataclass
+from typing import Any
 
 import argilla as rg
 from argilla.records._dataset_records import RecordErrorHandling  # no public re-export in argilla v2; pinned to ==2.6.0
@@ -42,7 +43,7 @@ class ValidationResult:
     errors: list[RecordError]
 
 
-def validate_records(records: list[dict]) -> ValidationResult:
+def validate_records(records: list[dict[str, Any]]) -> ValidationResult:
     """Validate raw dicts against the canonical QueryResponsePair schema.
 
     Pure validation — no Argilla I/O.
