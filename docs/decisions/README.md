@@ -19,3 +19,4 @@ Each decision document follows this structure:
 - [0008: Annotation Authentication Interface](0008-annotation-interface-auth.md) — Accepted: Argilla built-in auth with role mapping
 - [0009: Annotation Schema Configurability](0009-annotation-schema-configurability.md) — Accepted: hardcoded schemas for v1.0, configurability deferred
 - [0010: Multi-Dataset Architecture](0010-annotation-multi-dataset-architecture.md) — Draft: three separate Argilla datasets (one per task)
+- [0011: Annotation Import Formats](0011-annotation-import-formats.md) — Draft: import accepts JSON, JSONL, CSV, HF Dataset, DataFrame

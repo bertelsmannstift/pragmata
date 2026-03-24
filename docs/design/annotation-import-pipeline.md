@@ -1,11 +1,11 @@
 # Import Pipeline
 
-Data pipeline to load captured chatbot query-response data into Argilla annotation datasets. Operates against a source-agnostic canonical schema; source-specific logic lives in adapter modules which are out of scope.
+Data pipeline to load captured chatbot query-response data into Argilla annotation datasets. Operates against a source-agnostic canonical schema. Format loading (JSON, JSONL, CSV, HF Dataset, DataFrame) is baked into the API per [ADR-0011](../decisions/0011-annotation-import-formats.md); source-system-specific adapters remain out of scope.
 
 ## Responsibilities
 
 **In scope:**
-- Accept canonical import records (JSON)
+- Accept canonical import records (JSON, JSONL, CSV, HF Dataset, DataFrame — see [ADR-0011](../decisions/0011-annotation-import-formats.md))
 - Transform to Argilla record schema
 - Load into stratified datasets by annotation task (see [Annotation Protocol](../methodology/annotation-protocol.md))
 - Validate records before import
@@ -58,7 +58,7 @@ Data pipeline to load captured chatbot query-response data into Argilla annotati
             │ (workspace & task distribution → annotators label via Argilla Web UI)
             ▼
 ```
-**Entry point:** `pragmata annotation import <file>` — accepts a JSON file conforming to the canonical import schema. JSON because the canonical record contains nested structures (chunk lists with sub-fields) that don't map cleanly to flat CSV rows.
+**Entry point:** `pragmata annotation import <file>` — accepts JSON, JSONL, or CSV files conforming to the canonical import schema. Format detected by extension, overridable via `format=` kwarg. HF Dataset and pandas DataFrame objects also accepted programmatically. See [ADR-0011](../decisions/0011-annotation-import-formats.md) for format details and CSV chunk representation.
 
 **Single direction:** JSON → Argilla (no sync, no bidirectional updates)
 
@@ -66,7 +66,7 @@ Data pipeline to load captured chatbot query-response data into Argilla annotati
 
 ## Source Adapter & Canonical Schema
 
-The import pipeline operates exclusively against a canonical import schema. Adapter modules (out of scope) transforms the source system's output into our canonical records; the pipeline never touches source-system internals. Adding a new source system requires only a new adapter.
+The import pipeline operates exclusively against a canonical import schema. Format loaders (JSON, JSONL, CSV, HF Dataset, DataFrame → `list[dict]`) are baked into the API per [ADR-0007](../decisions/0007-packaging-invocation-surface.md) and [ADR-0011](../decisions/0011-annotation-import-formats.md). Source-system-specific adapters (e.g. transforming a chatbot's raw output into canonical records) remain out of scope — adding a new source system requires only a new adapter upstream of the import pipeline.
 
 ### Canonical record
 
