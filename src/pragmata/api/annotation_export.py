@@ -105,7 +105,7 @@ def _fetch_task(
 
             if task == Task.RETRIEVAL:
                 row: AnnotationModel = RetrievalAnnotation(
-                    **base,
+                    **base,  # type: ignore[arg-type]
                     query=record.fields["query"],
                     chunk=record.fields["chunk"],
                     chunk_id=record.metadata.get("chunk_id", ""),
@@ -117,7 +117,7 @@ def _fetch_task(
                 )
             elif task == Task.GROUNDING:
                 row = GroundingAnnotation(
-                    **base,
+                    **base,  # type: ignore[arg-type]
                     answer=record.fields["answer"],
                     context_set=record.fields["context_set"],
                     support_present=_to_bool(answers["support_present"]),
@@ -128,7 +128,7 @@ def _fetch_task(
                 )
             else:  # GENERATION
                 row = GenerationAnnotation(
-                    **base,
+                    **base,  # type: ignore[arg-type]
                     query=record.fields["query"],
                     answer=record.fields["answer"],
                     proper_action=_to_bool(answers["proper_action"]),

@@ -11,15 +11,15 @@ import csv
 import json
 from collections import defaultdict
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeAlias
 
 if TYPE_CHECKING:
     import pandas as pd
     from datasets import Dataset
 
-    RecordInput = list[dict[str, Any]] | str | Path | pd.DataFrame | Dataset
+    RecordInput: TypeAlias = list[dict[str, Any]] | str | Path | pd.DataFrame | Dataset
 else:
-    RecordInput = Any
+    RecordInput: TypeAlias = Any
 
 # ---------------------------------------------------------------------------
 # File loaders
@@ -147,7 +147,7 @@ def _load_hf_dataset(dataset: Dataset) -> list[dict[str, Any]]:
 
 def _load_dataframe(df: pd.DataFrame) -> list[dict[str, Any]]:
     """Convert a pandas DataFrame to list[dict]."""
-    return df.to_dict("records")
+    return df.to_dict("records")  # type: ignore[return-value]
 
 
 # ---------------------------------------------------------------------------

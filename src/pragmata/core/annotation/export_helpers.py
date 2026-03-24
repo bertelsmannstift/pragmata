@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from pragmata.core.csv_io import _to_csv_value
 from pragmata.core.schemas.annotation_export import (
+    AnnotationBase,
     GenerationAnnotation,
     GroundingAnnotation,
     RetrievalAnnotation,
@@ -16,7 +17,7 @@ from pragmata.core.schemas.annotation_task import Task
 if TYPE_CHECKING:
     from pragmata.core.paths.annotation_paths import AnnotationExportPaths
 
-_TASK_SCHEMA = {
+_TASK_SCHEMA: dict[Task, type[AnnotationBase]] = {
     Task.RETRIEVAL: RetrievalAnnotation,
     Task.GROUNDING: GroundingAnnotation,
     Task.GENERATION: GenerationAnnotation,
