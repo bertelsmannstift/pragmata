@@ -20,6 +20,9 @@ class LlmSettings(BaseModel):
     realization_model: str = "mistral-medium-latest"
     base_url: str | None = None
     model_kwargs: dict[str, Any] = Field(default_factory=dict)
+    requests_per_second: float = 1.0
+    check_every_n_seconds: float = 1.0
+    max_bucket_size: int = 1
 
 
 class QueryGenRunSettings(ResolveSettings):
