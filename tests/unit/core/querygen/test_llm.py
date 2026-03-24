@@ -100,9 +100,7 @@ def test_build_llm_runnable_composes_wrappers_and_prompt(
     assert init_kwargs["temperature"] == 0
     assert isinstance(init_kwargs["rate_limiter"], InMemoryRateLimiter)
 
-    mock_llm_setup["llm"].with_structured_output.assert_called_once_with(
-        _DummyOutputSchema
-    )
+    mock_llm_setup["llm"].with_structured_output.assert_called_once_with(_DummyOutputSchema)
     mock_llm_setup["structured"].with_retry.assert_called_once()
 
     assert fake_prompt.or_operands == [mock_llm_setup["retry"]]
@@ -157,6 +155,7 @@ def test_build_llm_runnable_propagates_init_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Model initialization errors propagate during construction."""
+
     def error_init(**_: Any) -> Any:
         raise ValueError("Invalid Provider")
 
