@@ -23,16 +23,6 @@ class AnnotationExportPaths:
     grounding_csv: Path
     generation_csv: Path
 
-    @classmethod
-    def from_dir(cls, path: Path) -> Self:
-        """Build from an arbitrary directory without a WorkspacePaths."""
-        return cls(
-            export_dir=path,
-            retrieval_csv=path / "retrieval.csv",
-            grounding_csv=path / "grounding.csv",
-            generation_csv=path / "generation.csv",
-        )
-
     def ensure_dirs(self) -> Self:
         """Create the export directory scaffold."""
         self.export_dir.mkdir(parents=True, exist_ok=True)
@@ -51,11 +41,6 @@ class AnnotationImportPaths:
     import_dir: Path
     result_json: Path
 
-    @classmethod
-    def from_dir(cls, path: Path) -> Self:
-        """Build from an arbitrary directory without a WorkspacePaths."""
-        return cls(import_dir=path, result_json=path / "import_result.json")
-
     def ensure_dirs(self) -> Self:
         """Create the import directory scaffold."""
         self.import_dir.mkdir(parents=True, exist_ok=True)
@@ -72,7 +57,13 @@ def resolve_export_paths(*, workspace: WorkspacePaths, export_id: str) -> Annota
     Returns:
         Path bundle for the export run.
     """
-    return AnnotationExportPaths.from_dir(workspace.tool_root("annotation") / "exports" / export_id)
+    export_dir = workspace.tool_root("annotation") / "exports" / export_id
+    return AnnotationExportPaths(
+        export_dir=export_dir,
+        retrieval_csv=export_dir / "retrieval.csv",
+        grounding_csv=export_dir / "grounding.csv",
+        generation_csv=export_dir / "generation.csv",
+    )
 
 
 def resolve_import_paths(*, workspace: WorkspacePaths, import_id: str) -> AnnotationImportPaths:
@@ -85,4 +76,5 @@ def resolve_import_paths(*, workspace: WorkspacePaths, import_id: str) -> Annota
     Returns:
         Path bundle for the import run.
     """
-    return AnnotationImportPaths.from_dir(workspace.tool_root("annotation") / "imports" / import_id)
+    import_dir = workspace.tool_root("annotation") / "imports" / import_id
+    return AnnotationImportPaths(import_dir=import_dir, result_json=import_dir / "import_result.json")

@@ -5,8 +5,6 @@ from pathlib import Path
 import pytest
 
 from pragmata.core.paths.annotation_paths import (
-    AnnotationExportPaths,
-    AnnotationImportPaths,
     resolve_export_paths,
     resolve_import_paths,
 )
@@ -46,14 +44,6 @@ class TestAnnotationExportPaths:
         result = paths.ensure_dirs()
         assert result is paths
 
-    def test_from_dir_without_workspace(self, tmp_path: Path) -> None:
-        d = tmp_path / "some" / "arbitrary" / "dir"
-        paths = AnnotationExportPaths.from_dir(d)
-        assert paths.export_dir == d
-        assert paths.retrieval_csv == d / "retrieval.csv"
-        assert paths.grounding_csv == d / "grounding.csv"
-        assert paths.generation_csv == d / "generation.csv"
-
     def test_frozen(self, workspace: WorkspacePaths, tmp_path: Path) -> None:
         paths = resolve_export_paths(workspace=workspace, export_id="run1")
         with pytest.raises((AttributeError, TypeError)):
@@ -85,12 +75,6 @@ class TestAnnotationImportPaths:
         paths = resolve_import_paths(workspace=workspace, import_id="imp1")
         result = paths.ensure_dirs()
         assert result is paths
-
-    def test_from_dir_without_workspace(self, tmp_path: Path) -> None:
-        d = tmp_path / "imports" / "imp1"
-        paths = AnnotationImportPaths.from_dir(d)
-        assert paths.import_dir == d
-        assert paths.result_json == d / "import_result.json"
 
     def test_frozen(self, workspace: WorkspacePaths, tmp_path: Path) -> None:
         paths = resolve_import_paths(workspace=workspace, import_id="imp1")
