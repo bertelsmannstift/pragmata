@@ -2,11 +2,11 @@
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, cast
+from typing import cast
 
 import argilla as rg
 
-from pragmata.core.annotation.loaders import resolve_records
+from pragmata.core.annotation.loaders import RecordInput, resolve_records
 from pragmata.core.annotation.record_builder import (
     RecordError,
     fan_out_records,
@@ -42,7 +42,7 @@ class ImportResult:
 
 def import_records(
     client: rg.Argilla,
-    records: list[dict[str, Any]] | str | Path,
+    records: RecordInput,
     *,
     format: str = "auto",
     workspace_prefix: str | object = UNSET,

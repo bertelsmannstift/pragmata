@@ -2,33 +2,43 @@
 
 Each loader reads a source format and returns a list of raw dicts suitable
 for passing to validate_records(). Called internally by import_records()
-via _resolve_records(); not part of the public API.
+via resolve_records(); not part of the public API.
 """
+
+from __future__ import annotations
 
 import csv
 import json
 from collections import defaultdict
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    import pandas as pd
+    from datasets import Dataset
+
+    RecordInput = list[dict[str, Any]] | str | Path | pd.DataFrame | Dataset
+else:
+    RecordInput = Any
 
 # ---------------------------------------------------------------------------
 # File loaders
 # ---------------------------------------------------------------------------
 
 
-def load_json(path: Path) -> list[dict[str, Any]]:
+def _load_json(path: Path) -> list[dict[str, Any]]:
     """Load a JSON file containing an array of records."""
-    with path.open() as f:
+    with path.open(encoding="utf-8") as f:
         data = json.load(f)
     if not isinstance(data, list):
         raise ValueError(f"Expected JSON array, got {type(data).__name__}")
     return data
 
 
-def load_jsonl(path: Path) -> list[dict[str, Any]]:
+def _load_jsonl(path: Path) -> list[dict[str, Any]]:
     """Load a JSONL file — one JSON object per line."""
     records: list[dict[str, Any]] = []
-    with path.open() as f:
+    with path.open(encoding="utf-8") as f:
         for lineno, line in enumerate(f, 1):
             stripped = line.strip()
             if not stripped:
@@ -46,9 +56,9 @@ def load_jsonl(path: Path) -> list[dict[str, Any]]:
 _CHUNK_COLUMNS = {"chunk_text", "chunk_id", "doc_id", "chunk_rank"}
 
 
-def load_csv(path: Path) -> list[dict[str, Any]]:
+def _load_csv(path: Path) -> list[dict[str, Any]]:
     """Load a CSV file — supports JSON string chunks column or denormalised rows."""
-    with path.open(newline="") as f:
+    with path.open(newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         rows = list(reader)
 
@@ -91,7 +101,7 @@ def _csv_denormalised(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if has_group_key:
             key = row[group_col]
         else:
-            key = f"{row.get('query', '')}\x00{row.get('answer', '')}"
+            key = f"{row.get('query', '')}\x00{row.get('answer', '')}\x00{row.get('context_set', '')}"
         groups[key].append(row)
 
     records: list[dict[str, Any]] = []
@@ -128,15 +138,14 @@ def _parse_int(value: str | int) -> int:
 # ---------------------------------------------------------------------------
 
 
-def load_hf_dataset(dataset: Any) -> list[dict[str, Any]]:
+def _load_hf_dataset(dataset: Dataset) -> list[dict[str, Any]]:
     """Convert a HuggingFace Dataset to list[dict]."""
-    # datasets.Dataset supports iteration and to_list()
     if hasattr(dataset, "to_list"):
         return dataset.to_list()
     return [dict(row) for row in dataset]
 
 
-def load_dataframe(df: Any) -> list[dict[str, Any]]:
+def _load_dataframe(df: pd.DataFrame) -> list[dict[str, Any]]:
     """Convert a pandas DataFrame to list[dict]."""
     return df.to_dict("records")
 
@@ -146,14 +155,14 @@ def load_dataframe(df: Any) -> list[dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 _EXTENSION_LOADERS = {
-    ".json": load_json,
-    ".jsonl": load_jsonl,
-    ".csv": load_csv,
+    ".json": _load_json,
+    ".jsonl": _load_jsonl,
+    ".csv": _load_csv,
 }
 
 
 def resolve_records(
-    records: Any,
+    records: RecordInput,
     *,
     format: str = "auto",
 ) -> list[dict[str, Any]]:
@@ -175,7 +184,7 @@ def resolve_records(
         return records
 
     if isinstance(records, (str, Path)):
-        path = Path(records)
+        path = Path(records).expanduser()
         if not path.exists():
             raise FileNotFoundError(f"File not found: {path}")
 
@@ -191,10 +200,20 @@ def resolve_records(
         return loader(path)
 
     # HF Dataset — check before DataFrame since Dataset may also have to_dict
-    type_name = type(records).__name__
-    if type_name == "Dataset":
-        return load_hf_dataset(records)
-    if type_name == "DataFrame":
-        return load_dataframe(records)
+    try:
+        from datasets import Dataset as _Dataset
+
+        if isinstance(records, _Dataset):
+            return _load_hf_dataset(records)
+    except ImportError:
+        pass
+
+    try:
+        import pandas as _pd
+
+        if isinstance(records, _pd.DataFrame):
+            return _load_dataframe(records)
+    except ImportError:
+        pass
 
     raise TypeError(f"Unsupported records type: {type(records)}")
