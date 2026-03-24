@@ -2,10 +2,11 @@
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import argilla as rg
 
+from pragmata.core.annotation.loaders import resolve_records
 from pragmata.core.annotation.record_builder import (
     RecordError,
     fan_out_records,
@@ -41,15 +42,20 @@ class ImportResult:
 
 def import_records(
     client: rg.Argilla,
-    records: list[dict],
+    records: list[dict[str, Any]] | str | Path,
     *,
+    format: str = "auto",
     workspace_prefix: str | object = UNSET,
     config_path: str | Path | object = UNSET,
 ) -> ImportResult:
     """Validate and fan out records to the three Argilla annotation datasets.
 
-    Raw dicts are validated against the canonical import schema. Valid
-    records produce entries in retrieval (one per chunk), grounding
+    Accepts raw dicts, file paths (JSON, JSONL, CSV), HuggingFace Datasets,
+    or pandas DataFrames. File format is detected by extension or overridden
+    via the format kwarg. All inputs are resolved to list[dict] before
+    validation against the canonical import schema.
+
+    Valid records produce entries in retrieval (one per chunk), grounding
     (one per pair), and generation (one per pair) datasets. Validation
     failures are collected in ImportResult.errors — invalid records are
     skipped, not raised.
@@ -59,21 +65,25 @@ def import_records(
 
     Args:
         client: Connected Argilla client instance.
-        records: Raw dicts conforming to the canonical import schema.
+        records: Input data — list[dict], file path (str/Path), HF Dataset,
+            or pandas DataFrame.
+        format: File format override — 'auto' (default), 'json', 'jsonl',
+            or 'csv'. Only used for str/Path inputs.
         workspace_prefix: Prefix used when the environment was created.
         config_path: Path to YAML config file for settings resolution.
 
     Returns:
         ImportResult with totals, per-dataset counts, and validation errors.
     """
+    raw = resolve_records(records, format=format)
     settings = AnnotationSettings.resolve(
         config=load_config_file(cast("str | Path", config_path)) if config_path is not UNSET else None,
         overrides={"workspace_prefix": workspace_prefix},
     )
-    validation = validate_records(records)
+    validation = validate_records(raw)
     dataset_counts = fan_out_records(client, validation.valid, settings)
     return ImportResult(
-        total_records=len(records),
+        total_records=len(raw),
         dataset_counts=dataset_counts,
         errors=validation.errors,
     )
