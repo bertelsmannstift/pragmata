@@ -1,4 +1,4 @@
-"""Tests CLI command for synthetic generation."""
+"""Tests CLI command for synthetic query generation."""
 
 from pathlib import Path
 
@@ -61,6 +61,8 @@ def test_querygen_cli_delegates_to_public_api(monkeypatch) -> None:
             "policy analyst",
             "--run-id",
             "custom-run",
+            "--model-kwargs", 
+            '{"temperature": 0.2}',
         ],
     )
 
@@ -68,6 +70,7 @@ def test_querygen_cli_delegates_to_public_api(monkeypatch) -> None:
     assert captured["domains"] == ["public administration"]
     assert captured["roles"] == "policy analyst"
     assert captured["run_id"] == "custom-run"
+    assert captured["model_kwargs"] == {"temperature": 0.2}
 
 
 def test_querygen_cli_maps_omitted_options_to_unset(monkeypatch) -> None:
@@ -99,6 +102,7 @@ def test_querygen_cli_maps_omitted_options_to_unset(monkeypatch) -> None:
         "planning_model",
         "realization_model",
         "base_url",
+        "model_kwargs",
     }
 
     assert result.exit_code == 0

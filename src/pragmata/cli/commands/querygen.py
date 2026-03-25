@@ -10,7 +10,7 @@ app = typer.Typer(help="Synthetic query generation commands.")
 
 @app.command("gen-queries")
 def gen_queries_command(
-    domains: str | None = typer.Option(None, "--domains", help="Domain specification."),
+    domains: str | None = typer.Option(None, "--domains", help="Domain specification as text or JSON list."),
     roles: str | None = typer.Option(None, "--roles", help="Role specification."),
     languages: str | None = typer.Option(None, "--languages", help="Language specification."),
     topics: str | None = typer.Option(None, "--topics", help="Topic specification."),
@@ -35,6 +35,10 @@ def gen_queries_command(
         help="Realization model.",
     ),
     base_url: str | None = typer.Option(None, "--base-url", help="Provider base URL."),
+    model_kwargs: str | None = typer.Option(
+        None,
+        "--model-kwargs",
+        help="Additional model keyword arguments as a JSON object.",),
 ) -> None:
     """Prepare a synthetic query generation run."""
     result = querygen.gen_queries(
@@ -55,6 +59,7 @@ def gen_queries_command(
         planning_model=parse_optional_cli_value(planning_model),
         realization_model=parse_optional_cli_value(realization_model),
         base_url=parse_optional_cli_value(base_url),
+        model_kwargs=parse_optional_cli_value(model_kwargs),
     )
 
     typer.echo("Synthetic query generation run prepared.")
