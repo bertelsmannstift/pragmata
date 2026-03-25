@@ -10,18 +10,6 @@ from pragmata.core.settings.settings_base import MissingSecretError
 pytestmark = [pytest.mark.integration, pytest.mark.querygen]
 
 
-def _choice_values(items: object) -> list[str]:
-    """Extract raw values from a canonicalized weighted-choice list."""
-    return [item.value for item in items]  # type: ignore[attr-defined]
-
-
-def _domains_from_spec(spec: object) -> list[str]:
-    """Return resolved domain values across flat or nested spec variants."""
-    if hasattr(spec, "domain_context"):
-        return _choice_values(spec.domain_context.domains)  # type: ignore[attr-defined]
-    return _choice_values(spec.domains)  # type: ignore[attr-defined]
-
-
 def test_gen_queries_prepares_run_via_public_surface(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -45,9 +33,6 @@ def test_gen_queries_prepares_run_via_public_surface(
         base_dir=base_dir,
         run_id=run_id,
         n_queries=3,
-        model_provider="mistralai",
-        planning_model="magistral-medium-latest",
-        realization_model="mistral-medium-latest",
     )
 
     expected_run_dir = base_dir.resolve() / "querygen" / "runs" / run_id
@@ -61,7 +46,7 @@ def test_gen_queries_prepares_run_via_public_surface(
     assert result.settings.llm.planning_model == "magistral-medium-latest"
     assert result.settings.llm.realization_model == "mistral-medium-latest"
 
-    assert _domains_from_spec(result.settings.spec) == ["healthcare"]
+    assert [item.value for item in result.settings.spec.domain_context.domains] == ["healthcare"]
 
     assert result.paths.run_dir == expected_run_dir
     assert result.paths.synthetic_queries_csv == expected_run_dir / "synthetic_queries.csv"
