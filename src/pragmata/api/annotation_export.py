@@ -8,7 +8,7 @@ import argilla as rg
 
 from pragmata.core.annotation.export_fetcher import AnnotationModel, build_user_lookup, fetch_task
 from pragmata.core.annotation.export_helpers import ExportResult, write_export_csv
-from pragmata.core.paths.annotation_paths import resolve_export_paths
+from pragmata.core.paths.annotation_paths import AnnotationExportPaths, resolve_export_paths
 from pragmata.core.paths.paths import WorkspacePaths
 from pragmata.core.schemas.annotation_task import Task
 from pragmata.core.settings.annotation_settings import AnnotationSettings
@@ -24,7 +24,7 @@ _TASK_CSV_ATTR = {
 def _run_export(
     client: rg.Argilla,
     settings: AnnotationSettings,
-    paths: object,
+    paths: AnnotationExportPaths,
     tasks: list[Task],
 ) -> ExportResult:
     """Fetch all tasks, write CSVs atomically, return ExportResult."""
@@ -55,7 +55,7 @@ def _run_export(
                 constraint_summary[v] = constraint_summary.get(v, 0) + 1
 
     return ExportResult(
-        paths=paths,  # type: ignore[arg-type]
+        paths=paths,
         files=task_paths,
         row_counts=row_counts,
         constraint_summary=constraint_summary,
