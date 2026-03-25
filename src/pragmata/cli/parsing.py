@@ -25,7 +25,7 @@ def parse_optional_cli_value(value: str | None) -> object:
 
     if isinstance(parsed, list) and all(isinstance(item, dict) for item in parsed):
         return parsed
-    
+
     if isinstance(parsed, dict):
         return parsed
 
