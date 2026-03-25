@@ -6,8 +6,9 @@ import urllib.request
 
 import pytest
 
+pytestmark = [pytest.mark.integration, pytest.mark.annotation]
 
-@pytest.mark.integration
+
 def test_stack_boots_healthy() -> None:
     """Make setup brings all services to healthy state."""
     subprocess.run(["make", "setup"], check=True, capture_output=True, timeout=120)
@@ -18,7 +19,6 @@ def test_stack_boots_healthy() -> None:
         subprocess.run(["make", "teardown"], check=True, capture_output=True, timeout=60)
 
 
-@pytest.mark.integration
 def test_argilla_api_authenticated() -> None:
     """Argilla API responds to authenticated requests."""
     subprocess.run(["make", "setup"], check=True, capture_output=True, timeout=120)
@@ -36,7 +36,6 @@ def test_argilla_api_authenticated() -> None:
         subprocess.run(["make", "teardown"], check=True, capture_output=True, timeout=60)
 
 
-@pytest.mark.integration
 def test_teardown_removes_volumes() -> None:
     """Make teardown removes containers and volumes for clean slate."""
     subprocess.run(["make", "setup"], check=True, capture_output=True, timeout=120)

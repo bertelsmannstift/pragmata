@@ -1,6 +1,6 @@
 """Integration tests for annotation import against a live Argilla server.
 
-Run with: pytest tests/annotation/test_import_integration.py -m integration -v
+Run with: pytest tests/annotation/test_import_integration.py -m "integration and annotation" -v
 Requires: make setup (Argilla stack running on localhost:6900)
 """
 
@@ -11,6 +11,8 @@ from pragmata.api.annotation_import import ImportResult, import_records
 from pragmata.api.annotation_setup import teardown
 from pragmata.core.annotation.setup import setup_datasets
 from pragmata.core.settings.annotation_settings import AnnotationSettings
+
+pytestmark = [pytest.mark.integration, pytest.mark.annotation]
 
 _API_URL = "http://localhost:6900"
 _API_KEY = "argilla.apikey"
@@ -57,13 +59,11 @@ def sample_records() -> list[dict]:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.integration
 def test_import_result_type(client: rg.Argilla, sample_records: list[dict]) -> None:
     result = import_records(client, sample_records, workspace_prefix=_PREFIX)
     assert isinstance(result, ImportResult)
 
 
-@pytest.mark.integration
 def test_record_counts_per_dataset(client: rg.Argilla, sample_records: list[dict]) -> None:
     """Retrieval: sum(chunks), grounding: N, generation: N."""
     n_records = len(sample_records)
@@ -83,7 +83,6 @@ def test_record_counts_per_dataset(client: rg.Argilla, sample_records: list[dict
     assert result.dataset_counts[gen_ds_name] == n_records
 
 
-@pytest.mark.integration
 def test_records_exist_in_argilla(client: rg.Argilla, sample_records: list[dict]) -> None:
     """After import, all three datasets contain records."""
     import_records(client, sample_records, workspace_prefix=_PREFIX)
@@ -102,7 +101,6 @@ def test_records_exist_in_argilla(client: rg.Argilla, sample_records: list[dict]
     assert len(list(gen_ds.records)) > 0
 
 
-@pytest.mark.integration
 def test_record_uuid_linkage(client: rg.Argilla, sample_records: list[dict]) -> None:
     """record_uuid metadata appears in all three datasets and intersects."""
     import_records(client, sample_records, workspace_prefix=_PREFIX)
@@ -120,7 +118,6 @@ def test_record_uuid_linkage(client: rg.Argilla, sample_records: list[dict]) -> 
     assert len(ret_uuids) == len(sample_records)
 
 
-@pytest.mark.integration
 def test_idempotent_reimport(client: rg.Argilla, sample_records: list[dict]) -> None:
     """Calling import_records twice with same data produces same record count.
 
@@ -143,7 +140,6 @@ def test_idempotent_reimport(client: rg.Argilla, sample_records: list[dict]) -> 
     assert len(list(gen_ds.records)) == n_records
 
 
-@pytest.mark.integration
 def test_invalid_records_skipped_with_errors(client: rg.Argilla) -> None:
     """Invalid dicts are reported as errors, not sent to Argilla."""
     raw = [{"query": "no answer or chunks"}, _make_raw(1)]

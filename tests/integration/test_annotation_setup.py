@@ -1,6 +1,6 @@
 """Integration tests for annotation setup against a live Argilla server.
 
-Run with: pytest tests/integration/test_annotation_setup.py -m integration -v
+Run with: pytest tests/integration/test_annotation_setup.py -m "integration and annotation" -v
 Requires: make setup (Argilla stack running on localhost:6900)
 """
 
@@ -14,6 +14,8 @@ from pragmata.core.annotation.setup import (
     teardown_resources,
 )
 from pragmata.core.settings.annotation_settings import AnnotationSettings, UserSpec
+
+pytestmark = [pytest.mark.integration, pytest.mark.annotation]
 
 _API_URL = "http://localhost:6900"
 _API_KEY = "argilla.apikey"
@@ -40,7 +42,6 @@ def clean_slate(client: rg.Argilla):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.integration
 def test_full_setup_creates_workspaces_and_datasets(client: rg.Argilla) -> None:
     teardown_resources(client, _DEFAULT_SETTINGS)
 
@@ -69,7 +70,6 @@ def test_full_setup_creates_workspaces_and_datasets(client: rg.Argilla) -> None:
     assert result.skipped_datasets == []
 
 
-@pytest.mark.integration
 def test_dataset_field_and_question_counts(client: rg.Argilla) -> None:
     """Verify datasets have the expected schema shape from annotation-interface.md."""
     # Retrieval: 3 fields (query, chunk, generated_answer), 4 questions (3 label + 1 text)
@@ -91,14 +91,12 @@ def test_dataset_field_and_question_counts(client: rg.Argilla) -> None:
     assert len(ds3.settings.questions) == 6
 
 
-@pytest.mark.integration
 def test_dataset_min_submitted(client: rg.Argilla) -> None:
     ds1 = client.datasets("task_retrieval", workspace="retrieval")
     assert ds1 is not None
     assert ds1.settings.distribution.min_submitted == 1
 
 
-@pytest.mark.integration
 def test_idempotent_rerun(client: rg.Argilla) -> None:
     # Datasets already exist from prior test — re-run should skip all
     result = setup_datasets(client, _DEFAULT_SETTINGS)
@@ -113,7 +111,6 @@ def test_idempotent_rerun(client: rg.Argilla) -> None:
     }
 
 
-@pytest.mark.integration
 def test_user_provisioning(client: rg.Argilla) -> None:
     result = provision_users(
         client,
@@ -130,7 +127,6 @@ def test_user_provisioning(client: rg.Argilla) -> None:
     assert user is not None
 
 
-@pytest.mark.integration
 def test_user_workspace_reconciliation_on_rerun(client: rg.Argilla) -> None:
     """Rerunning provision_users assigns existing user to newly-requested workspace."""
     # First run: user in retrieval only
@@ -151,7 +147,6 @@ def test_user_workspace_reconciliation_on_rerun(client: rg.Argilla) -> None:
     assert user in ws_grounding.users
 
 
-@pytest.mark.integration
 def test_teardown_retains_user_accounts(client: rg.Argilla) -> None:
     provision_users(
         client,
@@ -171,7 +166,6 @@ def test_teardown_retains_user_accounts(client: rg.Argilla) -> None:
     assert client.users(_TEST_USER) is not None
 
 
-@pytest.mark.integration
 def test_rerun_after_teardown(client: rg.Argilla) -> None:
     result = setup_datasets(client, _DEFAULT_SETTINGS)
 
@@ -185,7 +179,6 @@ def test_rerun_after_teardown(client: rg.Argilla) -> None:
     assert result.skipped_datasets == []
 
 
-@pytest.mark.integration
 def test_prefix_support(client: rg.Argilla) -> None:
     prefixed_settings = AnnotationSettings(workspace_prefix="test")
     teardown_resources(client, prefixed_settings)
