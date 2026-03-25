@@ -1,10 +1,28 @@
-"""Path bundles for annotation export and import runs."""
+"""Path bundles for annotation import and export runs."""
 
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Self
 
 from pragmata.core.paths.paths import WorkspacePaths
+
+
+@dataclass(frozen=True, slots=True)
+class AnnotationImportPaths:
+    """Path bundle for an annotation import run.
+
+    Attributes:
+        import_dir: Root directory for the import.
+        import_result_json: Output path for the import result JSON.
+    """
+
+    import_dir: Path
+    import_result_json: Path
+
+    def ensure_dirs(self) -> Self:
+        """Create the import directory scaffold."""
+        self.import_dir.mkdir(parents=True, exist_ok=True)
+        return self
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,22 +47,18 @@ class AnnotationExportPaths:
         return self
 
 
-@dataclass(frozen=True, slots=True)
-class AnnotationImportPaths:
-    """Path bundle for an annotation import run.
+def resolve_import_paths(*, workspace: WorkspacePaths, import_id: str) -> AnnotationImportPaths:
+    """Build the path bundle for an annotation import run.
 
-    Attributes:
-        import_dir: Root directory for the import.
-        result_json: Output path for the import result JSON.
+    Args:
+        workspace: Workspace path bundle.
+        import_id: Unique import identifier.
+
+    Returns:
+        Path bundle for the import run.
     """
-
-    import_dir: Path
-    result_json: Path
-
-    def ensure_dirs(self) -> Self:
-        """Create the import directory scaffold."""
-        self.import_dir.mkdir(parents=True, exist_ok=True)
-        return self
+    import_dir = workspace.tool_root("annotation") / "imports" / import_id
+    return AnnotationImportPaths(import_dir=import_dir, import_result_json=import_dir / "import_result.json")
 
 
 def resolve_export_paths(*, workspace: WorkspacePaths, export_id: str) -> AnnotationExportPaths:
@@ -64,17 +78,3 @@ def resolve_export_paths(*, workspace: WorkspacePaths, export_id: str) -> Annota
         grounding_annotation_csv=export_dir / "grounding.csv",
         generation_annotation_csv=export_dir / "generation.csv",
     )
-
-
-def resolve_import_paths(*, workspace: WorkspacePaths, import_id: str) -> AnnotationImportPaths:
-    """Build the path bundle for an annotation import run.
-
-    Args:
-        workspace: Workspace path bundle.
-        import_id: Unique import identifier.
-
-    Returns:
-        Path bundle for the import run.
-    """
-    import_dir = workspace.tool_root("annotation") / "imports" / import_id
-    return AnnotationImportPaths(import_dir=import_dir, result_json=import_dir / "import_result.json")
