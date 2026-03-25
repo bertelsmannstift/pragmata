@@ -29,9 +29,9 @@ class TestAnnotationExportPaths:
 
     def test_csv_paths_under_export_dir(self, workspace: WorkspacePaths) -> None:
         paths = resolve_export_paths(workspace=workspace, export_id="run1")
-        assert paths.retrieval_csv == paths.export_dir / "retrieval.csv"
-        assert paths.grounding_csv == paths.export_dir / "grounding.csv"
-        assert paths.generation_csv == paths.export_dir / "generation.csv"
+        assert paths.retrieval_annotation_csv == paths.export_dir / "retrieval.csv"
+        assert paths.grounding_annotation_csv == paths.export_dir / "grounding.csv"
+        assert paths.generation_annotation_csv == paths.export_dir / "generation.csv"
 
     def test_ensure_dirs_creates_export_dir(self, workspace: WorkspacePaths) -> None:
         paths = resolve_export_paths(workspace=workspace, export_id="run1")
