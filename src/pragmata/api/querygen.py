@@ -93,7 +93,7 @@ def gen_queries(
         and filesystem paths.
     """
     settings = QueryGenRunSettings.resolve(
-        config=load_config_file(config_path) if config_path is not UNSET else None,
+        config=load_config_file(config_path) if isinstance(config_path, (str, Path)) else None,
         env=None,  # Environment-derived settings are not wired for querygen yet.
         overrides={
             "spec": {

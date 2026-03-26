@@ -76,7 +76,7 @@ def import_records(
     """
     raw = resolve_records(records, format=format)
     settings = AnnotationSettings.resolve(
-        config=load_config_file(config_path) if config_path is not UNSET else None,
+        config = load_config_file(config_path) if isinstance(config_path, (str, Path)) else None,
         overrides={"workspace_prefix": workspace_prefix},
     )
     validation = validate_records(raw)
