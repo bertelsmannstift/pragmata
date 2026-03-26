@@ -7,7 +7,18 @@ from typing import Any, Final, Self
 import yaml
 from pydantic import BaseModel, ConfigDict
 
-UNSET = object()
+
+class _UnsetType:
+    """Sentinel type representing an omitted override value."""
+
+    __slots__ = ()
+
+    def __repr__(self) -> str:
+        return "UNSET"
+
+
+UNSET: Final[_UnsetType] = _UnsetType()
+type Unset = _UnsetType
 
 
 PROVIDER_API_KEY_ENV_VARS: Final[dict[str, str]] = {
