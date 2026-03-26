@@ -51,6 +51,7 @@ def test_querygen_run_settings_construction_with_defaults() -> None:
     assert isinstance(settings.base_dir, Path)
     assert settings.run_id
     assert settings.n_queries == 50
+    assert settings.batch_size == 25
 
 
 def test_querygen_run_settings_resolve_deep_merges_nested_llm_settings() -> None:
@@ -140,3 +141,9 @@ def test_llm_settings_rejects_invalid_rate_limiter_values() -> None:
             pass
         else:
             raise AssertionError(f"Expected ValidationError for payload: {payload}")
+def test_querygen_run_settings_accepts_batch_size_override() -> None:
+    settings = QueryGenRunSettings.model_validate(
+        {"spec": _valid_spec_payload(), "batch_size": 10}
+    )
+
+    assert settings.batch_size == 10
