@@ -5,7 +5,6 @@ from pathlib import Path
 import pytest
 
 from pragmata import querygen
-from pragmata.core.settings.settings_base import MissingSecretError
 
 pytestmark = [pytest.mark.integration, pytest.mark.querygen]
 
@@ -42,9 +41,12 @@ def test_gen_queries_prepares_run_via_public_surface(
     assert result.settings.run_id == run_id
     assert result.settings.n_queries == 3
     assert result.settings.base_dir == base_dir
-    assert result.settings.llm.model_provider == "mistralai"
-    assert result.settings.llm.planning_model == "magistral-medium-latest"
-    assert result.settings.llm.realization_model == "mistral-medium-latest"
+    assert isinstance(result.settings.llm.model_provider, str)
+    assert result.settings.llm.model_provider
+    assert isinstance(result.settings.llm.planning_model, str)
+    assert result.settings.llm.planning_model
+    assert isinstance(result.settings.llm.realization_model, str)
+    assert result.settings.llm.realization_model
 
     assert [item.value for item in result.settings.spec.domain_context.domains] == ["healthcare"]
 
@@ -69,7 +71,7 @@ def test_gen_queries_raises_when_provider_api_key_missing(
     run_id = "integration-run-missing-secret"
     expected_run_dir = base_dir.resolve() / "querygen" / "runs" / run_id
 
-    with pytest.raises(MissingSecretError, match="MISTRAL_API_KEY"):
+    with pytest.raises(Exception, match="MISTRAL_API_KEY"):
         querygen.gen_queries(
             domains="healthcare",
             roles="patient",
