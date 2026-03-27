@@ -5,7 +5,7 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
-from pragmata.api.querygen import UNSET
+from pragmata.api import UNSET
 from pragmata.cli.app import app
 
 runner = CliRunner()
