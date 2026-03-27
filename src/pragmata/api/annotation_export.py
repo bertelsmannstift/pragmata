@@ -1,4 +1,4 @@
-"""Annotation export API — thin orchestration over core/ implementation."""
+"""Annotation export API — fetch submitted responses and write flat CSVs per task."""
 
 from datetime import UTC, datetime
 from pathlib import Path
