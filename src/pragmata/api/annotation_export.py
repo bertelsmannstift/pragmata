@@ -15,9 +15,9 @@ from pragmata.core.settings.annotation_settings import AnnotationSettings
 from pragmata.core.settings.settings_base import UNSET, load_config_file
 
 _TASK_CSV_ATTR = {
-    Task.RETRIEVAL: "retrieval_csv",
-    Task.GROUNDING: "grounding_csv",
-    Task.GENERATION: "generation_csv",
+    Task.RETRIEVAL: "retrieval_annotation_csv",
+    Task.GROUNDING: "grounding_annotation_csv",
+    Task.GENERATION: "generation_annotation_csv",
 }
 
 
