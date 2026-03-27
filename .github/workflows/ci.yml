@@ -29,6 +29,9 @@ jobs:
     - name: Set up Python
       run: uv python install ${{ env.PYTHON_VERSION }}
 
+    - name: Check lockfile is current
+      run: uv lock --check
+
     - name: Install lint dependencies
       run: uv sync --extra lint --frozen
 
@@ -56,6 +59,9 @@ jobs:
       - name: Set up Python
         run: uv python install ${{ env.PYTHON_VERSION }}
 
+      - name: Check lockfile is current
+        run: uv lock --check
+
       - name: Install type-check dependencies
         run: uv sync --extra type --frozen
 
@@ -79,6 +85,9 @@ jobs:
 
       - name: Set up Python
         run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Check lockfile is current
+        run: uv lock --check
 
       - name: Install test dependencies
         run: uv sync --extra test --frozen
