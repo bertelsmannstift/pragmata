@@ -5,6 +5,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import argilla as rg
+
+from pragmata.core.annotation.export_fetcher import AnnotationModel, build_user_lookup, fetch_task
 from pragmata.core.csv_io import _to_csv_value
 from pragmata.core.schemas.annotation_export import (
     AnnotationBase,
@@ -16,6 +19,13 @@ from pragmata.core.schemas.annotation_task import Task
 
 if TYPE_CHECKING:
     from pragmata.core.paths.annotation_paths import AnnotationExportPaths
+    from pragmata.core.settings.annotation_settings import AnnotationSettings
+
+_TASK_CSV_ATTR = {
+    Task.RETRIEVAL: "retrieval_annotation_csv",
+    Task.GROUNDING: "grounding_annotation_csv",
+    Task.GENERATION: "generation_annotation_csv",
+}
 
 _TASK_SCHEMA: dict[Task, type[AnnotationBase]] = {
     Task.RETRIEVAL: RetrievalAnnotation,
@@ -73,3 +83,44 @@ def write_export_csv(
     except Exception:
         tmp.unlink(missing_ok=True)
         raise
+
+
+def run_export(
+    client: rg.Argilla,
+    settings: "AnnotationSettings",
+    paths: "AnnotationExportPaths",
+    tasks: list[Task],
+) -> ExportResult:
+    """Fetch all tasks, write CSVs atomically, return ExportResult."""
+    user_lookup = build_user_lookup(client)
+
+    task_rows: dict[Task, list[tuple[AnnotationModel, list[str]]]] = {}
+    for task in tasks:
+        task_rows[task] = fetch_task(client, settings, task, user_lookup)
+
+    task_paths = {task: getattr(paths, _TASK_CSV_ATTR[task]) for task in tasks}
+
+    written: list[Path] = []
+    try:
+        for task in tasks:
+            write_export_csv(task_rows[task], task_paths[task], task)
+            written.append(task_paths[task])
+    except Exception:
+        for p in written:
+            p.unlink(missing_ok=True)
+        raise
+
+    row_counts = {task: len(task_rows[task]) for task in tasks}
+
+    constraint_summary: dict[str, int] = {}
+    for task in tasks:
+        for _, violations in task_rows[task]:
+            for v in violations:
+                constraint_summary[v] = constraint_summary.get(v, 0) + 1
+
+    return ExportResult(
+        paths=paths,
+        files=task_paths,
+        row_counts=row_counts,
+        constraint_summary=constraint_summary,
+    )
