@@ -1,6 +1,6 @@
 """Unit tests for annotation constraint validation."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from pragmata.core.annotation.constraints import (
     CONSTRAINT_CHECKERS,
@@ -15,7 +15,7 @@ from pragmata.core.schemas.annotation_export import (
 )
 from pragmata.core.schemas.annotation_task import Task
 
-_NOW = datetime(2024, 1, 1, 12, 0, 0)
+_NOW = datetime.now(tz=timezone.utc)
 
 _BASE = {
     "record_uuid": "abc123",

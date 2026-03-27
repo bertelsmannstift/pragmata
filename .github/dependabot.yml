@@ -5,6 +5,11 @@ updates:
     directory: "/"
     schedule:
       interval: "monthly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/Berlin"
+    cooldown:
+      default-days: 14
     open-pull-requests-limit: 5
     commit-message:
       prefix: "chore(deps)"
@@ -12,6 +17,7 @@ updates:
       - "dependencies"
     groups:
       minor-and-patch:
+        applies-to: version-updates
         patterns:
           - "*"
         update-types:
@@ -22,6 +28,11 @@ updates:
     directory: "/"
     schedule:
       interval: "monthly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/Berlin"
+    cooldown:
+      default-days: 14
     open-pull-requests-limit: 5
     commit-message:
       prefix: "chore(ci)"
@@ -29,6 +40,7 @@ updates:
       - "dependencies"
     groups:
       minor-and-patch:
+        applies-to: version-updates
         patterns:
           - "*"
         update-types:

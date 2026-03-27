@@ -14,7 +14,7 @@ from pragmata.core.schemas.annotation_export import (
 )
 from pragmata.core.schemas.annotation_task import Task
 
-_NOW = datetime(2024, 1, 1, 12, 0, 0)
+_NOW = datetime.now()
 
 _BASE = {
     "record_uuid": "abc123",
@@ -170,7 +170,12 @@ class TestWriteExportCsv:
 
 class TestExportResult:
     def test_constructable(self, tmp_path: Path) -> None:
-        paths = AnnotationExportPaths.from_dir(tmp_path)
+        paths = AnnotationExportPaths(
+            export_dir=tmp_path,
+            retrieval_annotation_csv=tmp_path / "retrieval.csv",
+            grounding_annotation_csv=tmp_path / "grounding.csv",
+            generation_annotation_csv=tmp_path / "generation.csv",
+        )
         result = ExportResult(
             paths=paths,
             files={Task.RETRIEVAL: tmp_path / "retrieval.csv"},
@@ -181,7 +186,12 @@ class TestExportResult:
         assert result.row_counts[Task.RETRIEVAL] == 5
 
     def test_frozen(self, tmp_path: Path) -> None:
-        paths = AnnotationExportPaths.from_dir(tmp_path)
+        paths = AnnotationExportPaths(
+            export_dir=tmp_path,
+            retrieval_annotation_csv=tmp_path / "retrieval.csv",
+            grounding_annotation_csv=tmp_path / "grounding.csv",
+            generation_annotation_csv=tmp_path / "generation.csv",
+        )
         result = ExportResult(
             paths=paths,
             files={},

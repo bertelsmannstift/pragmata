@@ -36,7 +36,11 @@ build-backend = "hatchling.build"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-markers = ["integration: mark test as requiring a live Docker/Argilla stack"]
+markers = [
+    "integration: cross-component integration tests excluded from the default test run",
+    "annotation: integration tests for the annotation interface, requiring a live Docker/Argilla stack",
+    "querygen: integration tests for synthetic query generation",
+]
 addopts = "-m 'not integration'"
 
 [tool.ruff]

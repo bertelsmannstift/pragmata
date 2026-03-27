@@ -11,7 +11,7 @@ You receive:
 
 - A structured query-generation specification describing the target query space, including semantic dimensions and \
 weighted candidate values for each dimension
-- A requested number of candidate outputs
+- A requested number of candidate outputs and a corresponding list of candidate IDs, one per output
 - A structured output schema that defines the blueprint format you must produce
 
 OUTPUT
@@ -97,14 +97,21 @@ specification
 - When multiple combinations are possible, prefer those that are both plausible and meaningfully distinct
 - Return only structured candidate blueprints conforming exactly to the output schema
 - Each blueprint must contain all required fields and no additional fields
+- Each blueprint must use exactly one of the provided candidate IDs and copy it verbatim without modification
 - Do not output explanations, reasoning, markdown, commentary, or extra keys
 - Do not output realized natural-language user queries in this stage
 """
 
-USER_PROMPT_PLANNING = """The following is the structured query-generation specification, providing the target \
-distribution for candidate query blueprints.
+USER_PROMPT_PLANNING = """CONTEXT
+
+The following is the list of candidate IDs. Each ID corresponds to exactly one candidate blueprint.
+
+- candidate_ids: {candidate_ids}
 
 QUERY-GENERATION SPECIFICATION
+
+The following is the structured query-generation specification, providing the target \
+distribution for candidate query blueprints.
 
 - Domain context:
   - domains: {domains}
@@ -127,7 +134,7 @@ QUERY-GENERATION SPECIFICATION
 
 TASK
 
-Generate {n_queries} candidate query blueprints from this specification.
+Generate {n_queries} candidate query blueprints from this specification, using exactly the provided candidate IDs.
 """
 
 SYSTEM_PROMPT_REALIZATION = """ROLE

@@ -1,14 +1,14 @@
 """API orchestration for the synthetic query generation workflow."""
 
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, PositiveInt
 
 from pragmata.core.paths.paths import WorkspacePaths
 from pragmata.core.paths.querygen_paths import QueryGenRunPaths, resolve_querygen_paths
 from pragmata.core.settings.querygen_settings import QueryGenRunSettings
-from pragmata.core.settings.settings_base import UNSET, load_config_file, resolve_provider_api_key
+from pragmata.core.settings.settings_base import UNSET, Unset, load_config_file, resolve_provider_api_key
 
 
 class QueryGenRunResult(BaseModel):
@@ -27,24 +27,24 @@ class QueryGenRunResult(BaseModel):
 
 def gen_queries(
     *,
-    domains: str | list[str] | list[dict[str, object]] | object = UNSET,
-    roles: str | list[str] | list[dict[str, object]] | object = UNSET,
-    languages: str | list[str] | list[dict[str, object]] | object = UNSET,
-    topics: str | list[str] | list[dict[str, object]] | object = UNSET,
-    intents: str | list[str] | list[dict[str, object]] | object = UNSET,
-    tasks: str | list[str] | list[dict[str, object]] | object = UNSET,
-    disallowed_topics: list[str] | object = UNSET,
-    difficulty: str | list[str] | list[dict[str, object]] | object = UNSET,
-    formats: str | list[str] | list[dict[str, object]] | object = UNSET,
-    base_dir: str | Path | object = UNSET,
-    config_path: str | Path | object = UNSET,
-    n_queries: PositiveInt | object = UNSET,
-    run_id: str | object = UNSET,
-    model_provider: str | object = UNSET,
-    planning_model: str | object = UNSET,
-    realization_model: str | object = UNSET,
-    base_url: str | object = UNSET,
-    model_kwargs: dict[str, Any] | object = UNSET,
+    domains: str | list[str] | list[dict[str, object]] | Unset = UNSET,
+    roles: str | list[str] | list[dict[str, object]] | Unset = UNSET,
+    languages: str | list[str] | list[dict[str, object]] | Unset = UNSET,
+    topics: str | list[str] | list[dict[str, object]] | Unset = UNSET,
+    intents: str | list[str] | list[dict[str, object]] | Unset = UNSET,
+    tasks: str | list[str] | list[dict[str, object]] | Unset = UNSET,
+    disallowed_topics: list[str] | Unset = UNSET,
+    difficulty: str | list[str] | list[dict[str, object]] | Unset = UNSET,
+    formats: str | list[str] | list[dict[str, object]] | Unset = UNSET,
+    base_dir: str | Path | Unset = UNSET,
+    config_path: str | Path | Unset = UNSET,
+    n_queries: PositiveInt | Unset = UNSET,
+    run_id: str | Unset = UNSET,
+    model_provider: str | Unset = UNSET,
+    planning_model: str | Unset = UNSET,
+    realization_model: str | Unset = UNSET,
+    base_url: str | Unset = UNSET,
+    model_kwargs: dict[str, Any] | Unset = UNSET,
 ) -> QueryGenRunResult:
     """Prepare a synthetic query generation run.
 
@@ -93,7 +93,7 @@ def gen_queries(
         and filesystem paths.
     """
     settings = QueryGenRunSettings.resolve(
-        config=load_config_file(cast(str | Path, config_path)) if config_path is not UNSET else None,
+        config=load_config_file(config_path) if isinstance(config_path, (str, Path)) else None,
         env=None,  # Environment-derived settings are not wired for querygen yet.
         overrides={
             "spec": {
