@@ -1,6 +1,6 @@
 """Integration tests for annotation import against a live Argilla server.
 
-Run with: pytest tests/annotation/test_import_integration.py -m "integration and annotation" -v
+Run with: pytest tests/integration/test_annotation_import.py -m "integration and annotation" -v
 Requires: make setup (Argilla stack running on localhost:6900)
 """
 
