@@ -2,7 +2,6 @@
 
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import cast
 
 import argilla as rg
 
@@ -12,7 +11,7 @@ from pragmata.core.paths.annotation_paths import AnnotationExportPaths, resolve_
 from pragmata.core.paths.paths import WorkspacePaths
 from pragmata.core.schemas.annotation_task import Task
 from pragmata.core.settings.annotation_settings import AnnotationSettings
-from pragmata.core.settings.settings_base import UNSET, load_config_file
+from pragmata.core.settings.settings_base import UNSET, Unset, load_config_file
 
 _TASK_CSV_ATTR = {
     Task.RETRIEVAL: "retrieval_annotation_csv",
@@ -66,10 +65,10 @@ def export_annotations(
     client: rg.Argilla,
     workspace: WorkspacePaths,
     *,
-    export_id: str | object = UNSET,
+    export_id: str | Unset = UNSET,
     tasks: list[Task] | None = None,
-    workspace_prefix: str | object = UNSET,
-    config_path: str | Path | object = UNSET,
+    workspace_prefix: str | Unset = UNSET,
+    config_path: str | Path | Unset = UNSET,
 ) -> ExportResult:
     """Fetch submitted annotations from Argilla and write flat CSVs per task.
 
@@ -89,7 +88,7 @@ def export_annotations(
         ExportResult with file paths, row counts, and constraint summary.
     """
     settings = AnnotationSettings.resolve(
-        config=load_config_file(cast("str | Path", config_path)) if config_path is not UNSET else None,
+        config=load_config_file(config_path) if isinstance(config_path, (str, Path)) else None,
         overrides={"workspace_prefix": workspace_prefix},
     )
 
@@ -98,7 +97,7 @@ def export_annotations(
         prefix = settings.workspace_prefix
         resolved_id = f"{prefix}_{ts}" if prefix else ts
     else:
-        resolved_id = cast(str, export_id)
+        resolved_id = str(export_id)
 
     paths = resolve_export_paths(workspace=workspace, export_id=resolved_id).ensure_dirs()
     resolved_tasks = tasks if tasks is not None else list(Task)
