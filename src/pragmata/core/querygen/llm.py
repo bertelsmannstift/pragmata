@@ -9,6 +9,14 @@ from langchain_core.runnables.base import RunnableSerializable
 
 from pragmata.core.types import M
 
+_RESERVED_MODEL_KWARGS = {
+    "api_key",
+    "base_url",
+    "model",
+    "model_provider",
+    "rate_limiter",
+}
+
 
 def _build_prompt_template(
     *,
@@ -65,6 +73,14 @@ def build_llm_runnable(
         A composed LangChain runnable that accepts prompt variables and returns
         structured output validated against ``output_schema``.
     """
+    overlapping_keys = _RESERVED_MODEL_KWARGS.intersection(model_kwargs)
+    if overlapping_keys:
+        overlapping = ", ".join(sorted(overlapping_keys))
+        raise ValueError(
+            f"model_kwargs must not override core LLM settings: {overlapping}. "
+            "Pass these via dedicated arguments instead."
+        )
+
     init_kwargs: dict[str, Any] = {
         "model": model,
         "model_provider": model_provider,
