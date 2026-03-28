@@ -176,6 +176,7 @@ def test_build_llm_runnable_propagates_init_error(
             model_kwargs={},
         )
 
+
 @pytest.mark.parametrize(
     "reserved_key",
     ["api_key", "base_url", "model", "model_provider", "rate_limiter"],

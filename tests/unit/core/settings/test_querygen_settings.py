@@ -2,6 +2,7 @@
 
 from pathlib import Path
 from typing import Any
+
 from pydantic import ValidationError
 
 from pragmata.core.settings.querygen_settings import LlmSettings, QueryGenRunSettings
@@ -119,6 +120,7 @@ def test_querygen_run_settings_model_kwargs_merge_semantics() -> None:
         "top_p": 0.9,
         "max_tokens": 300,
     }
+
 
 def test_llm_settings_rejects_invalid_rate_limiter_values() -> None:
     """LlmSettings rejects invalid rate limiter configuration values."""
