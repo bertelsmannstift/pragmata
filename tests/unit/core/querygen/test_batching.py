@@ -86,3 +86,29 @@ def test_chunk_blueprints_rejects_non_positive_chunk_size(
 ) -> None:
     with pytest.raises(ValueError, match="chunk_size must be greater than 0"):
         list(chunk_blueprints(blueprint_list, 0))
+
+
+def test_build_candidate_ids_returns_empty_list_for_zero_queries() -> None:
+    assert build_candidate_ids(0) == []
+
+
+def test_build_candidate_ids_rejects_negative_query_count() -> None:
+    with pytest.raises(ValueError, match="n_queries must be non-negative"):
+        build_candidate_ids(-1)
+
+
+def test_iter_batch_sizes_rejects_negative_query_count() -> None:
+    with pytest.raises(ValueError, match="n_queries must be non-negative"):
+        list(iter_batch_sizes(-1, 3))
+
+
+def test_iter_batch_sizes_rejects_non_positive_batch_size() -> None:
+    with pytest.raises(ValueError, match="batch_size must be greater than 0"):
+        list(iter_batch_sizes(5, 0))
+
+
+def test_chunk_blueprints_rejects_negative_chunk_size(
+    blueprint_list: list[QueryBlueprint],
+) -> None:
+    with pytest.raises(ValueError, match="chunk_size must be greater than 0"):
+        list(chunk_blueprints(blueprint_list, -1))

@@ -91,3 +91,25 @@ def test_gen_queries_accepts_batch_size_override(tmp_path: Path) -> None:
     )
 
     assert result.settings.batch_size == 7
+
+
+def test_gen_queries_batch_size_arg_overrides_config_value(tmp_path: Path) -> None:
+    """Explicit batch_size arg takes precedence over config batch_size."""
+    config_path = tmp_path / "querygen.yml"
+    config_path.write_text(
+        (
+            "llm:\n"
+            "  model_provider: mistralai\n"
+            "batch_size: 12\n"
+        ),
+        encoding="utf-8",
+    )
+
+    result = gen_queries(
+        **_required_querygen_kwargs(tmp_path),
+        config_path=config_path,
+        batch_size=7,
+        run_id="batch-size-precedence-check",
+    )
+
+    assert result.settings.batch_size == 7

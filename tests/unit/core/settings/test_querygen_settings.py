@@ -147,3 +147,18 @@ def test_querygen_run_settings_accepts_batch_size_override() -> None:
     )
 
     assert settings.batch_size == 10
+
+
+def test_querygen_run_settings_resolve_batch_size_override_precedence() -> None:
+    """Resolve applies explicit batch_size overrides over config values."""
+    resolved = QueryGenRunSettings.resolve(
+        config={
+            "spec": _valid_spec_payload(),
+            "batch_size": 12,
+        },
+        overrides={
+            "batch_size": 7,
+        },
+    )
+
+    assert resolved.batch_size == 7
