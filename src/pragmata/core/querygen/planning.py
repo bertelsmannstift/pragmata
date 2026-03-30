@@ -1,6 +1,6 @@
 """Stage-1 planning executor for synthetic query generation."""
 
-from pragmata.core.querygen.llm import build_llm_runnable
+from pragmata.core.querygen.llm import build_llm_runnable, LlmInitializationError
 from pragmata.core.querygen.prompts import SYSTEM_PROMPT_PLANNING, USER_PROMPT_PLANNING
 from pragmata.core.schemas.querygen_input import QueryGenSpec, WeightedValue
 from pragmata.core.schemas.querygen_plan import QueryBlueprint, QueryBlueprintList
@@ -96,22 +96,23 @@ def run_planning_stage(
         batch_candidate_ids=batch_candidate_ids,
     )
 
-    llm_runnable = build_llm_runnable(
-        system_text=SYSTEM_PROMPT_PLANNING,
-        user_text=USER_PROMPT_PLANNING,
-        model_provider=llm_settings.model_provider,
-        model=llm_settings.planning_model,
-        api_key=api_key,
-        output_schema=QueryBlueprintList,
-        requests_per_second=llm_settings.requests_per_second,
-        check_every_n_seconds=llm_settings.check_every_n_seconds,
-        max_bucket_size=llm_settings.max_bucket_size,
-        base_url=llm_settings.base_url,
-        model_kwargs=llm_settings.model_kwargs,
-    )
-
     try:
+        llm_runnable = build_llm_runnable(
+            system_text=SYSTEM_PROMPT_PLANNING,
+            user_text=USER_PROMPT_PLANNING,
+            model_provider=llm_settings.model_provider,
+            model=llm_settings.planning_model,
+            api_key=api_key,
+            output_schema=QueryBlueprintList,
+            requests_per_second=llm_settings.requests_per_second,
+            check_every_n_seconds=llm_settings.check_every_n_seconds,
+            max_bucket_size=llm_settings.max_bucket_size,
+            base_url=llm_settings.base_url,
+            model_kwargs=llm_settings.model_kwargs,
+        )
         llm_output = llm_runnable.invoke(prompt_vars)
+    except LlmInitializationError:
+        raise
     except Exception as exc:
         raise PlanningStageError("Planning stage invocation failed.") from exc
 
