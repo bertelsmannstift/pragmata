@@ -43,6 +43,9 @@ def gen_queries(
     model_provider: str | Unset = UNSET,
     planning_model: str | Unset = UNSET,
     realization_model: str | Unset = UNSET,
+    requests_per_second: float | Unset = UNSET,
+    check_every_n_seconds: float | Unset = UNSET,
+    max_bucket_size: int | Unset = UNSET,
     base_url: str | Unset = UNSET,
     model_kwargs: dict[str, Any] | Unset = UNSET,
 ) -> QueryGenRunResult:
@@ -83,6 +86,11 @@ def gen_queries(
             "magistral-medium-latest".
         realization_model: Model identifier for the realization stage. Defaults
             to "mistral-medium-latest".
+        requests_per_second: Maximum number of llm requests per second allowed by the
+            in-memory rate limiter. Defaults to 1.0.
+        check_every_n_seconds: Interval in seconds at which the llm rate limiter checks
+            for available capacity. Defaults to 1.0.
+        max_bucket_size: Maximum burst size for the llm rate limiter. Defaults to 1.
         base_url: Optional custom API endpoint for the provider (e.g., Azure
             OpenAI deployments).
         model_kwargs: Additional provider-specific keyword arguments passed
@@ -121,6 +129,9 @@ def gen_queries(
                 "model_provider": model_provider,
                 "planning_model": planning_model,
                 "realization_model": realization_model,
+                "requests_per_second": requests_per_second,
+                "check_every_n_seconds": check_every_n_seconds,
+                "max_bucket_size": max_bucket_size,
                 "base_url": base_url,
                 "model_kwargs": model_kwargs,
             },
