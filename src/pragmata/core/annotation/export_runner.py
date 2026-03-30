@@ -1,7 +1,8 @@
-"""Export CSV writer with post-hoc constraint columns and ExportResult type."""
+"""Annotation export orchestration: fetch from Argilla, write CSVs, return ExportResult."""
 
 import csv
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -9,6 +10,7 @@ import argilla as rg
 
 from pragmata.core.annotation.export_fetcher import AnnotationModel, build_user_lookup, fetch_task
 from pragmata.core.csv_io import _to_csv_value
+from pragmata.core.paths.annotation_paths import AnnotationExportPaths, resolve_export_paths
 from pragmata.core.schemas.annotation_export import (
     AnnotationBase,
     GenerationAnnotation,
@@ -16,9 +18,10 @@ from pragmata.core.schemas.annotation_export import (
     RetrievalAnnotation,
 )
 from pragmata.core.schemas.annotation_task import Task
+from pragmata.core.settings.settings_base import UNSET, Unset
 
 if TYPE_CHECKING:
-    from pragmata.core.paths.annotation_paths import AnnotationExportPaths
+    from pragmata.core.paths.paths import WorkspacePaths
     from pragmata.core.settings.annotation_settings import AnnotationSettings
 
 _TASK_CSV_ATTR = {
@@ -42,10 +45,10 @@ class ExportResult:
         paths: Path bundle used for this export.
         files: Mapping of task to written CSV file path.
         row_counts: Number of rows written per task.
-        constraint_summary: Violation count per rule name.
+        constraint_summary: Violation count per rule name (namespaced by task).
     """
 
-    paths: "AnnotationExportPaths"
+    paths: AnnotationExportPaths
     files: dict[Task, Path]
     row_counts: dict[Task, int]
     constraint_summary: dict[str, int]
@@ -88,10 +91,18 @@ def write_export_csv(
 def run_export(
     client: rg.Argilla,
     settings: "AnnotationSettings",
-    paths: "AnnotationExportPaths",
+    workspace: "WorkspacePaths",
     tasks: list[Task],
+    export_id: str | Unset = UNSET,
 ) -> ExportResult:
-    """Fetch all tasks, write CSVs atomically, return ExportResult."""
+    """Resolve export ID, fetch all tasks, write CSVs atomically, return ExportResult."""
+    if not tasks:
+        paths = resolve_export_paths(workspace=workspace, export_id=_resolve_export_id(settings, export_id))
+        return ExportResult(paths=paths, files={}, row_counts={}, constraint_summary={})
+
+    resolved_id = _resolve_export_id(settings, export_id)
+    paths = resolve_export_paths(workspace=workspace, export_id=resolved_id).ensure_dirs()
+
     user_lookup = build_user_lookup(client)
 
     task_rows: dict[Task, list[tuple[AnnotationModel, list[str]]]] = {}
@@ -124,3 +135,11 @@ def run_export(
         row_counts=row_counts,
         constraint_summary=constraint_summary,
     )
+
+
+def _resolve_export_id(settings: "AnnotationSettings", export_id: str | Unset) -> str:
+    if isinstance(export_id, str):
+        return export_id
+    ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
+    prefix = settings.workspace_prefix
+    return f"{prefix}_{ts}" if prefix else ts
