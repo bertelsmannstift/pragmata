@@ -141,10 +141,10 @@ def test_llm_settings_rejects_invalid_rate_limiter_values() -> None:
             pass
         else:
             raise AssertionError(f"Expected ValidationError for payload: {payload}")
+
+
 def test_querygen_run_settings_accepts_batch_size_override() -> None:
-    settings = QueryGenRunSettings.model_validate(
-        {"spec": _valid_spec_payload(), "batch_size": 10}
-    )
+    settings = QueryGenRunSettings.model_validate({"spec": _valid_spec_payload(), "batch_size": 10})
 
     assert settings.batch_size == 10
 

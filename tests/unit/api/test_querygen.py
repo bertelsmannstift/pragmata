@@ -97,11 +97,7 @@ def test_gen_queries_batch_size_arg_overrides_config_value(tmp_path: Path) -> No
     """Explicit batch_size arg takes precedence over config batch_size."""
     config_path = tmp_path / "querygen.yml"
     config_path.write_text(
-        (
-            "llm:\n"
-            "  model_provider: mistralai\n"
-            "batch_size: 12\n"
-        ),
+        ("llm:\n  model_provider: mistralai\nbatch_size: 12\n"),
         encoding="utf-8",
     )
 
