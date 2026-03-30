@@ -1,4 +1,4 @@
-"""Run settings models for synthetic query generation."""
+"""Synthetic query generation run settings."""
 
 from pathlib import Path
 from typing import Any
