@@ -1,6 +1,6 @@
 """Stage-1 planning executor for synthetic query generation."""
 
-from pragmata.core.querygen.llm import build_llm_runnable, LlmInitializationError
+from pragmata.core.querygen.llm import LlmInitializationError, build_llm_runnable
 from pragmata.core.querygen.prompts import SYSTEM_PROMPT_PLANNING, USER_PROMPT_PLANNING
 from pragmata.core.schemas.querygen_input import QueryGenSpec, WeightedValue
 from pragmata.core.schemas.querygen_plan import QueryBlueprint, QueryBlueprintList
