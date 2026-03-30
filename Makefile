@@ -2,44 +2,34 @@ COMPOSE_FILE := deploy/annotation/docker-compose.dev.yml
 ENV_FILE     := deploy/annotation/.env
 ENV_EXAMPLE  := deploy/annotation/.env.dev.example
 
-.PHONY: docker-up docker-up-external-pg docker-up-external-es docker-up-external docker-down docker-stop docker-logs docker-status test-stack test test-integration test-all
+.PHONY: docker-up docker-up-external-pg docker-up-external-es docker-up-external docker-down docker-stop docker-logs docker-status ensure-env test-stack test test-integration test-all
 
 # Profiles: all-bundled (default), external-pg (ext Postgres), external-es (ext ES), no profile (all external)
 ALL_PROFILES := --profile all-bundled --profile external-pg --profile external-es
 
 # ── Docker / Argilla stack ───────────────────────────────────────────
 
-docker-up: ## Start Argilla stack (all services bundled)
+ensure-env:
 	@if [ ! -f $(ENV_FILE) ]; then \
 		echo "Copying $(ENV_EXAMPLE) to $(ENV_FILE)"; \
 		cp $(ENV_EXAMPLE) $(ENV_FILE); \
 	fi
+
+docker-up: ensure-env ## Start Argilla stack (all services bundled)
 	docker compose -f $(COMPOSE_FILE) --env-file $(ENV_FILE) --profile all-bundled up -d --pull always --wait
 	@echo "Argilla is up at http://localhost:6900"
 
-docker-up-external-pg: ## Start Argilla stack with external Postgres (ES + Redis bundled)
-	@if [ ! -f $(ENV_FILE) ]; then \
-		echo "Copying $(ENV_EXAMPLE) to $(ENV_FILE)"; \
-		cp $(ENV_EXAMPLE) $(ENV_FILE); \
-	fi
+docker-up-external-pg: ensure-env ## Start Argilla stack with external Postgres (ES + Redis bundled)
 	docker compose -f $(COMPOSE_FILE) --env-file $(ENV_FILE) --profile external-pg up -d --pull always --wait
-	@echo "Argilla is up (external Postgres, bundled ES + Redis)"
+	@echo "Argilla is up at http://localhost:6900 (external Postgres, bundled ES + Redis)"
 
-docker-up-external-es: ## Start Argilla stack with external Elasticsearch (Postgres + Redis bundled)
-	@if [ ! -f $(ENV_FILE) ]; then \
-		echo "Copying $(ENV_EXAMPLE) to $(ENV_FILE)"; \
-		cp $(ENV_EXAMPLE) $(ENV_FILE); \
-	fi
+docker-up-external-es: ensure-env ## Start Argilla stack with external Elasticsearch (Postgres + Redis bundled)
 	docker compose -f $(COMPOSE_FILE) --env-file $(ENV_FILE) --profile external-es up -d --pull always --wait
-	@echo "Argilla is up (external Elasticsearch, bundled Postgres + Redis)"
+	@echo "Argilla is up at http://localhost:6900 (external Elasticsearch, bundled Postgres + Redis)"
 
-docker-up-external: ## Start Argilla stack with all external backing services
-	@if [ ! -f $(ENV_FILE) ]; then \
-		echo "Copying $(ENV_EXAMPLE) to $(ENV_FILE)"; \
-		cp $(ENV_EXAMPLE) $(ENV_FILE); \
-	fi
-	docker compose -f $(COMPOSE_FILE) --env-file $(ENV_FILE) up -d --pull always --wait
-	@echo "Argilla is up (all external backing services)"
+docker-up-external: ensure-env ## Start Argilla stack with all external backing services
+	docker compose -f $(COMPOSE_FILE) --env-file $(ENV_FILE) up -d --pull always --wait --remove-orphans
+	@echo "Argilla is up at http://localhost:6900 (all external backing services)"
 
 docker-down: ## Stop stack and remove volumes
 	docker compose -f $(COMPOSE_FILE) --env-file $(ENV_FILE) $(ALL_PROFILES) down -v
