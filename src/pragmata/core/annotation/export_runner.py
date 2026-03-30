@@ -10,7 +10,7 @@ import argilla as rg
 
 from pragmata.core.annotation.export_fetcher import AnnotationModel, build_user_lookup, fetch_task
 from pragmata.core.csv_io import _to_csv_value
-from pragmata.core.paths.annotation_paths import AnnotationExportPaths, resolve_export_paths
+from pragmata.core.paths.annotation_paths import AnnotationExportPaths
 from pragmata.core.schemas.annotation_export import (
     AnnotationBase,
     GenerationAnnotation,
@@ -18,10 +18,8 @@ from pragmata.core.schemas.annotation_export import (
     RetrievalAnnotation,
 )
 from pragmata.core.schemas.annotation_task import Task
-from pragmata.core.settings.settings_base import UNSET, Unset
 
 if TYPE_CHECKING:
-    from pragmata.core.paths.paths import WorkspacePaths
     from pragmata.core.settings.annotation_settings import AnnotationSettings
 
 _TASK_CSV_ATTR = {
@@ -91,17 +89,12 @@ def write_export_csv(
 def run_export(
     client: rg.Argilla,
     settings: "AnnotationSettings",
-    workspace: "WorkspacePaths",
+    paths: AnnotationExportPaths,
     tasks: list[Task],
-    export_id: str | Unset = UNSET,
 ) -> ExportResult:
-    """Resolve export ID, fetch all tasks, write CSVs atomically, return ExportResult."""
+    """Fetch all tasks, write CSVs atomically, return ExportResult."""
     if not tasks:
-        paths = resolve_export_paths(workspace=workspace, export_id=_resolve_export_id(settings, export_id))
         return ExportResult(paths=paths, files={}, row_counts={}, constraint_summary={})
-
-    resolved_id = _resolve_export_id(settings, export_id)
-    paths = resolve_export_paths(workspace=workspace, export_id=resolved_id).ensure_dirs()
 
     user_lookup = build_user_lookup(client)
 
@@ -137,8 +130,9 @@ def run_export(
     )
 
 
-def _resolve_export_id(settings: "AnnotationSettings", export_id: str | Unset) -> str:
-    if isinstance(export_id, str):
+def resolve_export_id(settings: "AnnotationSettings", export_id: str | None) -> str:
+    """Derive a run identifier from an explicit value or generate one from prefix + timestamp."""
+    if export_id is not None:
         return export_id
     ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
     prefix = settings.workspace_prefix

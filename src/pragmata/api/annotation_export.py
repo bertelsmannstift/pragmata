@@ -4,7 +4,8 @@ from pathlib import Path
 
 import argilla as rg
 
-from pragmata.core.annotation.export_runner import ExportResult, run_export
+from pragmata.core.annotation.export_runner import ExportResult, resolve_export_id, run_export
+from pragmata.core.paths.annotation_paths import resolve_export_paths
 from pragmata.core.paths.paths import WorkspacePaths
 from pragmata.core.schemas.annotation_task import Task
 from pragmata.core.settings.annotation_settings import AnnotationSettings
@@ -41,7 +42,9 @@ def export_annotations(
         config=load_config_file(config_path) if isinstance(config_path, (str, Path)) else None,
         overrides={"workspace_prefix": workspace_prefix, "base_dir": base_dir},
     )
+    resolved_id = resolve_export_id(settings, export_id if isinstance(export_id, str) else None)
     workspace = WorkspacePaths.from_base_dir(settings.base_dir)
+    paths = resolve_export_paths(workspace=workspace, export_id=resolved_id).ensure_dirs()
     resolved_tasks = tasks if tasks is not None else list(Task)
 
-    return run_export(client, settings, workspace, resolved_tasks, export_id)
+    return run_export(client, settings, paths, resolved_tasks)
