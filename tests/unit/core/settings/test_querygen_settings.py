@@ -3,6 +3,8 @@
 from pathlib import Path
 from typing import Any
 
+from pydantic import ValidationError
+
 from pragmata.core.settings.querygen_settings import LlmSettings, QueryGenRunSettings
 
 
@@ -33,6 +35,9 @@ def test_llm_settings_defaults() -> None:
     assert settings.realization_model == "mistral-medium-latest"
     assert settings.base_url is None
     assert settings.model_kwargs == {}
+    assert settings.requests_per_second == 1.0
+    assert settings.check_every_n_seconds == 1.0
+    assert settings.max_bucket_size == 1
 
 
 def test_querygen_run_settings_construction_with_defaults() -> None:
@@ -115,3 +120,23 @@ def test_querygen_run_settings_model_kwargs_merge_semantics() -> None:
         "top_p": 0.9,
         "max_tokens": 300,
     }
+
+
+def test_llm_settings_rejects_invalid_rate_limiter_values() -> None:
+    """LlmSettings rejects invalid rate limiter configuration values."""
+    invalid_payloads = [
+        {"requests_per_second": 0},
+        {"requests_per_second": -1.0},
+        {"check_every_n_seconds": 0},
+        {"check_every_n_seconds": -0.5},
+        {"max_bucket_size": 0},
+        {"max_bucket_size": -1},
+    ]
+
+    for payload in invalid_payloads:
+        try:
+            LlmSettings.model_validate(payload)
+        except ValidationError:
+            pass
+        else:
+            raise AssertionError(f"Expected ValidationError for payload: {payload}")
