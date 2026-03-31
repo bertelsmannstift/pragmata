@@ -1,11 +1,12 @@
 """Parsing helpers for CLI option values."""
 
 import json
+from typing import Any
 
 from pragmata.api import UNSET
 
 
-def parse_cli_value(value: str | None) -> object:
+def parse_cli_value(value: str | None) -> Any:
     """Normalize a CLI option value into an API-ready value.
 
     Omitted CLI values are converted to the UNSET sentinel.

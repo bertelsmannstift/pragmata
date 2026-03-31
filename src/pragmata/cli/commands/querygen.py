@@ -42,7 +42,7 @@ def gen_queries_command(
     config_path: str | None = typer.Option(
         None, "--config-path", help="Path to the config file. Accepts a path string."
     ),
-    n_queries: str | None = typer.Option(
+    n_queries: int | None = typer.Option(
         None, "--n-queries", help="Number of queries to generate. Accepts an integer."
     ),
     run_id: str | None = typer.Option(None, "--run-id", help="Identifier for the run. Accepts a string."),
