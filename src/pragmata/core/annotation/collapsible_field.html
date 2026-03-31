@@ -27,7 +27,8 @@
 </details>
 <script>
   var field = record.fields["$field_name"];
-  document.getElementById("content").textContent = field || "";
+  var text = (typeof field === "object" && field !== null) ? (field.text || "") : (field || "");
+  document.getElementById("content").textContent = text;
   document.getElementById("wrapper").addEventListener("toggle", function () {
     parent.postMessage({ type: "resize" }, "*");
   });
