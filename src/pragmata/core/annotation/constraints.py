@@ -19,9 +19,9 @@ def check_retrieval(row: RetrievalAnnotation) -> list[str]:
     """
     violations: list[str] = []
     if row.evidence_sufficient and not row.topically_relevant:
-        violations.append("evidence_sufficient=True but topically_relevant=False")
+        violations.append("retrieval: evidence_sufficient=True but topically_relevant=False")
     if row.evidence_sufficient and row.misleading:
-        violations.append("evidence_sufficient=True but misleading=True")
+        violations.append("retrieval: evidence_sufficient=True but misleading=True")
     return violations
 
 
@@ -34,9 +34,9 @@ def check_grounding(row: GroundingAnnotation) -> list[str]:
     """
     violations: list[str] = []
     if row.contradicted_claim_present and not row.unsupported_claim_present:
-        violations.append("contradicted_claim_present=True but unsupported_claim_present=False")
+        violations.append("grounding: contradicted_claim_present=True but unsupported_claim_present=False")
     if row.fabricated_source and not row.source_cited:
-        violations.append("fabricated_source=True but source_cited=False")
+        violations.append("grounding: fabricated_source=True but source_cited=False")
     return violations
 
 
