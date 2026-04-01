@@ -5,6 +5,7 @@ from pathlib import Path
 
 import argilla as rg
 
+from pragmata.api._error_log import error_log
 from pragmata.core.annotation.export_runner import ExportResult, resolve_export_id, run_export
 from pragmata.core.paths.annotation_paths import resolve_export_paths
 from pragmata.core.paths.paths import WorkspacePaths
@@ -50,7 +51,9 @@ def export_annotations(
     paths = resolve_export_paths(workspace=workspace, export_id=resolved_id).ensure_dirs()
     resolved_tasks = tasks if tasks is not None else list(Task)
 
-    result = run_export(client, settings, paths, resolved_tasks)
+    with error_log(settings.base_dir):
+        result = run_export(client, settings, paths, resolved_tasks)
+
     logger.info(
         "Export complete: %d task(s), %d total rows",
         len(result.row_counts),

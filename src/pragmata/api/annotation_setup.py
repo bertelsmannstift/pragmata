@@ -5,6 +5,7 @@ from pathlib import Path
 
 import argilla as rg
 
+from pragmata.api._error_log import error_log
 from pragmata.core.annotation.setup import SetupResult, provision_users, setup_datasets, teardown_resources
 from pragmata.core.settings.annotation_settings import AnnotationSettings, UserSpec
 from pragmata.core.settings.settings_base import UNSET, Unset, load_config_file
@@ -18,6 +19,7 @@ def setup(
     *,
     workspace_prefix: str | Unset = UNSET,
     min_submitted: int | Unset = UNSET,
+    base_dir: str | Path | Unset = UNSET,
     config_path: str | Path | Unset = UNSET,
 ) -> SetupResult:
     """Create the full Argilla annotation environment idempotently.
@@ -34,6 +36,7 @@ def setup(
         users: User accounts to provision. Pass None to skip user setup.
         workspace_prefix: Prefix prepended to workspace and dataset names.
         min_submitted: Minimum annotations required per record.
+        base_dir: Workspace base directory. Defaults to cwd.
         config_path: Path to YAML config file for settings resolution.
 
     Returns:
@@ -44,10 +47,12 @@ def setup(
         overrides={
             "workspace_prefix": workspace_prefix,
             "min_submitted": min_submitted,
+            "base_dir": base_dir,
         },
     )
-    ds_result = setup_datasets(client, settings)
-    user_result = provision_users(client, users or [], settings)
+    with error_log(settings.base_dir):
+        ds_result = setup_datasets(client, settings)
+        user_result = provision_users(client, users or [], settings)
     merged = ds_result.merge(user_result)
     logger.info(
         "Setup complete: %d workspaces, %d datasets, %d users created",
@@ -62,6 +67,7 @@ def teardown(
     client: rg.Argilla,
     *,
     workspace_prefix: str | Unset = UNSET,
+    base_dir: str | Path | Unset = UNSET,
     config_path: str | Path | Unset = UNSET,
 ) -> None:
     """Remove the Argilla annotation environment.
@@ -73,11 +79,13 @@ def teardown(
     Args:
         client: Connected Argilla client instance.
         workspace_prefix: Prefix used when the environment was created.
+        base_dir: Workspace base directory. Defaults to cwd.
         config_path: Path to YAML config file for settings resolution.
     """
     settings = AnnotationSettings.resolve(
         config=load_config_file(config_path) if isinstance(config_path, (str, Path)) else None,
-        overrides={"workspace_prefix": workspace_prefix},
+        overrides={"workspace_prefix": workspace_prefix, "base_dir": base_dir},
     )
     logger.info("Starting teardown (prefix=%r)", settings.workspace_prefix)
-    teardown_resources(client, settings)
+    with error_log(settings.base_dir):
+        teardown_resources(client, settings)
