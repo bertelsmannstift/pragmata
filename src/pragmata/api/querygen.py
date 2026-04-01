@@ -48,6 +48,7 @@ def gen_queries(
     max_bucket_size: int | Unset = UNSET,
     base_url: str | Unset = UNSET,
     model_kwargs: dict[str, Any] | Unset = UNSET,
+    batch_size: PositiveInt | Unset = UNSET,
 ) -> QueryGenRunResult:
     """Prepare a synthetic query generation run.
 
@@ -77,6 +78,9 @@ def gen_queries(
             current working directory.
         config_path: Path to a YAML configuration file.
         n_queries: Number of queries to prepare. Defaults to 50.
+        batch_size: Number of queries to generate per LLM call. Larger
+            values use fewer, bigger calls; smaller values split
+            generation into more repeated calls. Defaults to 25.
         run_id: Explicit run identifier. Defaults to an auto-generated UUID
             hex string.
         model_provider: Chat model provider to use. Defaults to "mistralai".
@@ -138,6 +142,7 @@ def gen_queries(
             "base_dir": base_dir,
             "run_id": run_id,
             "n_queries": n_queries,
+            "batch_size": batch_size,
         },
     )
 
