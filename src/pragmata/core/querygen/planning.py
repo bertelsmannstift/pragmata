@@ -22,7 +22,7 @@ def _format_weighted_values(values: list[WeightedValue] | None) -> str:
     Returns:
         A human-readable string representation suitable for prompt variables.
     """
-    if values is None:
+    if not values:
         return _UNSPECIFIED
 
     return ", ".join(f"{item.value} (weight={item.weight:g})" for item in values)

@@ -334,7 +334,7 @@ def test_run_planning_stage_wraps_invoke_failures(
         )
 
 
-def test_run_planning_stage_wraps_prompt_var_construction_failures(
+def test_run_planning_stage_propagates_empty_batch_error(
     querygen_spec: QueryGenSpec,
     llm_settings: LlmSettings,
 ) -> None:
