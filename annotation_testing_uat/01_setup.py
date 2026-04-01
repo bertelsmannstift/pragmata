@@ -1,8 +1,3 @@
-"""Step 1: Create workspaces, datasets, and users.
-
-Run:  python annotation_testing_uat/01_setup.py
-"""
-
 from pathlib import Path
 
 import argilla as rg
@@ -16,9 +11,9 @@ SAMPLE_DATA = UAT_DIR / "sample_data.json"
 CREDENTIALS_FILE = UAT_DIR / "credentials.txt"
 
 USERS = [
-    UserSpec(username="alice_1", role="annotator", workspaces=["retrieval", "grounding"]),
+    UserSpec(username="alice", role="annotator", workspaces=["retrieval", "grounding"]),
     UserSpec(username="bob", role="annotator", workspaces=["grounding", "generation"]),
-    UserSpec(username="ops_admin", role="owner", password="<password>"),
+    UserSpec(username="ops_admin", role="owner"),
 ]
 
 
