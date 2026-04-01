@@ -1,22 +1,21 @@
 """Argilla annotation setup API — thin orchestration over core/ implementation."""
 
 from pathlib import Path
-from typing import cast
 
 import argilla as rg
 
 from pragmata.core.annotation.setup import SetupResult, provision_users, setup_datasets, teardown_resources
 from pragmata.core.settings.annotation_settings import AnnotationSettings, UserSpec
-from pragmata.core.settings.settings_base import UNSET, load_config_file
+from pragmata.core.settings.settings_base import UNSET, Unset, load_config_file
 
 
 def setup(
     client: rg.Argilla,
     users: list[UserSpec] | None = None,
     *,
-    workspace_prefix: str | object = UNSET,
-    min_submitted: int | object = UNSET,
-    config_path: str | Path | object = UNSET,
+    workspace_prefix: str | Unset = UNSET,
+    min_submitted: int | Unset = UNSET,
+    config_path: str | Path | Unset = UNSET,
 ) -> SetupResult:
     """Create the full Argilla annotation environment idempotently.
 
@@ -38,7 +37,7 @@ def setup(
         SetupResult tracking created/skipped workspaces, datasets, and users.
     """
     settings = AnnotationSettings.resolve(
-        config=load_config_file(cast("str | Path", config_path)) if config_path is not UNSET else None,
+        config=load_config_file(config_path) if isinstance(config_path, (str, Path)) else None,
         overrides={
             "workspace_prefix": workspace_prefix,
             "min_submitted": min_submitted,
@@ -52,8 +51,8 @@ def setup(
 def teardown(
     client: rg.Argilla,
     *,
-    workspace_prefix: str | object = UNSET,
-    config_path: str | Path | object = UNSET,
+    workspace_prefix: str | Unset = UNSET,
+    config_path: str | Path | Unset = UNSET,
 ) -> None:
     """Remove the Argilla annotation environment.
 
@@ -67,7 +66,7 @@ def teardown(
         config_path: Path to YAML config file for settings resolution.
     """
     settings = AnnotationSettings.resolve(
-        config=load_config_file(cast("str | Path", config_path)) if config_path is not UNSET else None,
+        config=load_config_file(config_path) if isinstance(config_path, (str, Path)) else None,
         overrides={"workspace_prefix": workspace_prefix},
     )
     teardown_resources(client, settings)

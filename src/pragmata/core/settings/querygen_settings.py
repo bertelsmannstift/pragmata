@@ -1,4 +1,4 @@
-"""Run settings models for synthetic query generation."""
+"""Synthetic query generation run settings."""
 
 from pathlib import Path
 from typing import Any
@@ -20,6 +20,9 @@ class LlmSettings(BaseModel):
     realization_model: str = "mistral-medium-latest"
     base_url: str | None = None
     model_kwargs: dict[str, Any] = Field(default_factory=dict)
+    requests_per_second: float = Field(default=1.0, gt=0)
+    check_every_n_seconds: float = Field(default=1.0, gt=0)
+    max_bucket_size: int = Field(default=1, ge=1)
 
 
 class QueryGenRunSettings(ResolveSettings):
@@ -30,3 +33,4 @@ class QueryGenRunSettings(ResolveSettings):
     base_dir: Path = Field(default_factory=Path.cwd)
     run_id: str = Field(default_factory=lambda: uuid4().hex)
     n_queries: PositiveInt = 50
+    batch_size: PositiveInt = 25

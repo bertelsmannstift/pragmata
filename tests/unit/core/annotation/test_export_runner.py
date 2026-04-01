@@ -1,12 +1,14 @@
-"""Unit tests for annotation export CSV writer and ExportResult type."""
+"""Unit tests for annotation export orchestration, CSV writer, and ExportResult."""
 
 import csv
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
+from unittest.mock import MagicMock
+from uuid import UUID
 
 import pytest
 
-from pragmata.core.annotation.export_helpers import ExportResult, write_export_csv
+from pragmata.core.annotation.export_runner import ExportResult, write_export_csv
 from pragmata.core.paths.annotation_paths import AnnotationExportPaths
 from pragmata.core.schemas.annotation_export import (
     GroundingAnnotation,
@@ -24,6 +26,8 @@ _BASE = {
     "created_at": _NOW,
     "record_status": "submitted",
 }
+
+_UID1 = UUID("00000000-0000-0000-0000-000000000001")
 
 
 def _retrieval(**kwargs) -> RetrievalAnnotation:
@@ -51,6 +55,55 @@ def _grounding(**kwargs) -> GroundingAnnotation:
         "fabricated_source": False,
     }
     return GroundingAnnotation.model_validate({**_BASE, **defaults, **kwargs})
+
+
+def _make_response(question_name: str, value: object, user_id: UUID) -> MagicMock:
+    resp = MagicMock()
+    resp.question_name = question_name
+    resp.value = value
+    resp.user_id = user_id
+    return resp
+
+
+def _make_record(
+    *,
+    fields: dict[str, str],
+    metadata: dict[str, object],
+    responses: list[MagicMock],
+    updated_at: datetime | None = None,
+    inserted_at: datetime | None = None,
+    status: str = "submitted",
+) -> MagicMock:
+    record = MagicMock()
+    record.fields = fields
+    record.metadata = metadata
+    record.responses = responses
+    record.status = status
+    record._model = MagicMock()
+    record._model.updated_at = updated_at or datetime(2024, 1, 1, tzinfo=UTC)
+    record._model.inserted_at = inserted_at or datetime(2024, 1, 2, tzinfo=UTC)
+    return record
+
+
+RETRIEVAL_FIELDS = {"query": "What is X?", "chunk": "X is Y."}
+BASE_METADATA = {
+    "record_uuid": "abc123",
+    "language": "en",
+    "chunk_id": "chunk-1",
+    "doc_id": "doc-1",
+    "chunk_rank": 1,
+}
+
+
+def _retrieval_responses(
+    user_id: UUID, *, topically_relevant="yes", evidence_sufficient="yes", misleading="no", notes=""
+) -> list[MagicMock]:
+    return [
+        _make_response("topically_relevant", topically_relevant, user_id),
+        _make_response("evidence_sufficient", evidence_sufficient, user_id),
+        _make_response("misleading", misleading, user_id),
+        _make_response("notes", notes, user_id),
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -92,7 +145,7 @@ class TestWriteExportCsv:
 
     def test_writes_row_with_violations(self, tmp_path: Path) -> None:
         row = _retrieval(topically_relevant=False, evidence_sufficient=True)
-        violations = ["evidence_sufficient=True but topically_relevant=False"]
+        violations = ["retrieval: evidence_sufficient=True but topically_relevant=False"]
         out = tmp_path / "out.csv"
         write_export_csv([(row, violations)], out, Task.RETRIEVAL)
         with out.open() as f:
@@ -122,7 +175,6 @@ class TestWriteExportCsv:
         assert data[0]["evidence_sufficient"] == "false"
 
     def test_none_language_serialised_empty(self, tmp_path: Path) -> None:
-        row = _retrieval()
         row = RetrievalAnnotation.model_validate(
             {
                 **_BASE,
@@ -148,8 +200,7 @@ class TestWriteExportCsv:
         row = _retrieval()
         out = tmp_path / "out.csv"
         write_export_csv([(row, [])], out, Task.RETRIEVAL)
-        tmp_file = out.with_suffix(".tmp")
-        assert not tmp_file.exists()
+        assert not out.with_suffix(".tmp").exists()
         assert out.exists()
 
     def test_grounding_task_schema(self, tmp_path: Path) -> None:
@@ -192,11 +243,79 @@ class TestExportResult:
             grounding_annotation_csv=tmp_path / "grounding.csv",
             generation_annotation_csv=tmp_path / "generation.csv",
         )
-        result = ExportResult(
-            paths=paths,
-            files={},
-            row_counts={},
-            constraint_summary={},
-        )
+        result = ExportResult(paths=paths, files={}, row_counts={}, constraint_summary={})
         with pytest.raises((AttributeError, TypeError)):
             result.row_counts = {}  # type: ignore[misc]
+
+
+# ---------------------------------------------------------------------------
+# Core export behaviour (moved from test_export_api)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def mock_client() -> MagicMock:
+    client = MagicMock()
+    user = MagicMock()
+    user.id = _UID1
+    user.username = "annotator1"
+    client.users.return_value = [user]
+    dataset = MagicMock()
+    dataset.records.return_value = iter([])
+    client.datasets.return_value = dataset
+    return client
+
+
+class TestYesNoConversion:
+    def test_yes_no_converted_to_bool(self, tmp_path: Path, mock_client: MagicMock) -> None:
+        from pragmata.api.annotation_export import export_annotations
+
+        record = _make_record(
+            fields=RETRIEVAL_FIELDS,
+            metadata=BASE_METADATA,
+            responses=_retrieval_responses(_UID1, topically_relevant="yes", evidence_sufficient="no"),
+        )
+        dataset = MagicMock()
+        dataset.records.return_value = iter([record])
+        mock_client.datasets.return_value = dataset
+
+        result = export_annotations(mock_client, base_dir=tmp_path, export_id="test-run", tasks=[Task.RETRIEVAL])
+        rows = list(csv.DictReader(result.files[Task.RETRIEVAL].open()))
+        assert rows[0]["topically_relevant"] == "true"
+        assert rows[0]["evidence_sufficient"] == "false"
+
+
+class TestConstraintViolations:
+    def test_constraint_violations_in_summary(self, tmp_path: Path, mock_client: MagicMock) -> None:
+        from pragmata.api.annotation_export import export_annotations
+
+        record = _make_record(
+            fields=RETRIEVAL_FIELDS,
+            metadata=BASE_METADATA,
+            responses=_retrieval_responses(_UID1, topically_relevant="no", evidence_sufficient="yes"),
+        )
+        dataset = MagicMock()
+        dataset.records.return_value = iter([record])
+        mock_client.datasets.return_value = dataset
+
+        result = export_annotations(mock_client, base_dir=tmp_path, export_id="test-run", tasks=[Task.RETRIEVAL])
+        assert result.constraint_summary
+        assert sum(result.constraint_summary.values()) >= 1
+
+
+class TestNotesCoercion:
+    def test_notes_none_coerced_to_empty_string(self, tmp_path: Path, mock_client: MagicMock) -> None:
+        from pragmata.api.annotation_export import export_annotations
+
+        record = _make_record(
+            fields=RETRIEVAL_FIELDS,
+            metadata=BASE_METADATA,
+            responses=_retrieval_responses(_UID1, notes=None),
+        )
+        dataset = MagicMock()
+        dataset.records.return_value = iter([record])
+        mock_client.datasets.return_value = dataset
+
+        result = export_annotations(mock_client, base_dir=tmp_path, export_id="test-run", tasks=[Task.RETRIEVAL])
+        rows = list(csv.DictReader(result.files[Task.RETRIEVAL].open()))
+        assert rows[0]["notes"] == ""
