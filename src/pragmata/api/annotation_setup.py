@@ -1,5 +1,6 @@
 """Argilla annotation setup API — thin orchestration over core/ implementation."""
 
+import logging
 from pathlib import Path
 
 import argilla as rg
@@ -7,6 +8,8 @@ import argilla as rg
 from pragmata.core.annotation.setup import SetupResult, provision_users, setup_datasets, teardown_resources
 from pragmata.core.settings.annotation_settings import AnnotationSettings, UserSpec
 from pragmata.core.settings.settings_base import UNSET, Unset, load_config_file
+
+logger = logging.getLogger(__name__)
 
 
 def setup(
@@ -45,7 +48,14 @@ def setup(
     )
     ds_result = setup_datasets(client, settings)
     user_result = provision_users(client, users or [], settings)
-    return ds_result.merge(user_result)
+    merged = ds_result.merge(user_result)
+    logger.info(
+        "Setup complete: %d workspaces, %d datasets, %d users created",
+        len(merged.created_workspaces),
+        len(merged.created_datasets),
+        len(merged.created_users),
+    )
+    return merged
 
 
 def teardown(
@@ -69,4 +79,5 @@ def teardown(
         config=load_config_file(config_path) if isinstance(config_path, (str, Path)) else None,
         overrides={"workspace_prefix": workspace_prefix},
     )
+    logger.info("Starting teardown (prefix=%r)", settings.workspace_prefix)
     teardown_resources(client, settings)

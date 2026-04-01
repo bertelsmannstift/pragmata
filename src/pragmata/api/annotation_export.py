@@ -1,5 +1,6 @@
 """Annotation export API — fetch submitted responses and write flat CSVs per task."""
 
+import logging
 from pathlib import Path
 
 import argilla as rg
@@ -10,6 +11,8 @@ from pragmata.core.paths.paths import WorkspacePaths
 from pragmata.core.schemas.annotation_task import Task
 from pragmata.core.settings.annotation_settings import AnnotationSettings
 from pragmata.core.settings.settings_base import UNSET, Unset, load_config_file
+
+logger = logging.getLogger(__name__)
 
 
 def export_annotations(
@@ -47,4 +50,10 @@ def export_annotations(
     paths = resolve_export_paths(workspace=workspace, export_id=resolved_id).ensure_dirs()
     resolved_tasks = tasks if tasks is not None else list(Task)
 
-    return run_export(client, settings, paths, resolved_tasks)
+    result = run_export(client, settings, paths, resolved_tasks)
+    logger.info(
+        "Export complete: %d task(s), %d total rows",
+        len(result.row_counts),
+        sum(result.row_counts.values()),
+    )
+    return result

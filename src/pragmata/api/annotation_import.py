@@ -1,5 +1,6 @@
 """Annotation import API — thin orchestration over core/ implementation."""
 
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -13,6 +14,8 @@ from pragmata.core.annotation.record_builder import (
 )
 from pragmata.core.settings.annotation_settings import AnnotationSettings
 from pragmata.core.settings.settings_base import UNSET, Unset, load_config_file
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Result types
@@ -80,7 +83,10 @@ def import_records(
         overrides={"workspace_prefix": workspace_prefix},
     )
     validation = validate_records(raw)
+    if validation.errors:
+        logger.warning("Validation failed for %d of %d records", len(validation.errors), len(raw))
     dataset_counts = fan_out_records(client, validation.valid, settings)
+    logger.info("Import complete: %d records across %d datasets", len(raw), len(dataset_counts))
     return ImportResult(
         total_records=len(raw),
         dataset_counts=dataset_counts,
