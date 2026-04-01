@@ -8,7 +8,10 @@ def delete_argilla_user(username):
     try:
         client = rg.Argilla(api_url="http://localhost:6900", api_key="argilla.apikey")
         user = client.users(username)
-        client.users.delete(user)
+        if user is None:
+            print(f"User '{username}' not found.")
+            sys.exit(1)
+        user.delete()
         print(f"Successfully deleted user: {username}")
 
     except Exception as e:
