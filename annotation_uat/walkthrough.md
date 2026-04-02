@@ -1,3 +1,4 @@
+```bash
 pip install -e ".[annotation]"
 
 docker info (check docker is rurnning)
@@ -31,7 +32,7 @@ python3 annotation_uat/04_teardown.py
 
 make docker-down
 # removes all data
-
+```
 
 # Questions to address
 
