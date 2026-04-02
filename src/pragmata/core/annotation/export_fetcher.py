@@ -28,7 +28,7 @@ AnnotationModel = RetrievalAnnotation | GroundingAnnotation | GenerationAnnotati
 
 def build_user_lookup(client: rg.Argilla) -> dict[UUID, str]:
     """Map Argilla user IDs to usernames."""
-    return {u.id: u.username for u in client.users()}
+    return {u.id: u.username for u in client.users.list()}
 
 
 def _to_bool(value: str) -> bool:
