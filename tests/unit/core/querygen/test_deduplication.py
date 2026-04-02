@@ -2,12 +2,14 @@
 
 import hashlib
 import json
+from collections.abc import Callable
 
 import numpy as np
 import pytest
 
 from pragmata.core.querygen.deduplication import (
     _blueprint_content_key,
+    _embed_blueprints,
     _select_non_duplicate_indices,
     deduplicate_blueprints,
 )
@@ -15,7 +17,7 @@ from pragmata.core.schemas.querygen_plan import QueryBlueprint
 
 
 @pytest.fixture()
-def make_blueprint() -> callable:
+def make_blueprint() -> Callable[..., QueryBlueprint]:
     def _make_blueprint(
         *,
         candidate_id: str = "c001",
@@ -50,7 +52,7 @@ def make_blueprint() -> callable:
 
 
 def test_blueprint_content_key_is_deterministic_and_ignores_candidate_id(
-    make_blueprint: callable,
+    make_blueprint: Callable[..., QueryBlueprint],
 ) -> None:
     blueprint_a = make_blueprint(candidate_id="c001")
     blueprint_b = make_blueprint(candidate_id="c999")
@@ -129,8 +131,102 @@ def test_select_non_duplicate_indices_rejects_non_square_matrices() -> None:
         _select_non_duplicate_indices(similarities)
 
 
+def test_embed_blueprints_serializes_in_fixed_order_and_uses_one_normalized_batch(
+    make_blueprint: Callable[..., QueryBlueprint],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    candidates = [
+        make_blueprint(
+            candidate_id="c001",
+            topic="teacher shortages",
+            user_scenario="Scenario A",
+            information_need="Need A",
+        ),
+        make_blueprint(
+            candidate_id="c999",
+            topic="school meals",
+            user_scenario="Scenario B",
+            information_need="Need B",
+        ),
+    ]
+
+    captured: dict[str, object] = {}
+
+    class _FakeModel:
+        def encode(
+            self,
+            texts: list[str],
+            *,
+            convert_to_numpy: bool,
+            normalize_embeddings: bool,
+            show_progress_bar: bool,
+        ) -> np.ndarray:
+            captured["texts"] = texts
+            captured["convert_to_numpy"] = convert_to_numpy
+            captured["normalize_embeddings"] = normalize_embeddings
+            captured["show_progress_bar"] = show_progress_bar
+            return np.array(
+                [
+                    [1.0, 0.0],
+                    [0.0, 1.0],
+                ],
+                dtype=np.float64,
+            )
+
+    monkeypatch.setattr(
+        "pragmata.core.querygen.deduplication._load_embedding_model",
+        lambda checkpoint="all-MiniLM-L6-v2": _FakeModel(),
+    )
+
+    embeddings = _embed_blueprints(candidates)
+
+    expected_texts = [
+        json.dumps(
+            {
+                "domain": "education policy",
+                "role": "policy analyst",
+                "language": "en",
+                "topic": "teacher shortages",
+                "intent": "find evidence",
+                "task": "literature search",
+                "difficulty": "medium",
+                "format": "bullet list",
+                "user_scenario": "Scenario A",
+                "information_need": "Need A",
+            },
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=False,
+        ),
+        json.dumps(
+            {
+                "domain": "education policy",
+                "role": "policy analyst",
+                "language": "en",
+                "topic": "school meals",
+                "intent": "find evidence",
+                "task": "literature search",
+                "difficulty": "medium",
+                "format": "bullet list",
+                "user_scenario": "Scenario B",
+                "information_need": "Need B",
+            },
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=False,
+        ),
+    ]
+
+    assert captured["texts"] == expected_texts
+    assert captured["convert_to_numpy"] is True
+    assert captured["normalize_embeddings"] is True
+    assert captured["show_progress_bar"] is False
+    assert embeddings.dtype == np.float32
+    assert embeddings.shape == (2, 2)
+
+
 def test_deduplicate_blueprints_removes_exact_duplicates_and_preserves_order(
-    make_blueprint: callable,
+    make_blueprint: Callable[..., QueryBlueprint],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     candidates = [
@@ -165,7 +261,7 @@ def test_deduplicate_blueprints_removes_exact_duplicates_and_preserves_order(
 
 
 def test_deduplicate_blueprints_applies_near_duplicate_selection_in_original_order(
-    make_blueprint: callable,
+    make_blueprint: Callable[..., QueryBlueprint],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     candidates = [
