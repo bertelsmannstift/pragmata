@@ -26,7 +26,8 @@ type = [
     "types-PyYAML",
 ]
 annotation = ["argilla>=2.0,<3.0",]
-dev  = ["pragmata[test,lint,type,annotation]"]
+querygen = ["sentence-transformers>=3.0"]
+dev  = ["pragmata[test,lint,type,annotation,querygen]"]
 
 [project.scripts]
 pragmata = "pragmata.cli.app:app"
