@@ -13,6 +13,7 @@ from pragmata.core.annotation.record_builder import (
     fan_out_records,
     validate_records,
 )
+from pragmata.core.paths.annotation_paths import resolve_annotation_paths
 from pragmata.core.paths.paths import WorkspacePaths
 from pragmata.core.settings.annotation_settings import AnnotationSettings
 from pragmata.core.settings.settings_base import UNSET, Unset, load_config_file
@@ -87,7 +88,8 @@ def import_records(
         overrides={"workspace_prefix": workspace_prefix, "base_dir": base_dir},
     )
     workspace = WorkspacePaths.from_base_dir(settings.base_dir)
-    with error_log(workspace.tool_root("annotation")):
+    paths = resolve_annotation_paths(workspace=workspace).ensure_dirs()
+    with error_log(paths.tool_root):
         validation = validate_records(raw)
         if validation.errors:
             logger.warning("Validation failed for %d of %d records", len(validation.errors), len(raw))

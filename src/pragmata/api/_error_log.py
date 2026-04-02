@@ -11,7 +11,6 @@ _FMT = "%(asctime)s | %(name)s | %(levelname)s | %(message)s"
 @contextmanager
 def error_log(log_dir: Path) -> Generator[None]:
     """Attach a file handler for the duration of a block, then clean up."""
-    log_dir.mkdir(parents=True, exist_ok=True)
     handler = logging.FileHandler(log_dir / "errors.log", delay=True, encoding="utf-8")
     handler.setLevel(logging.ERROR)
     handler.setFormatter(logging.Formatter(_FMT))

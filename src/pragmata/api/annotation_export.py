@@ -7,7 +7,7 @@ import argilla as rg
 
 from pragmata.api._error_log import error_log
 from pragmata.core.annotation.export_runner import ExportResult, resolve_export_id, run_export
-from pragmata.core.paths.annotation_paths import resolve_export_paths
+from pragmata.core.paths.annotation_paths import resolve_annotation_paths, resolve_export_paths
 from pragmata.core.paths.paths import WorkspacePaths
 from pragmata.core.schemas.annotation_task import Task
 from pragmata.core.settings.annotation_settings import AnnotationSettings
@@ -48,11 +48,12 @@ def export_annotations(
     )
     resolved_id = resolve_export_id(settings, export_id if isinstance(export_id, str) else None)
     workspace = WorkspacePaths.from_base_dir(settings.base_dir)
-    paths = resolve_export_paths(workspace=workspace, export_id=resolved_id).ensure_dirs()
+    annotation_paths = resolve_annotation_paths(workspace=workspace).ensure_dirs()
+    export_paths = resolve_export_paths(workspace=workspace, export_id=resolved_id).ensure_dirs()
     resolved_tasks = tasks if tasks is not None else list(Task)
 
-    with error_log(workspace.tool_root("annotation")):
-        result = run_export(client, settings, paths, resolved_tasks)
+    with error_log(annotation_paths.tool_root):
+        result = run_export(client, settings, export_paths, resolved_tasks)
 
     logger.info(
         "Export complete: %d task(s), %d total rows",

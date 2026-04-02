@@ -9,7 +9,9 @@ from pragmata.api._error_log import error_log
 
 @pytest.fixture()
 def log_dir(tmp_path):
-    return tmp_path / "annotation"
+    d = tmp_path / "annotation"
+    d.mkdir()
+    return d
 
 
 def _log_file(log_dir):
