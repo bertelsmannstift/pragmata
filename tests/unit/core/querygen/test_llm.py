@@ -8,7 +8,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.rate_limiters import InMemoryRateLimiter
 from pydantic import BaseModel
 
-from pragmata.core.querygen.llm import _build_prompt_template, build_llm_runnable
+from pragmata.core.querygen.llm import LlmInitializationError, _build_prompt_template, build_llm_runnable
 
 
 class _DummyOutputSchema(BaseModel):
@@ -151,17 +151,20 @@ def test_build_llm_runnable_inserts_optional_init_kwargs_conditionally(
     assert expected_absent.isdisjoint(init_kwargs.keys())
 
 
-def test_build_llm_runnable_propagates_init_error(
+def test_build_llm_runnable_wraps_init_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Model initialization errors propagate during construction."""
+    """Model initialization errors are wrapped in LlmInitializationError."""
 
     def error_init(**_: Any) -> Any:
         raise ValueError("Invalid Provider")
 
     monkeypatch.setattr("pragmata.core.querygen.llm.init_chat_model", error_init)
 
-    with pytest.raises(ValueError, match="Invalid Provider"):
+    with pytest.raises(
+        LlmInitializationError,
+        match=r"Failed to initialize provider 'bad' with model 'm'\.",
+    ) as exc_info:
         build_llm_runnable(
             system_text="s",
             user_text="u",
@@ -175,6 +178,9 @@ def test_build_llm_runnable_propagates_init_error(
             base_url=None,
             model_kwargs={},
         )
+
+    assert isinstance(exc_info.value.__cause__, ValueError)
+    assert str(exc_info.value.__cause__) == "Invalid Provider"
 
 
 @pytest.mark.parametrize(
