@@ -3,8 +3,10 @@
 import typer
 
 from pragmata.api import get_version
+from pragmata.cli.commands.querygen import querygen_app
 
 app = typer.Typer(add_completion=False)
+app.add_typer(querygen_app, name="querygen")
 
 
 @app.callback(invoke_without_command=True)

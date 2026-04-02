@@ -1,4 +1,4 @@
-"""Run settings models for synthetic query generation."""
+"""Synthetic query generation run settings."""
 
 from pathlib import Path
 from typing import Any
@@ -33,3 +33,4 @@ class QueryGenRunSettings(ResolveSettings):
     base_dir: Path = Field(default_factory=Path.cwd)
     run_id: str = Field(default_factory=lambda: uuid4().hex)
     n_queries: PositiveInt = 50
+    batch_size: PositiveInt = 25

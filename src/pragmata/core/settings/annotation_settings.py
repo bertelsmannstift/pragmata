@@ -1,6 +1,7 @@
 """Operational settings for annotation (workspace topology, distribution)."""
 
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Literal
 
 from pydantic import Field
@@ -17,6 +18,7 @@ class AnnotationSettings(ResolveSettings):
     core/annotation/argilla_task_definitions.py.
     """
 
+    base_dir: Path = Field(default_factory=Path.cwd)
     workspace_prefix: str = ""
     workspace_dataset_map: dict[str, list[Task]] = Field(
         default_factory=lambda: {
