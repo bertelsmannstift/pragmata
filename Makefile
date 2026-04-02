@@ -20,14 +20,19 @@ docker-up: ensure-env ## Start Argilla stack (all services bundled)
 	@echo "Argilla is up at http://localhost:6900"
 
 docker-up-external-pg: ensure-env ## Start Argilla stack with external Postgres (ES + Redis bundled)
+	@test -n "$$ARGILLA_DATABASE_URL" || { echo "Error: ARGILLA_DATABASE_URL must be set for external Postgres"; exit 1; }
 	docker compose -f $(COMPOSE_FILE) --env-file $(ENV_FILE) --profile external-pg up -d --pull always --wait
 	@echo "Argilla is up at http://localhost:6900 (external Postgres, bundled ES + Redis)"
 
 docker-up-external-es: ensure-env ## Start Argilla stack with external Elasticsearch (Postgres + Redis bundled)
+	@test -n "$$ARGILLA_ELASTICSEARCH" || { echo "Error: ARGILLA_ELASTICSEARCH must be set for external Elasticsearch"; exit 1; }
 	docker compose -f $(COMPOSE_FILE) --env-file $(ENV_FILE) --profile external-es up -d --pull always --wait
 	@echo "Argilla is up at http://localhost:6900 (external Elasticsearch, bundled Postgres + Redis)"
 
 docker-up-external: ensure-env ## Start Argilla stack with all external backing services
+	@test -n "$$ARGILLA_DATABASE_URL" || { echo "Error: ARGILLA_DATABASE_URL must be set for external Postgres"; exit 1; }
+	@test -n "$$ARGILLA_ELASTICSEARCH" || { echo "Error: ARGILLA_ELASTICSEARCH must be set for external Elasticsearch"; exit 1; }
+	@test -n "$$ARGILLA_REDIS_URL" || { echo "Error: ARGILLA_REDIS_URL must be set for external Redis"; exit 1; }
 	docker compose -f $(COMPOSE_FILE) --env-file $(ENV_FILE) up -d --pull always --wait --remove-orphans
 	@echo "Argilla is up at http://localhost:6900 (all external backing services)"
 
