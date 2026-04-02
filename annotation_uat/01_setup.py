@@ -28,7 +28,7 @@ def write_credentials(result: SetupResult) -> None:
         pw = result.generated_passwords.get(spec.username, spec.password or "(unknown)")
         lines.append(f"{spec.username}  {spec.role}  {pw}")
     CREDENTIALS_FILE.write_text("\n".join(lines) + "\n")
-    print(f"\nCredentials written to {CREDENTIALS_FILE}")
+    print(f"\nCredentials written to {CREDENTIALS_FILE}\n")
 
 
 def main() -> None:
@@ -59,8 +59,8 @@ def main() -> None:
     else:
         print("No validation errors.")
 
-    print("\nNext: Open http://localhost:6900, log in as an annotator, and submit some annotations.")
-    print("Then: python annotation_testing_uat/03_export.py")
+    print("\nNext: Open http://localhost:6900.")
+    print("Then: python annotation_uat/03_export.py")
 
 
 if __name__ == "__main__":

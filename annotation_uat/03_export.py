@@ -8,7 +8,7 @@ API_KEY = "argilla.apikey"
 
 def main() -> None:
     client = rg.Argilla(api_url=API_URL, api_key=API_KEY)
-    result: ExportResult = export_annotations(client, base_dir="testing_uat")
+    result: ExportResult = export_annotations(client, base_dir="annotation_uat")
 
     print("\n=== Export complete ===")
     print(f"Row counts: {dict(result.row_counts)}")

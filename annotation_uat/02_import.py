@@ -4,7 +4,7 @@ from pragmata.annotation import ImportResult, import_records
 
 API_URL = "http://localhost:6900"
 API_KEY = "argilla.apikey"
-SAMPLE_DATA = "annotation_testing_uat/sample_data.json"
+SAMPLE_DATA = "annotation_uat/sample_data.json"
 
 
 def main() -> None:
@@ -23,7 +23,7 @@ def main() -> None:
         print("No validation errors.")
 
     print("\nNext: Open http://localhost:6900, log in as an annotator, and submit some annotations.")
-    print("Then: python annotation_testing_uat/03_export.py")
+    print("Then: python annotation_uat/03_export.py")
 
 
 if __name__ == "__main__":
