@@ -31,10 +31,7 @@ _BLUEPRINT_FIELD_ORDER: tuple[str, ...] = (
 
 def _serialize_blueprint_content(candidate: QueryBlueprint) -> str:
     """Build a deterministic content-only serialization for a blueprint."""
-    payload = {
-        field: getattr(candidate, field)
-        for field in _BLUEPRINT_FIELD_ORDER
-    }
+    payload = {field: getattr(candidate, field) for field in _BLUEPRINT_FIELD_ORDER}
     return json.dumps(
         payload,
         ensure_ascii=False,
@@ -82,8 +79,7 @@ def _load_embedding_model(checkpoint: str = "all-MiniLM-L6-v2") -> SentenceTrans
         from sentence_transformers import SentenceTransformer
     except ImportError as exc:
         raise ImportError(
-            "sentence-transformers is required for blueprint deduplication. "
-            "Install pragmata with the 'querygen' extra."
+            "sentence-transformers is required for blueprint deduplication. Install pragmata with the 'querygen' extra."
         ) from exc
 
     return SentenceTransformer(checkpoint)
@@ -94,10 +90,7 @@ def _embed_blueprints(candidates: list[QueryBlueprint]) -> NDArray[np.float32]:
     if not candidates:
         return np.empty((0, 0), dtype=np.float32)
 
-    serialized_candidates = [
-        _serialize_blueprint_content(candidate)
-        for candidate in candidates
-    ]
+    serialized_candidates = [_serialize_blueprint_content(candidate) for candidate in candidates]
     model = _load_embedding_model()
     embeddings = model.encode(
         serialized_candidates,
