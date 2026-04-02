@@ -122,13 +122,13 @@ class TestBuildUserLookup:
         client = MagicMock()
         u1 = MagicMock(id=_UID1, username="alice")
         u2 = MagicMock(id=_UID2, username="bob")
-        client.users.return_value = [u1, u2]
+        client.users.list.return_value = [u1, u2]
 
         assert build_user_lookup(client) == {_UID1: "alice", _UID2: "bob"}
 
     def test_empty_users(self) -> None:
         client = MagicMock()
-        client.users.return_value = []
+        client.users.list.return_value = []
         assert build_user_lookup(client) == {}
 
 
