@@ -18,6 +18,10 @@ _RESERVED_MODEL_KWARGS = {
 }
 
 
+class LlmInitializationError(RuntimeError):
+    """Raised when the configured chat model cannot be initialized."""
+
+
 def _build_prompt_template(
     *,
     system_text: str,
@@ -98,7 +102,13 @@ def build_llm_runnable(
     if model_kwargs:
         init_kwargs.update(model_kwargs)
 
-    llm = init_chat_model(**init_kwargs)
+    try:
+        llm = init_chat_model(**init_kwargs)
+    except Exception as exc:
+        raise LlmInitializationError(
+            f"Failed to initialize provider '{model_provider}' with model '{model}'. "
+            "Ensure the corresponding LangChain provider package is installed and the model is valid."
+        ) from exc
     structured_llm = llm.with_structured_output(output_schema)
     retry_llm = structured_llm.with_retry()
 
