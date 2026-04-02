@@ -7,6 +7,7 @@ import argilla as rg
 
 from pragmata.api._error_log import error_log
 from pragmata.core.annotation.setup import SetupResult, provision_users, setup_datasets, teardown_resources
+from pragmata.core.paths.paths import WorkspacePaths
 from pragmata.core.settings.annotation_settings import AnnotationSettings, UserSpec
 from pragmata.core.settings.settings_base import UNSET, Unset, load_config_file
 
@@ -50,7 +51,8 @@ def setup(
             "base_dir": base_dir,
         },
     )
-    with error_log(settings.base_dir):
+    workspace = WorkspacePaths.from_base_dir(settings.base_dir)
+    with error_log(workspace.tool_root("annotation")):
         ds_result = setup_datasets(client, settings)
         user_result = provision_users(client, users or [], settings)
     merged = ds_result.merge(user_result)
@@ -86,6 +88,8 @@ def teardown(
         config=load_config_file(config_path) if isinstance(config_path, (str, Path)) else None,
         overrides={"workspace_prefix": workspace_prefix, "base_dir": base_dir},
     )
+    workspace = WorkspacePaths.from_base_dir(settings.base_dir)
     logger.info("Starting teardown (prefix=%r)", settings.workspace_prefix)
-    with error_log(settings.base_dir):
+    with error_log(workspace.tool_root("annotation")):
         teardown_resources(client, settings)
+    logger.info("Teardown complete")

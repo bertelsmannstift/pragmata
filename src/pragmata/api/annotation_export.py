@@ -51,7 +51,7 @@ def export_annotations(
     paths = resolve_export_paths(workspace=workspace, export_id=resolved_id).ensure_dirs()
     resolved_tasks = tasks if tasks is not None else list(Task)
 
-    with error_log(settings.base_dir):
+    with error_log(workspace.tool_root("annotation")):
         result = run_export(client, settings, paths, resolved_tasks)
 
     logger.info(

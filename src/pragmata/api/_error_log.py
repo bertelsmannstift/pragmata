@@ -1,4 +1,4 @@
-"""Scoped file handler that writes ERROR+ to base_dir/annotation/errors.log."""
+"""Scoped file handler that writes ERROR+ to a caller-supplied directory."""
 
 import logging
 from collections.abc import Generator
@@ -9,11 +9,10 @@ _FMT = "%(asctime)s | %(name)s | %(levelname)s | %(message)s"
 
 
 @contextmanager
-def error_log(base_dir: Path) -> Generator[None]:
+def error_log(log_dir: Path) -> Generator[None]:
     """Attach a file handler for the duration of a block, then clean up."""
-    log_dir = Path(base_dir).expanduser().resolve() / "annotation"
     log_dir.mkdir(parents=True, exist_ok=True)
-    handler = logging.FileHandler(log_dir / "errors.log", delay=True)
+    handler = logging.FileHandler(log_dir / "errors.log", delay=True, encoding="utf-8")
     handler.setLevel(logging.ERROR)
     handler.setFormatter(logging.Formatter(_FMT))
     root = logging.getLogger("pragmata")
