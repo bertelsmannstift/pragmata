@@ -4,13 +4,39 @@ from pathlib import Path
 
 import pytest
 
-from pragmata.core.paths.annotation_paths import resolve_export_paths
+from pragmata.core.paths.annotation_paths import resolve_annotation_paths, resolve_export_paths
 from pragmata.core.paths.paths import WorkspacePaths
 
 
 @pytest.fixture()
 def workspace(tmp_path: Path) -> WorkspacePaths:
     return WorkspacePaths.from_base_dir(tmp_path)
+
+
+# ---------------------------------------------------------------------------
+# AnnotationPaths
+# ---------------------------------------------------------------------------
+
+
+class TestAnnotationPaths:
+    def test_tool_root(self, workspace: WorkspacePaths) -> None:
+        paths = resolve_annotation_paths(workspace=workspace)
+        assert paths.tool_root == workspace.tool_root("annotation")
+
+    def test_ensure_dirs_creates_tool_root(self, workspace: WorkspacePaths) -> None:
+        paths = resolve_annotation_paths(workspace=workspace)
+        assert not paths.tool_root.exists()
+        paths.ensure_dirs()
+        assert paths.tool_root.exists()
+
+    def test_ensure_dirs_returns_self(self, workspace: WorkspacePaths) -> None:
+        paths = resolve_annotation_paths(workspace=workspace)
+        assert paths.ensure_dirs() is paths
+
+    def test_frozen(self, workspace: WorkspacePaths, tmp_path: Path) -> None:
+        paths = resolve_annotation_paths(workspace=workspace)
+        with pytest.raises((AttributeError, TypeError)):
+            paths.tool_root = tmp_path  # type: ignore[misc]
 
 
 # ---------------------------------------------------------------------------
