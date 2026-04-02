@@ -1,16 +1,19 @@
+import sys
+
 import argilla as rg
 
 from pragmata.annotation import ExportResult, export_annotations
 
 API_URL = "http://localhost:6900"
 API_KEY = "argilla.apikey"
+PREFIX = sys.argv[1] if len(sys.argv) > 1 else "uat"
 
 
 def main() -> None:
     client = rg.Argilla(api_url=API_URL, api_key=API_KEY)
-    result: ExportResult = export_annotations(client, base_dir="annotation_uat")
+    result: ExportResult = export_annotations(client, base_dir="annotation_uat", workspace_prefix=PREFIX)
 
-    print("\n=== Export complete ===")
+    print(f"\n=== Export complete (prefix={PREFIX}) ===")
     print(f"Row counts: {dict(result.row_counts)}")
 
     if result.files:
