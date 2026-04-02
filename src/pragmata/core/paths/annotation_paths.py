@@ -8,6 +8,34 @@ from pragmata.core.paths.paths import WorkspacePaths
 
 
 @dataclass(frozen=True, slots=True)
+class AnnotationPaths:
+    """Path bundle for the annotation tool root.
+
+    Attributes:
+        tool_root: Root directory for annotation artifacts.
+    """
+
+    tool_root: Path
+
+    def ensure_dirs(self) -> Self:
+        """Create the annotation tool root directory."""
+        self.tool_root.mkdir(parents=True, exist_ok=True)
+        return self
+
+
+def resolve_annotation_paths(*, workspace: WorkspacePaths) -> AnnotationPaths:
+    """Build the path bundle for the annotation tool.
+
+    Args:
+        workspace: Workspace path bundle.
+
+    Returns:
+        Path bundle for the annotation tool root.
+    """
+    return AnnotationPaths(tool_root=workspace.tool_root("annotation"))
+
+
+@dataclass(frozen=True, slots=True)
 class AnnotationExportPaths:
     """Path bundle for an annotation export run.
 
