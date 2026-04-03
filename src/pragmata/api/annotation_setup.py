@@ -1,12 +1,18 @@
 """Argilla annotation setup API — thin orchestration over core/ implementation."""
 
+import logging
 from pathlib import Path
 
 import argilla as rg
 
+from pragmata.api._error_log import error_log
 from pragmata.core.annotation.setup import SetupResult, provision_users, setup_datasets, teardown_resources
+from pragmata.core.paths.annotation_paths import resolve_annotation_paths
+from pragmata.core.paths.paths import WorkspacePaths
 from pragmata.core.settings.annotation_settings import AnnotationSettings, UserSpec
 from pragmata.core.settings.settings_base import UNSET, Unset, load_config_file
+
+logger = logging.getLogger(__name__)
 
 
 def setup(
@@ -15,6 +21,7 @@ def setup(
     *,
     workspace_prefix: str | Unset = UNSET,
     min_submitted: int | Unset = UNSET,
+    base_dir: str | Path | Unset = UNSET,
     config_path: str | Path | Unset = UNSET,
 ) -> SetupResult:
     """Create the full Argilla annotation environment idempotently.
@@ -31,6 +38,7 @@ def setup(
         users: User accounts to provision. Pass None to skip user setup.
         workspace_prefix: Prefix prepended to workspace and dataset names.
         min_submitted: Minimum annotations required per record.
+        base_dir: Workspace base directory. Defaults to cwd.
         config_path: Path to YAML config file for settings resolution.
 
     Returns:
@@ -41,17 +49,29 @@ def setup(
         overrides={
             "workspace_prefix": workspace_prefix,
             "min_submitted": min_submitted,
+            "base_dir": base_dir,
         },
     )
-    ds_result = setup_datasets(client, settings)
-    user_result = provision_users(client, users or [], settings)
-    return ds_result.merge(user_result)
+    workspace = WorkspacePaths.from_base_dir(settings.base_dir)
+    paths = resolve_annotation_paths(workspace=workspace).ensure_dirs()
+    with error_log(paths.tool_root):
+        ds_result = setup_datasets(client, settings)
+        user_result = provision_users(client, users or [], settings)
+    merged = ds_result.merge(user_result)
+    logger.info(
+        "Setup complete: %d workspaces, %d datasets, %d users created",
+        len(merged.created_workspaces),
+        len(merged.created_datasets),
+        len(merged.created_users),
+    )
+    return merged
 
 
 def teardown(
     client: rg.Argilla,
     *,
     workspace_prefix: str | Unset = UNSET,
+    base_dir: str | Path | Unset = UNSET,
     config_path: str | Path | Unset = UNSET,
 ) -> None:
     """Remove the Argilla annotation environment.
@@ -63,10 +83,16 @@ def teardown(
     Args:
         client: Connected Argilla client instance.
         workspace_prefix: Prefix used when the environment was created.
+        base_dir: Workspace base directory. Defaults to cwd.
         config_path: Path to YAML config file for settings resolution.
     """
     settings = AnnotationSettings.resolve(
         config=load_config_file(config_path) if isinstance(config_path, (str, Path)) else None,
-        overrides={"workspace_prefix": workspace_prefix},
+        overrides={"workspace_prefix": workspace_prefix, "base_dir": base_dir},
     )
-    teardown_resources(client, settings)
+    workspace = WorkspacePaths.from_base_dir(settings.base_dir)
+    paths = resolve_annotation_paths(workspace=workspace).ensure_dirs()
+    logger.info("Starting teardown (prefix=%r)", settings.workspace_prefix)
+    with error_log(paths.tool_root):
+        teardown_resources(client, settings)
+    logger.info("Teardown complete")

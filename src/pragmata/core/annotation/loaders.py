@@ -9,9 +9,12 @@ from __future__ import annotations
 
 import csv
 import json
+import logging
 from collections import defaultdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeAlias
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -192,12 +195,16 @@ def resolve_records(
             loader = _EXTENSION_LOADERS.get(f".{format}")
             if loader is None:
                 raise ValueError(f"Unsupported format: {format!r}")
-            return loader(path)
+            result = loader(path)
+            logger.info("Loaded %d records from %s (format=%s)", len(result), path, format)
+            return result
 
         loader = _EXTENSION_LOADERS.get(path.suffix.lower())
         if loader is None:
             raise ValueError(f"Unsupported file extension: {path.suffix!r}")
-        return loader(path)
+        result = loader(path)
+        logger.info("Loaded %d records from %s", len(result), path)
+        return result
 
     # HF Dataset — check before DataFrame since Dataset may also have to_dict
     try:
