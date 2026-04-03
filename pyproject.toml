@@ -27,12 +27,13 @@ type = [
     "types-PyYAML",
 ]
 annotation = ["argilla>=2.0,<3.0",]
+querygen = ["sentence-transformers>=3.0"]
 cohere = ["langchain-cohere"]
 deepseek = ["langchain-deepseek"]
 openai = ["langchain-openai"]
 anthropic = ["langchain-anthropic"]
 google-genai = ["langchain-google-genai"]
-dev  = ["pragmata[test,lint,type,annotation]"]
+dev  = ["pragmata[test,lint,type,annotation,querygen]"]
 
 [project.scripts]
 pragmata = "pragmata.cli.app:app"
