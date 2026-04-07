@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 from pragmata.core.querygen.deduplication import (
+    _BLUEPRINT_FIELD_ORDER,
     _blueprint_content_key,
     _embed_blueprints,
     _select_non_duplicate_indices,
@@ -49,6 +50,11 @@ def make_blueprint() -> Callable[..., QueryBlueprint]:
         )
 
     return _make_blueprint
+
+
+def test_blueprint_field_order_matches_query_blueprint_content_fields() -> None:
+    expected_fields = set(QueryBlueprint.model_fields) - {"candidate_id"}
+    assert set(_BLUEPRINT_FIELD_ORDER) == expected_fields
 
 
 def test_blueprint_content_key_is_deterministic_and_ignores_candidate_id(
