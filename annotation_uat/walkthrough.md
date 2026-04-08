@@ -7,33 +7,45 @@ cp deploy/annotation/.env.dev.example deploy/annotation/.env
 
 make docker-up
 
-# one-time setup: creates workspaces + users (no datasets yet)
+# ── Setup (one-time per environment) ────────────────────────────────
+# creates workspaces + users only — no datasets yet
 python annotation_uat/01_setup.py
 
-# default "uat" dataset_id — creates datasets on import
-python annotation_uat/01_setup.py
+# ── Import ──────────────────────────────────────────────────────────
+# no dataset_id — bare dataset names (retrieval, grounding, generation)
+python annotation_uat/02_import.py
 
-# multiple runs with different dataset IDs (same workspaces, separate datasets)
+# with dataset_id — suffixed datasets (retrieval_run1, grounding_run1, ...)
 python annotation_uat/02_import.py run1
+
+# multiple independent runs in the same workspaces, same users
 python annotation_uat/02_import.py run2
 
-# annotate in browser: http://localhost:6900
-# log in with generated passwords (saved in credentials.txt)
-# NB owner account can also toggle dataset/workspace settings (as well as annotate)
+# re-import into same run — appends / upserts, does not duplicate
+python annotation_uat/02_import.py run1
 
-# export a specific run
+# ── Annotate ────────────────────────────────────────────────────────
+# open http://localhost:6900 and log in with generated passwords (credentials.txt)
+# NB: owner account can toggle dataset/workspace settings as well as annotate
+
+# ── Export ──────────────────────────────────────────────────────────
+# export a specific run (reads retrieval_run1, grounding_run1, generation_run1)
 python annotation_uat/03_export.py run1
-# NB idempotent — each time creates new full set with all annotations at that point
 
-# scoped teardown: delete only run1's datasets, keep workspaces + users
+# export bare datasets (no dataset_id)
+python annotation_uat/03_export.py
+
+# NB idempotent — re-running overwrites the same export directory
+
+# ── Teardown ────────────────────────────────────────────────────────
+# scoped: delete only run1's datasets, workspaces + users preserved
 python annotation_uat/04_teardown.py run1
 
-# full teardown: delete all datasets + workspaces (no arg)
+# full: delete all datasets + workspaces (users still preserved)
 python annotation_uat/04_teardown.py
 
-# optionally delete users too (not deleted by default on teardown)
+# optionally delete individual users (not touched by teardown)
 python annotation_uat/05_users_delete.py alice
 
-make docker-down
-# removes all data
+make docker-down  # stops stack and removes all volumes
 ```
