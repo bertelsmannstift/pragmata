@@ -33,9 +33,13 @@ def _parse_tasks(raw: str | None) -> list[Task] | None:
 
 _api_url_opt = typer.Option(None, "--api-url", help="Argilla server URL. Falls back to ARGILLA_API_URL env var.")
 _api_key_opt = typer.Option(None, "--api-key", help="Argilla API key. Falls back to ARGILLA_API_KEY env var.")
-_prefix_opt = typer.Option(None, "--prefix", help="Workspace/dataset name prefix.")
-_base_dir_opt = typer.Option(None, "--base-dir", help="Workspace base directory.")
-_config_opt = typer.Option(None, "--config", help="Path to YAML config file.")
+_prefix_opt = typer.Option(
+    None, "--prefix", help="Prefix prepended to workspace and dataset names. Defaults to config file value or ''."
+)
+_base_dir_opt = typer.Option(
+    None, "--base-dir", help="Workspace base directory for run artifacts. Defaults to current working directory."
+)
+_config_opt = typer.Option(None, "--config", help="Path to YAML config file for annotation settings.")
 
 
 @annotation_app.command("setup")
@@ -45,9 +49,14 @@ def setup_command(
     prefix: str | None = _prefix_opt,
     base_dir: str | None = _base_dir_opt,
     config: str | None = _config_opt,
-    min_submitted: int | None = typer.Option(None, "--min-submitted", help="Minimum annotations per record."),
+    min_submitted: int | None = typer.Option(
+        None, "--min-submitted", help="Minimum submitted annotations required per record before it is complete."
+    ),
     users_json: str | None = typer.Option(
-        None, "--users", help="Path to JSON file with user specs (list of {username, role, workspaces?, password?})."
+        None,
+        "--users",
+        help="Path to a JSON file containing user specs. Each entry needs 'username' and 'role' (owner/annotator);"
+        " 'workspaces' and 'password' are optional.",
     ),
 ) -> None:
     """Create Argilla workspaces, datasets, and (optionally) user accounts."""
