@@ -1,4 +1,4 @@
-"""Path bundles for annotation import and export runs."""
+"""Path bundles for annotation tool and export runs."""
 
 from dataclasses import dataclass
 from pathlib import Path
@@ -8,21 +8,31 @@ from pragmata.core.paths.paths import WorkspacePaths
 
 
 @dataclass(frozen=True, slots=True)
-class AnnotationImportPaths:
-    """Path bundle for an annotation import run.
+class AnnotationPaths:
+    """Path bundle for the annotation tool root.
 
     Attributes:
-        import_dir: Root directory for the import.
-        import_result_json: Output path for the import result JSON.
+        tool_root: Root directory for annotation artifacts.
     """
 
-    import_dir: Path
-    import_result_json: Path
+    tool_root: Path
 
     def ensure_dirs(self) -> Self:
-        """Create the import directory scaffold."""
-        self.import_dir.mkdir(parents=True, exist_ok=True)
+        """Create the annotation tool root directory."""
+        self.tool_root.mkdir(parents=True, exist_ok=True)
         return self
+
+
+def resolve_annotation_paths(*, workspace: WorkspacePaths) -> AnnotationPaths:
+    """Build the path bundle for the annotation tool.
+
+    Args:
+        workspace: Workspace path bundle.
+
+    Returns:
+        Path bundle for the annotation tool root.
+    """
+    return AnnotationPaths(tool_root=workspace.tool_root("annotation"))
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,12 +41,14 @@ class AnnotationExportPaths:
 
     Attributes:
         export_dir: Root directory for the export.
+        tool_root: Root directory for the tool data.
         retrieval_annotation_csv: Output path for retrieval task annotations.
         grounding_annotation_csv: Output path for grounding task annotations.
         generation_annotation_csv: Output path for generation task annotations.
     """
 
     export_dir: Path
+    tool_root: Path
     retrieval_annotation_csv: Path
     grounding_annotation_csv: Path
     generation_annotation_csv: Path
@@ -45,20 +57,6 @@ class AnnotationExportPaths:
         """Create the export directory scaffold."""
         self.export_dir.mkdir(parents=True, exist_ok=True)
         return self
-
-
-def resolve_import_paths(*, workspace: WorkspacePaths, import_id: str) -> AnnotationImportPaths:
-    """Build the path bundle for an annotation import run.
-
-    Args:
-        workspace: Workspace path bundle.
-        import_id: Unique import identifier.
-
-    Returns:
-        Path bundle for the import run.
-    """
-    import_dir = workspace.tool_root("annotation") / "imports" / import_id
-    return AnnotationImportPaths(import_dir=import_dir, import_result_json=import_dir / "import_result.json")
 
 
 def resolve_export_paths(*, workspace: WorkspacePaths, export_id: str) -> AnnotationExportPaths:
@@ -74,6 +72,7 @@ def resolve_export_paths(*, workspace: WorkspacePaths, export_id: str) -> Annota
     export_dir = workspace.tool_root("annotation") / "exports" / export_id
     return AnnotationExportPaths(
         export_dir=export_dir,
+        tool_root=workspace.tool_root("annotation"),
         retrieval_annotation_csv=export_dir / "retrieval.csv",
         grounding_annotation_csv=export_dir / "grounding.csv",
         generation_annotation_csv=export_dir / "generation.csv",

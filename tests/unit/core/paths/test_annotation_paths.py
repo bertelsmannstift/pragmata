@@ -1,13 +1,10 @@
-"""Unit tests for annotation import/export path bundles."""
+"""Unit tests for annotation path bundles."""
 
 from pathlib import Path
 
 import pytest
 
-from pragmata.core.paths.annotation_paths import (
-    resolve_export_paths,
-    resolve_import_paths,
-)
+from pragmata.core.paths.annotation_paths import resolve_annotation_paths, resolve_export_paths
 from pragmata.core.paths.paths import WorkspacePaths
 
 
@@ -17,35 +14,29 @@ def workspace(tmp_path: Path) -> WorkspacePaths:
 
 
 # ---------------------------------------------------------------------------
-# AnnotationImportPaths
+# AnnotationPaths
 # ---------------------------------------------------------------------------
 
 
-class TestAnnotationImportPaths:
-    def test_resolve_import_paths_structure(self, workspace: WorkspacePaths) -> None:
-        paths = resolve_import_paths(workspace=workspace, import_id="imp1")
-        expected_dir = workspace.tool_root("annotation") / "imports" / "imp1"
-        assert paths.import_dir == expected_dir
+class TestAnnotationPaths:
+    def test_tool_root(self, workspace: WorkspacePaths) -> None:
+        paths = resolve_annotation_paths(workspace=workspace)
+        assert paths.tool_root == workspace.tool_root("annotation")
 
-    def test_import_result_json_path(self, workspace: WorkspacePaths) -> None:
-        paths = resolve_import_paths(workspace=workspace, import_id="imp1")
-        assert paths.import_result_json == paths.import_dir / "import_result.json"
-
-    def test_ensure_dirs_creates_import_dir(self, workspace: WorkspacePaths) -> None:
-        paths = resolve_import_paths(workspace=workspace, import_id="imp1")
-        assert not paths.import_dir.exists()
+    def test_ensure_dirs_creates_tool_root(self, workspace: WorkspacePaths) -> None:
+        paths = resolve_annotation_paths(workspace=workspace)
+        assert not paths.tool_root.exists()
         paths.ensure_dirs()
-        assert paths.import_dir.exists()
+        assert paths.tool_root.exists()
 
     def test_ensure_dirs_returns_self(self, workspace: WorkspacePaths) -> None:
-        paths = resolve_import_paths(workspace=workspace, import_id="imp1")
-        result = paths.ensure_dirs()
-        assert result is paths
+        paths = resolve_annotation_paths(workspace=workspace)
+        assert paths.ensure_dirs() is paths
 
     def test_frozen(self, workspace: WorkspacePaths, tmp_path: Path) -> None:
-        paths = resolve_import_paths(workspace=workspace, import_id="imp1")
+        paths = resolve_annotation_paths(workspace=workspace)
         with pytest.raises((AttributeError, TypeError)):
-            paths.import_dir = tmp_path  # type: ignore[misc]
+            paths.tool_root = tmp_path  # type: ignore[misc]
 
 
 # ---------------------------------------------------------------------------

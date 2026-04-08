@@ -1,5 +1,7 @@
 """Typer CLI application for pragmata."""
 
+import logging
+
 import typer
 
 from pragmata.api import get_version
@@ -7,6 +9,15 @@ from pragmata.cli.commands.querygen import querygen_app
 
 app = typer.Typer(add_completion=False)
 app.add_typer(querygen_app, name="querygen")
+
+
+def _configure_logging(verbosity: int) -> None:
+    """Set up root logging for CLI usage. Verbosity: 0=WARNING, 1=INFO, 2+=DEBUG."""
+    level = (logging.WARNING, logging.INFO, logging.DEBUG)[min(verbosity, 2)]
+    logging.basicConfig(
+        format="%(levelname)s | %(name)s | %(message)s",
+        level=level,
+    )
 
 
 @app.callback(invoke_without_command=True)
@@ -18,8 +29,16 @@ def main(
         help="Print the installed pragmata version and exit.",
         is_eager=True,
     ),
+    verbose: int = typer.Option(
+        0,
+        "--verbose",
+        "-v",
+        count=True,
+        help="Increase log verbosity (-v for INFO, -vv for DEBUG).",
+    ),
 ) -> None:
     """Run the pragmata CLI."""
+    _configure_logging(verbose)
     if version:
         typer.echo(get_version())
         raise typer.Exit(code=0)

@@ -1,6 +1,7 @@
 """Annotation export orchestration: fetch from Argilla, write CSVs, return ExportResult."""
 
 import csv
+import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -18,6 +19,8 @@ from pragmata.core.schemas.annotation_export import (
     RetrievalAnnotation,
 )
 from pragmata.core.schemas.annotation_task import Task
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from pragmata.core.settings.annotation_settings import AnnotationSettings
@@ -81,7 +84,9 @@ def write_export_csv(
                 row["constraint_details"] = ";".join(violations)
                 writer.writerow(row)
         tmp.rename(path)
+        logger.info("Wrote %d rows to %s", len(rows), path)
     except Exception:
+        logger.error("Failed writing CSV %s — cleaning up temp file", path)
         tmp.unlink(missing_ok=True)
         raise
 
@@ -110,6 +115,7 @@ def run_export(
             write_export_csv(task_rows[task], task_paths[task], task)
             written.append(task_paths[task])
     except Exception:
+        logger.error("Export failed — rolling back %d written file(s)", len(written))
         for p in written:
             p.unlink(missing_ok=True)
         raise
