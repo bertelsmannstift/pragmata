@@ -1,0 +1,1 @@
+record_uuid,annotator_id,task,language,inserted_at,created_at,record_status,query,chunk,chunk_id,doc_id,chunk_rank,topically_relevant,evidence_sufficient,misleading,notes,constraint_violated,constraint_details

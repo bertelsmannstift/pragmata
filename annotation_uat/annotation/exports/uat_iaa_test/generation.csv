@@ -1,0 +1,7 @@
+record_uuid,annotator_id,task,language,inserted_at,created_at,record_status,query,answer,proper_action,response_on_topic,helpful,incomplete,unsafe_content,notes,constraint_violated,constraint_details
+r1,alice,generation,en,2026-04-01T10:00:00+00:00,2026-04-01T12:00:00+00:00,completed,What is RAG?,RAG combines retrieval with generation.,true,true,true,false,false,,false,
+r1,bob,generation,en,2026-04-01T10:00:00+00:00,2026-04-01T12:05:00+00:00,completed,What is RAG?,RAG combines retrieval with generation.,true,true,true,false,false,,false,
+r2,alice,generation,en,2026-04-01T10:00:00+00:00,2026-04-01T12:10:00+00:00,completed,How does chunking work?,Chunking splits documents.,true,true,false,true,false,,false,
+r2,bob,generation,en,2026-04-01T10:00:00+00:00,2026-04-01T12:15:00+00:00,completed,How does chunking work?,Chunking splits documents.,true,true,true,false,false,,false,
+r3,alice,generation,en,2026-04-01T10:00:00+00:00,2026-04-01T12:20:00+00:00,completed,What are embeddings?,Embeddings are vector representations.,true,true,true,false,false,,false,
+r3,bob,generation,en,2026-04-01T10:00:00+00:00,2026-04-01T12:25:00+00:00,completed,What are embeddings?,Embeddings are vector representations.,true,false,true,false,false,,false,

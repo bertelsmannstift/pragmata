@@ -7,7 +7,7 @@ from pragmata.annotation import ImportResult, SetupResult, UserSpec, import_reco
 
 API_URL = "http://localhost:6900"
 API_KEY = "argilla.apikey"
-PREFIX = sys.argv[1] if len(sys.argv) > 1 else "uat"
+DATASET_ID = sys.argv[1] if len(sys.argv) > 1 else "uat"
 UAT_DIR = Path(__file__).parent
 SAMPLE_DATA = UAT_DIR / "sample_data.json"
 CREDENTIALS_FILE = UAT_DIR / "credentials.txt"
@@ -24,7 +24,7 @@ def write_credentials(result: SetupResult) -> None:
     lines = [
         "# Auto-generated credentials (do not commit)",
         f"# Default admin: argilla / {'argilla.apikey' if API_KEY == 'argilla.apikey' else '(custom)'}",
-        f"# Prefix: {PREFIX}",
+        f"# Dataset ID: {DATASET_ID}",
         "",
     ]
     for spec in USERS:
@@ -37,21 +37,19 @@ def write_credentials(result: SetupResult) -> None:
 def main() -> None:
     client = rg.Argilla(api_url=API_URL, api_key=API_KEY)
 
-    setup_result: SetupResult = setup(client, workspace_prefix=PREFIX, users=USERS)
+    setup_result: SetupResult = setup(client, users=USERS)
 
-    print(f"\n=== Setup complete (prefix={PREFIX}) ===")
+    print("\n=== Setup complete ===")
     print(f"Workspaces created:  {setup_result.created_workspaces}")
     print(f"Workspaces skipped:  {setup_result.skipped_workspaces}")
-    print(f"Datasets created:    {setup_result.created_datasets}")
-    print(f"Datasets skipped:    {setup_result.skipped_datasets}")
     print(f"Users created:       {setup_result.created_users}")
     print(f"Users skipped:       {setup_result.skipped_users}")
 
     write_credentials(setup_result)
 
-    import_result: ImportResult = import_records(client, SAMPLE_DATA, workspace_prefix=PREFIX)
+    import_result: ImportResult = import_records(client, SAMPLE_DATA, dataset_id=DATASET_ID)
 
-    print("\n=== Import complete ===")
+    print(f"\n=== Import complete (dataset_id={DATASET_ID}) ===")
     print(f"Total input records: {import_result.total_records}")
     print(f"Records per dataset: {import_result.dataset_counts}")
 
