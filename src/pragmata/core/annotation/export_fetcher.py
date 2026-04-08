@@ -10,7 +10,7 @@ from uuid import UUID
 
 import argilla as rg
 
-from pragmata.core.annotation.argilla_ops import apply_prefix
+from pragmata.core.annotation.argilla_ops import apply_suffix
 from pragmata.core.annotation.argilla_task_definitions import DATASET_NAMES
 from pragmata.core.annotation.constraints import CONSTRAINT_CHECKERS
 from pragmata.core.schemas.annotation_export import (
@@ -95,12 +95,12 @@ def fetch_task(
     user_lookup: dict[UUID, str],
 ) -> list[tuple[AnnotationModel, list[str]]]:
     """Fetch submitted records for a task, build typed rows with constraint violations."""
-    dataset_name = apply_prefix(settings.workspace_prefix, DATASET_NAMES[task])
+    dataset_name = apply_suffix(DATASET_NAMES[task], settings.dataset_id)
 
     workspace_name: str | None = None
     for ws_base, tasks in settings.workspace_dataset_map.items():
         if task in tasks:
-            workspace_name = apply_prefix(settings.workspace_prefix, ws_base)
+            workspace_name = ws_base
             break
 
     dataset = client.datasets(dataset_name, workspace=workspace_name)
