@@ -2,7 +2,7 @@ COMPOSE_FILE := deploy/annotation/docker-compose.dev.yml
 ENV_FILE     := deploy/annotation/.env
 ENV_EXAMPLE  := deploy/annotation/.env.dev.example
 
-.PHONY: docker-up docker-up-external-pg docker-up-external-es docker-up-external docker-down docker-stop docker-logs docker-status ensure-env test-stack test test-integration test-all
+.PHONY: docker-up docker-up-external-pg docker-up-external-es docker-up-external docker-down docker-stop docker-logs docker-status ensure-env lint type-check test-stack test test-integration test-all ci
 
 # Profiles: all-bundled (default), external-pg (ext Postgres), external-es (ext ES), no profile (all external)
 ALL_PROFILES := --profile all-bundled --profile external-pg --profile external-es
@@ -48,6 +48,15 @@ docker-logs: ## Tail stack logs
 docker-status: ## Show stack container status
 	docker compose -f $(COMPOSE_FILE) --env-file $(ENV_FILE) $(ALL_PROFILES) ps
 
+# ── Lint & type check (mirrors CI) ──────────────────────────────────
+
+lint: ## Run Ruff format check + linter
+	uv run ruff format --check .
+	uv run ruff check .
+
+type-check: ## Run mypy type checker
+	uv run mypy src/pragmata
+
 # ── Test suites ──────────────────────────────────────────────────────
 
 test: ## Run unit tests (default — excludes integration)
@@ -63,3 +72,5 @@ test-integration: ## Run integration tests (requires running Argilla stack)
 
 test-all: ## Run all tests
 	python -m pytest -o "addopts="
+
+ci: lint type-check test ## Run full CI locally (lint + type-check + unit tests)
