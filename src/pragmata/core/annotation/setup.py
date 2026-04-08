@@ -110,5 +110,7 @@ def teardown_resources(
                 logger.info("Deleted dataset %r from workspace %r", ds_name, ws_base)
 
         if not settings.dataset_id:
+            for user in list(workspace.users):
+                workspace.remove_user(user)
             workspace.delete()
             logger.info("Deleted workspace %r", ws_base)
