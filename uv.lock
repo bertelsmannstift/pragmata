@@ -1766,6 +1766,7 @@ dependencies = [
 [package.optional-dependencies]
 annotation = [
     { name = "argilla" },
+    { name = "numpy" },
 ]
 anthropic = [
     { name = "langchain-anthropic" },
@@ -1779,6 +1780,7 @@ deepseek = [
 dev = [
     { name = "argilla" },
     { name = "mypy" },
+    { name = "numpy" },
     { name = "pytest" },
     { name = "ruff" },
     { name = "types-pyyaml" },
@@ -1813,6 +1815,7 @@ requires-dist = [
     { name = "langchain-mistralai" },
     { name = "langchain-openai", marker = "extra == 'openai'" },
     { name = "mypy", marker = "extra == 'type'", specifier = ">=1.19" },
+    { name = "numpy", marker = "extra == 'annotation'", specifier = ">=1.26" },
     { name = "pragmata", extras = ["test", "lint", "type", "annotation"], marker = "extra == 'dev'" },
     { name = "pydantic", specifier = ">=2.0,<3.0" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=9.0" },
