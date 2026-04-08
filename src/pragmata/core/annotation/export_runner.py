@@ -82,8 +82,13 @@ def write_export_csv(
         path: Final output path.
         task: Task type — determines the export-row schema.
     """
+<<<<<<< HEAD
     row_cls = TASK_EXPORT_ROW[task]
     headers = list(row_cls.model_fields.keys())
+=======
+    schema_cls = TASK_SCHEMA[task]
+    headers = list(schema_cls.model_fields.keys()) + ["constraint_violated", "constraint_details"]
+>>>>>>> 9db5792 (refactor(annotation): clean up comments, make task constants public)
     tmp = path.with_suffix(".tmp")
     try:
         with tmp.open("w", newline="", encoding="utf-8") as f:
