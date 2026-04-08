@@ -73,7 +73,7 @@ def resolve_export_paths(*, workspace: WorkspacePaths, export_id: str) -> Annota
     export_dir = workspace.tool_root("annotation") / "exports" / export_id
     return AnnotationExportPaths(
         export_dir=export_dir,
-        tool_root=workspace.tool_root,
+        tool_root=workspace.tool_root("annotation"),
         retrieval_annotation_csv=export_dir / "retrieval.csv",
         grounding_annotation_csv=export_dir / "grounding.csv",
         generation_annotation_csv=export_dir / "generation.csv",
