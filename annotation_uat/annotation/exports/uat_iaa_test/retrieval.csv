@@ -1,0 +1,13 @@
+record_uuid,annotator_id,task,language,inserted_at,created_at,record_status,query,chunk,chunk_id,doc_id,chunk_rank,topically_relevant,evidence_sufficient,misleading,notes,constraint_violated,constraint_details
+r1,alice,retrieval,en,2026-04-01T10:00:00+00:00,2026-04-01T10:05:00+00:00,completed,What is RAG?,Retrieval-augmented generation combines retrieval with LLMs.,c1,d1,1,true,true,false,,false,
+r1,bob,retrieval,en,2026-04-01T10:00:00+00:00,2026-04-01T10:08:00+00:00,completed,What is RAG?,Retrieval-augmented generation combines retrieval with LLMs.,c1,d1,1,true,true,false,,false,
+r2,alice,retrieval,en,2026-04-01T10:00:00+00:00,2026-04-01T10:10:00+00:00,completed,How does chunking work?,Documents are split into smaller pieces for indexing.,c2,d2,1,true,true,false,,false,
+r2,bob,retrieval,en,2026-04-01T10:00:00+00:00,2026-04-01T10:12:00+00:00,completed,How does chunking work?,Documents are split into smaller pieces for indexing.,c2,d2,1,true,false,false,,false,
+r3,alice,retrieval,en,2026-04-01T10:00:00+00:00,2026-04-01T10:15:00+00:00,completed,What are embeddings?,Embeddings map text to dense vector representations.,c3,d3,1,true,true,false,,false,
+r3,bob,retrieval,en,2026-04-01T10:00:00+00:00,2026-04-01T10:18:00+00:00,completed,What are embeddings?,Embeddings map text to dense vector representations.,c3,d3,1,false,true,false,,false,
+r4,alice,retrieval,en,2026-04-01T10:00:00+00:00,2026-04-01T10:20:00+00:00,completed,Explain reranking.,Rerankers reorder candidate documents by relevance.,c4,d4,1,true,true,false,,false,
+r4,bob,retrieval,en,2026-04-01T10:00:00+00:00,2026-04-01T10:22:00+00:00,completed,Explain reranking.,Rerankers reorder candidate documents by relevance.,c4,d4,1,true,true,false,,false,
+r5,alice,retrieval,en,2026-04-01T10:00:00+00:00,2026-04-02T09:00:00+00:00,completed,What is BM25?,BM25 is a bag-of-words retrieval function.,c5,d5,1,false,false,true,,false,
+r5,bob,retrieval,en,2026-04-01T10:00:00+00:00,2026-04-02T09:05:00+00:00,completed,What is BM25?,BM25 is a bag-of-words retrieval function.,c5,d5,1,false,false,false,,false,
+r6,alice,retrieval,en,2026-04-01T10:00:00+00:00,2026-04-02T09:10:00+00:00,completed,Hybrid search?,Combining sparse and dense retrieval methods.,c6,d6,1,true,true,false,,false,
+r6,bob,retrieval,en,2026-04-01T10:00:00+00:00,2026-04-02T09:15:00+00:00,completed,Hybrid search?,Combining sparse and dense retrieval methods.,c6,d6,1,true,true,false,,false,

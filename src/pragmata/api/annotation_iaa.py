@@ -21,7 +21,6 @@ def compute_iaa(
     *,
     base_dir: str | Path | Unset = UNSET,
     tasks: list[Task] | None = None,
-    workspace_prefix: str | Unset = UNSET,
     n_resamples: int = 1000,
     ci: float = 0.95,
     seed: int | None = None,
@@ -40,7 +39,6 @@ def compute_iaa(
         export_id: Identifier of a previous export run whose CSVs to analyse.
         base_dir: Workspace base directory. Defaults to cwd.
         tasks: Tasks to analyse. Defaults to all three tasks.
-        workspace_prefix: Prefix used when the environment was created.
         n_resamples: Number of bootstrap iterations for CIs.
         ci: Confidence level (e.g. 0.95 for 95% CI).
         seed: Optional RNG seed for reproducible bootstrap.
@@ -54,7 +52,7 @@ def compute_iaa(
     """
     settings = AnnotationSettings.resolve(
         config=load_config_file(config_path) if isinstance(config_path, (str, Path)) else None,
-        overrides={"workspace_prefix": workspace_prefix, "base_dir": base_dir},
+        overrides={"base_dir": base_dir},
     )
     workspace = WorkspacePaths.from_base_dir(settings.base_dir)
     export_paths = resolve_export_paths(workspace=workspace, export_id=export_id)

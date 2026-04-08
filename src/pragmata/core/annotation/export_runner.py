@@ -137,9 +137,9 @@ def run_export(
 
 
 def resolve_export_id(settings: "AnnotationSettings", export_id: str | None) -> str:
-    """Derive a run identifier from an explicit value or generate one from prefix + timestamp."""
+    """Derive a run identifier from an explicit value or generate one from dataset_id + timestamp."""
     if export_id is not None:
         return export_id
     ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
-    prefix = settings.workspace_prefix
-    return f"{prefix}_{ts}" if prefix else ts
+    dataset_id = settings.dataset_id
+    return f"{dataset_id}_{ts}" if dataset_id else ts

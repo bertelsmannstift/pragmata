@@ -1,0 +1,1 @@
+record_uuid,annotator_id,task,language,inserted_at,created_at,record_status,answer,context_set,support_present,unsupported_claim_present,contradicted_claim_present,source_cited,fabricated_source,notes,constraint_violated,constraint_details

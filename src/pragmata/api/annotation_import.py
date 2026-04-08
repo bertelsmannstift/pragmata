@@ -50,7 +50,7 @@ def import_records(
     records: RecordInput,
     *,
     format: str = "auto",
-    workspace_prefix: str | Unset = UNSET,
+    dataset_id: str | Unset = UNSET,
     base_dir: str | Path | Unset = UNSET,
     config_path: str | Path | Unset = UNSET,
 ) -> ImportResult:
@@ -66,8 +66,9 @@ def import_records(
     failures are collected in ImportResult.errors — invalid records are
     skipped, not raised.
 
-    Record IDs are derived from content hashes for idempotent upsert.
-    Datasets must already exist (call setup() first).
+    Datasets are auto-created if they don't exist. Workspaces must already
+    exist (call setup() first). Record IDs are derived from content hashes
+    for idempotent upsert.
 
     Args:
         client: Connected Argilla client instance.
@@ -75,7 +76,7 @@ def import_records(
             or pandas DataFrame.
         format: File format override — 'auto' (default), 'json', 'jsonl',
             or 'csv'. Only used for str/Path inputs.
-        workspace_prefix: Prefix used when the environment was created.
+        dataset_id: Suffix appended to dataset names for run scoping.
         base_dir: Workspace base directory. Defaults to cwd.
         config_path: Path to YAML config file for settings resolution.
 
@@ -85,7 +86,7 @@ def import_records(
     raw = resolve_records(records, format=format)
     settings = AnnotationSettings.resolve(
         config=load_config_file(config_path) if isinstance(config_path, (str, Path)) else None,
-        overrides={"workspace_prefix": workspace_prefix, "base_dir": base_dir},
+        overrides={"dataset_id": dataset_id, "base_dir": base_dir},
     )
     workspace = WorkspacePaths.from_base_dir(settings.base_dir)
     paths = resolve_annotation_paths(workspace=workspace).ensure_dirs()

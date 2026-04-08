@@ -1,0 +1,9 @@
+record_uuid,annotator_id,task,language,inserted_at,created_at,record_status,answer,context_set,support_present,unsupported_claim_present,contradicted_claim_present,source_cited,fabricated_source,notes,constraint_violated,constraint_details
+r1,alice,grounding,en,2026-04-01T10:00:00+00:00,2026-04-01T11:00:00+00:00,completed,The EU offers Horizon Europe for SMEs.,EU funding sources document.,true,false,false,true,false,,false,
+r1,bob,grounding,en,2026-04-01T10:00:00+00:00,2026-04-01T11:05:00+00:00,completed,The EU offers Horizon Europe for SMEs.,EU funding sources document.,true,false,false,true,false,,false,
+r2,alice,grounding,en,2026-04-01T10:00:00+00:00,2026-04-01T11:10:00+00:00,completed,Rural broadband covers 95% of Germany.,Broadband atlas 2024.,true,true,false,true,false,,false,
+r2,bob,grounding,en,2026-04-01T10:00:00+00:00,2026-04-01T11:15:00+00:00,completed,Rural broadband covers 95% of Germany.,Broadband atlas 2024.,true,false,false,true,false,,false,
+r3,alice,grounding,en,2026-04-01T10:00:00+00:00,2026-04-01T11:20:00+00:00,completed,The climate act was passed in 2019.,German climate legislation.,true,false,false,false,false,,false,
+r3,bob,grounding,en,2026-04-01T10:00:00+00:00,2026-04-01T11:25:00+00:00,completed,The climate act was passed in 2019.,German climate legislation.,true,false,false,true,false,,false,
+r4,alice,grounding,en,2026-04-01T10:00:00+00:00,2026-04-01T11:30:00+00:00,completed,Berlin has 3.5 million residents.,City statistics 2024.,true,false,false,true,false,,false,
+r4,bob,grounding,en,2026-04-01T10:00:00+00:00,2026-04-01T11:35:00+00:00,completed,Berlin has 3.5 million residents.,City statistics 2024.,true,false,false,true,false,,false,
