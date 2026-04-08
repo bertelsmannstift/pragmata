@@ -223,6 +223,7 @@ class TestExportResult:
     def test_constructable(self, tmp_path: Path) -> None:
         paths = AnnotationExportPaths(
             export_dir=tmp_path,
+            tool_root=tmp_path,
             retrieval_annotation_csv=tmp_path / "retrieval.csv",
             grounding_annotation_csv=tmp_path / "grounding.csv",
             generation_annotation_csv=tmp_path / "generation.csv",
@@ -239,6 +240,7 @@ class TestExportResult:
     def test_frozen(self, tmp_path: Path) -> None:
         paths = AnnotationExportPaths(
             export_dir=tmp_path,
+            tool_root=tmp_path,
             retrieval_annotation_csv=tmp_path / "retrieval.csv",
             grounding_annotation_csv=tmp_path / "grounding.csv",
             generation_annotation_csv=tmp_path / "generation.csv",
@@ -259,7 +261,7 @@ def mock_client() -> MagicMock:
     user = MagicMock()
     user.id = _UID1
     user.username = "annotator1"
-    client.users.return_value = [user]
+    client.users.list.return_value = [user]
     dataset = MagicMock()
     dataset.records.return_value = iter([])
     client.datasets.return_value = dataset

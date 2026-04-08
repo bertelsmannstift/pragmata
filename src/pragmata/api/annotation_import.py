@@ -1,18 +1,24 @@
 """Annotation import API — thin orchestration over core/ implementation."""
 
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import argilla as rg
 
+from pragmata.api._error_log import error_log
 from pragmata.core.annotation.loaders import RecordInput, resolve_records
 from pragmata.core.annotation.record_builder import (
     RecordError,
     fan_out_records,
     validate_records,
 )
+from pragmata.core.paths.annotation_paths import resolve_annotation_paths
+from pragmata.core.paths.paths import WorkspacePaths
 from pragmata.core.settings.annotation_settings import AnnotationSettings
 from pragmata.core.settings.settings_base import UNSET, Unset, load_config_file
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Result types
@@ -45,6 +51,7 @@ def import_records(
     *,
     format: str = "auto",
     workspace_prefix: str | Unset = UNSET,
+    base_dir: str | Path | Unset = UNSET,
     config_path: str | Path | Unset = UNSET,
 ) -> ImportResult:
     """Validate and fan out records to the three Argilla annotation datasets.
@@ -69,6 +76,7 @@ def import_records(
         format: File format override — 'auto' (default), 'json', 'jsonl',
             or 'csv'. Only used for str/Path inputs.
         workspace_prefix: Prefix used when the environment was created.
+        base_dir: Workspace base directory. Defaults to cwd.
         config_path: Path to YAML config file for settings resolution.
 
     Returns:
@@ -77,10 +85,16 @@ def import_records(
     raw = resolve_records(records, format=format)
     settings = AnnotationSettings.resolve(
         config=load_config_file(config_path) if isinstance(config_path, (str, Path)) else None,
-        overrides={"workspace_prefix": workspace_prefix},
+        overrides={"workspace_prefix": workspace_prefix, "base_dir": base_dir},
     )
-    validation = validate_records(raw)
-    dataset_counts = fan_out_records(client, validation.valid, settings)
+    workspace = WorkspacePaths.from_base_dir(settings.base_dir)
+    paths = resolve_annotation_paths(workspace=workspace).ensure_dirs()
+    with error_log(paths.tool_root):
+        validation = validate_records(raw)
+        if validation.errors:
+            logger.warning("Validation failed for %d of %d records", len(validation.errors), len(raw))
+        dataset_counts = fan_out_records(client, validation.valid, settings)
+    logger.info("Import complete: %d records across %d datasets", len(raw), len(dataset_counts))
     return ImportResult(
         total_records=len(raw),
         dataset_counts=dataset_counts,
