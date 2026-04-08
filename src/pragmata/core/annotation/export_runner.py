@@ -25,13 +25,13 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from pragmata.core.settings.annotation_settings import AnnotationSettings
 
-_TASK_CSV_ATTR = {
+TASK_CSV_ATTR = {
     Task.RETRIEVAL: "retrieval_annotation_csv",
     Task.GROUNDING: "grounding_annotation_csv",
     Task.GENERATION: "generation_annotation_csv",
 }
 
-_TASK_SCHEMA: dict[Task, type[AnnotationBase]] = {
+TASK_SCHEMA: dict[Task, type[AnnotationBase]] = {
     Task.RETRIEVAL: RetrievalAnnotation,
     Task.GROUNDING: GroundingAnnotation,
     Task.GENERATION: GenerationAnnotation,
@@ -70,7 +70,7 @@ def write_export_csv(
         path: Final output path.
         task: Task type — determines schema for header derivation.
     """
-    schema_cls = _TASK_SCHEMA[task]
+    schema_cls = TASK_SCHEMA[task]
     headers = list(schema_cls.model_fields.keys()) + ["constraint_violated", "constraint_details"]
     tmp = path.with_suffix(".tmp")
     try:
@@ -107,7 +107,7 @@ def run_export(
     for task in tasks:
         task_rows[task] = fetch_task(client, settings, task, user_lookup)
 
-    task_paths = {task: getattr(paths, _TASK_CSV_ATTR[task]) for task in tasks}
+    task_paths = {task: getattr(paths, TASK_CSV_ATTR[task]) for task in tasks}
 
     written: list[Path] = []
     try:
