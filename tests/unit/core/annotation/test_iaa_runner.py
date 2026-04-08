@@ -2,6 +2,7 @@
 
 import csv
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -19,7 +20,16 @@ from pragmata.core.schemas.iaa_report import IaaReport
 def _write_csv(path: Path, task: Task, rows: list[dict]) -> None:
     """Write a minimal export CSV for a task."""
     labels = TASK_LABELS[task]
-    fieldnames = ["record_uuid", "annotator_id", "task"] + labels + ["constraint_violated", "constraint_details"]
+    fieldnames = (
+        [
+            "record_uuid",
+            "annotator_id",
+            "task",
+            "created_at",
+        ]
+        + labels
+        + ["constraint_violated", "constraint_details"]
+    )
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
@@ -28,11 +38,18 @@ def _write_csv(path: Path, task: Task, rows: list[dict]) -> None:
             writer.writerow(row)
 
 
-def _make_row(record_uuid: str, annotator_id: str, task: Task, label_values: dict[str, bool]) -> dict:
+def _make_row(
+    record_uuid: str,
+    annotator_id: str,
+    task: Task,
+    label_values: dict[str, bool],
+    created_at: str = "2026-04-01T10:00:00+00:00",
+) -> dict:
     row: dict[str, str] = {
         "record_uuid": record_uuid,
         "annotator_id": annotator_id,
         "task": task.value,
+        "created_at": created_at,
         "constraint_violated": "false",
         "constraint_details": "",
     }
@@ -184,3 +201,70 @@ class TestRunIaa:
         assert report.tasks[0].labels[0].n_annotators == 3
         # 3 annotators -> 3 pairs
         assert len(report.tasks[0].pairwise_kappa) == 3
+
+    def test_exclude_annotator(self, export_dir: AnnotationExportPaths, iaa_dir: IaaPaths):
+        labels = {"topically_relevant": True, "evidence_sufficient": True, "misleading": False}
+        rows = [
+            _make_row("r1", "ann1", Task.RETRIEVAL, labels),
+            _make_row("r1", "ann2", Task.RETRIEVAL, labels),
+            _make_row("r1", "ann3", Task.RETRIEVAL, labels),
+            _make_row("r2", "ann1", Task.RETRIEVAL, labels),
+            _make_row("r2", "ann2", Task.RETRIEVAL, labels),
+            _make_row("r2", "ann3", Task.RETRIEVAL, labels),
+        ]
+        _write_csv(export_dir.retrieval_annotation_csv, Task.RETRIEVAL, rows)
+
+        report = run_iaa(
+            export_dir,
+            iaa_dir,
+            [Task.RETRIEVAL],
+            n_resamples=50,
+            seed=42,
+            exclude_annotators=["ann3"],
+        )
+
+        assert report.tasks[0].labels[0].n_annotators == 2
+
+    def test_filter_by_date(self, export_dir: AnnotationExportPaths, iaa_dir: IaaPaths):
+        labels = {"topically_relevant": True, "evidence_sufficient": True, "misleading": False}
+        labels_diff = {"topically_relevant": False, "evidence_sufficient": True, "misleading": False}
+        rows = [
+            _make_row("r1", "ann1", Task.RETRIEVAL, labels, created_at="2026-03-01T10:00:00+00:00"),
+            _make_row("r1", "ann2", Task.RETRIEVAL, labels, created_at="2026-03-01T10:00:00+00:00"),
+            _make_row("r2", "ann1", Task.RETRIEVAL, labels_diff, created_at="2026-04-01T10:00:00+00:00"),
+            _make_row("r2", "ann2", Task.RETRIEVAL, labels_diff, created_at="2026-04-01T10:00:00+00:00"),
+        ]
+        _write_csv(export_dir.retrieval_annotation_csv, Task.RETRIEVAL, rows)
+
+        report = run_iaa(
+            export_dir,
+            iaa_dir,
+            [Task.RETRIEVAL],
+            n_resamples=50,
+            seed=42,
+            after=datetime(2026, 3, 15, tzinfo=timezone.utc),
+        )
+
+        # Only r2 (April) should be included.
+        assert report.tasks[0].labels[0].n_items == 1
+
+    def test_filter_before_date(self, export_dir: AnnotationExportPaths, iaa_dir: IaaPaths):
+        labels = {"topically_relevant": True, "evidence_sufficient": True, "misleading": False}
+        rows = [
+            _make_row("r1", "ann1", Task.RETRIEVAL, labels, created_at="2026-03-01T10:00:00+00:00"),
+            _make_row("r1", "ann2", Task.RETRIEVAL, labels, created_at="2026-03-01T10:00:00+00:00"),
+            _make_row("r2", "ann1", Task.RETRIEVAL, labels, created_at="2026-04-01T10:00:00+00:00"),
+            _make_row("r2", "ann2", Task.RETRIEVAL, labels, created_at="2026-04-01T10:00:00+00:00"),
+        ]
+        _write_csv(export_dir.retrieval_annotation_csv, Task.RETRIEVAL, rows)
+
+        report = run_iaa(
+            export_dir,
+            iaa_dir,
+            [Task.RETRIEVAL],
+            n_resamples=50,
+            seed=42,
+            before=datetime(2026, 3, 15, tzinfo=timezone.utc),
+        )
+
+        assert report.tasks[0].labels[0].n_items == 1
