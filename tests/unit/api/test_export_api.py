@@ -221,7 +221,7 @@ class TestExportAnnotations:
     def test_export_id_auto_generated_with_prefix(self, tmp_path: Path, mock_client: MagicMock) -> None:
         from pragmata.api.annotation_export import export_annotations
 
-        result = export_annotations(base_dir=tmp_path, workspace_prefix="myproject")
+        result = export_annotations(base_dir=tmp_path, dataset_id="myproject")
         export_id = result.paths.export_dir.name
         assert export_id.startswith("myproject_")
 
