@@ -45,6 +45,11 @@ def _to_bool(value: str) -> bool:
     return value.lower() == "true"
 
 
+def _or_none(value: float) -> float | None:
+    """Convert NaN to None for JSON-safe Pydantic fields."""
+    return None if math.isnan(value) else value
+
+
 def _pivot_task(
     rows: list[dict[str, str]], labels: list[str]
 ) -> tuple[dict[str, np.ndarray], list[str], dict[str, dict[str, dict[str, bool]]]]:
@@ -188,12 +193,12 @@ def run_iaa(
             label_results.append(
                 LabelAgreement(
                     label=label,
-                    alpha=None if math.isnan(alpha) else alpha,
-                    ci_lower=None if math.isnan(ci_lower) else ci_lower,
-                    ci_upper=None if math.isnan(ci_upper) else ci_upper,
+                    alpha=_or_none(alpha),
+                    ci_lower=_or_none(ci_lower),
+                    ci_upper=_or_none(ci_upper),
                     n_items=n_items,
                     n_annotators=len(annotators),
-                    pct_agreement=None if math.isnan(pct) else pct,
+                    pct_agreement=_or_none(pct),
                 )
             )
 
