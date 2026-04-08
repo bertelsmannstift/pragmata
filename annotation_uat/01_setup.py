@@ -7,7 +7,7 @@ from pragmata.annotation import ImportResult, SetupResult, UserSpec, import_reco
 
 API_URL = "http://localhost:6900"
 API_KEY = "argilla.apikey"
-DATASET_ID = sys.argv[1] if len(sys.argv) > 1 else "uat"
+DATASET_ID = sys.argv[1] if len(sys.argv) > 1 else ""
 UAT_DIR = Path(__file__).parent
 SAMPLE_DATA = UAT_DIR / "sample_data.json"
 CREDENTIALS_FILE = UAT_DIR / "credentials.txt"

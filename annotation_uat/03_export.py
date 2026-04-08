@@ -6,7 +6,7 @@ from pragmata.annotation import ExportResult, export_annotations
 
 API_URL = "http://localhost:6900"
 API_KEY = "argilla.apikey"
-DATASET_ID = sys.argv[1] if len(sys.argv) > 1 else "uat"
+DATASET_ID = sys.argv[1] if len(sys.argv) > 1 else ""
 
 
 def main() -> None:

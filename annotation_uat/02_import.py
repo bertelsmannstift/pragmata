@@ -6,7 +6,7 @@ from pragmata.annotation import ImportResult, import_records
 
 API_URL = "http://localhost:6900"
 API_KEY = "argilla.apikey"
-DATASET_ID = sys.argv[1] if len(sys.argv) > 1 else "uat"
+DATASET_ID = sys.argv[1] if len(sys.argv) > 1 else ""
 SAMPLE_DATA = "annotation_uat/sample_data.json"
 
 
