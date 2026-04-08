@@ -8,8 +8,7 @@ import argilla as rg
 import pytest
 
 from pragmata.api.annotation_import import ImportResult, import_records
-from pragmata.api.annotation_setup import teardown
-from pragmata.core.annotation.setup import setup_workspaces
+from pragmata.core.annotation.setup import setup_workspaces, teardown_resources
 from pragmata.core.settings.annotation_settings import AnnotationSettings
 
 pytestmark = [pytest.mark.integration, pytest.mark.annotation]
@@ -42,11 +41,13 @@ def client() -> rg.Argilla:
 
 @pytest.fixture(autouse=True, scope="module")
 def clean_environment(client: rg.Argilla):
-    """Tear down and re-setup prefixed environment before/after all tests."""
-    teardown(dataset_id=_DATASET_ID, **_CREDS)
+    """Tear down and re-setup environment before/after all tests."""
+    teardown_resources(client, _SETTINGS)
+    teardown_resources(client, AnnotationSettings())
     setup_workspaces(client, _SETTINGS)
     yield
-    teardown(dataset_id=_DATASET_ID, **_CREDS)
+    teardown_resources(client, _SETTINGS)
+    teardown_resources(client, AnnotationSettings())
 
 
 @pytest.fixture()
@@ -75,9 +76,9 @@ def test_record_counts_per_dataset(client: rg.Argilla, sample_records: list[dict
     assert result.total_records == n_records
     assert result.errors == []
 
-    ret_ds_name = f"{_DATASET_ID}_task_retrieval"
-    gnd_ds_name = f"{_DATASET_ID}_task_grounding"
-    gen_ds_name = f"{_DATASET_ID}_task_generation"
+    ret_ds_name = f"retrieval_{_DATASET_ID}"
+    gnd_ds_name = f"grounding_{_DATASET_ID}"
+    gen_ds_name = f"generation_{_DATASET_ID}"
 
     assert result.dataset_counts[ret_ds_name] == n_retrieval
     assert result.dataset_counts[gnd_ds_name] == n_records
@@ -88,9 +89,9 @@ def test_records_exist_in_argilla(client: rg.Argilla, sample_records: list[dict]
     """After import, all three datasets contain records."""
     import_records(sample_records, dataset_id=_DATASET_ID, **_CREDS)
 
-    ret_ds = client.datasets(f"{_DATASET_ID}_task_retrieval", workspace=f"{_DATASET_ID}_retrieval")
-    gnd_ds = client.datasets(f"{_DATASET_ID}_task_grounding", workspace=f"{_DATASET_ID}_grounding")
-    gen_ds = client.datasets(f"{_DATASET_ID}_task_generation", workspace=f"{_DATASET_ID}_generation")
+    ret_ds = client.datasets(f"retrieval_{_DATASET_ID}", workspace="retrieval")
+    gnd_ds = client.datasets(f"grounding_{_DATASET_ID}", workspace="grounding")
+    gen_ds = client.datasets(f"generation_{_DATASET_ID}", workspace="generation")
 
     assert ret_ds is not None
     assert gnd_ds is not None
@@ -110,9 +111,9 @@ def test_record_uuid_linkage(client: rg.Argilla, sample_records: list[dict]) -> 
         ds = client.datasets(ds_name, workspace=ws_name)
         return {r.metadata["record_uuid"] for r in ds.records if r.metadata.get("record_uuid")}
 
-    ret_uuids = _uuids(f"{_DATASET_ID}_task_retrieval", f"{_DATASET_ID}_retrieval")
-    gnd_uuids = _uuids(f"{_DATASET_ID}_task_grounding", f"{_DATASET_ID}_grounding")
-    gen_uuids = _uuids(f"{_DATASET_ID}_task_generation", f"{_DATASET_ID}_generation")
+    ret_uuids = _uuids(f"retrieval_{_DATASET_ID}", "retrieval")
+    gnd_uuids = _uuids(f"grounding_{_DATASET_ID}", "grounding")
+    gen_uuids = _uuids(f"generation_{_DATASET_ID}", "generation")
 
     # All three datasets share the same UUIDs
     assert ret_uuids == gnd_uuids == gen_uuids
@@ -129,9 +130,9 @@ def test_idempotent_reimport(client: rg.Argilla, sample_records: list[dict]) -> 
     import_records(sample_records, dataset_id=_DATASET_ID, **_CREDS)
     import_records(sample_records, dataset_id=_DATASET_ID, **_CREDS)
 
-    ret_ds = client.datasets(f"{_DATASET_ID}_task_retrieval", workspace=f"{_DATASET_ID}_retrieval")
-    gnd_ds = client.datasets(f"{_DATASET_ID}_task_grounding", workspace=f"{_DATASET_ID}_grounding")
-    gen_ds = client.datasets(f"{_DATASET_ID}_task_generation", workspace=f"{_DATASET_ID}_generation")
+    ret_ds = client.datasets(f"retrieval_{_DATASET_ID}", workspace="retrieval")
+    gnd_ds = client.datasets(f"grounding_{_DATASET_ID}", workspace="grounding")
+    gen_ds = client.datasets(f"generation_{_DATASET_ID}", workspace="generation")
 
     n_retrieval = sum(len(r["chunks"]) for r in sample_records)
     n_records = len(sample_records)
@@ -152,3 +153,26 @@ def test_invalid_records_skipped_with_errors(client: rg.Argilla) -> None:
     assert result.errors[0].index == 0
     # The one valid record was still imported
     assert sum(result.dataset_counts.values()) > 0
+
+
+def test_dataset_auto_creation(client: rg.Argilla) -> None:
+    """Import auto-creates datasets when they don't exist."""
+    auto_id = "autotest"
+    auto_settings = AnnotationSettings(dataset_id=auto_id)
+
+    # Clean up any prior run
+    teardown_resources(client, auto_settings)
+
+    # Import without prior setup_datasets — datasets should be auto-created
+    result = import_records([_make_raw(1)], dataset_id=auto_id, **_CREDS)
+
+    assert result.total_records == 1
+    assert result.errors == []
+
+    # Datasets exist
+    assert client.datasets(f"retrieval_{auto_id}", workspace="retrieval") is not None
+    assert client.datasets(f"grounding_{auto_id}", workspace="grounding") is not None
+    assert client.datasets(f"generation_{auto_id}", workspace="generation") is not None
+
+    # Clean up
+    teardown_resources(client, auto_settings)
