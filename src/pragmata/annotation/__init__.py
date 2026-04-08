@@ -3,6 +3,9 @@
 from pragmata.api.annotation_export import (
     export_annotations as export_annotations,
 )
+from pragmata.api.annotation_iaa import (
+    compute_iaa as compute_iaa,
+)
 from pragmata.api.annotation_import import (
     ImportResult as ImportResult,
 )
@@ -20,6 +23,9 @@ from pragmata.core.annotation.export_runner import (
 )
 from pragmata.core.annotation.setup import (
     SetupResult as SetupResult,
+)
+from pragmata.core.schemas.iaa_report import (
+    IaaReport as IaaReport,
 )
 from pragmata.core.settings.annotation_settings import (
     UserSpec as UserSpec,

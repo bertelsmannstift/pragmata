@@ -26,7 +26,7 @@ type = [
     "mypy>=1.19",
     "types-PyYAML",
 ]
-annotation = ["argilla>=2.0,<3.0",]
+annotation = ["argilla>=2.0,<3.0", "numpy>=1.26"]
 cohere = ["langchain-cohere"]
 deepseek = ["langchain-deepseek"]
 openai = ["langchain-openai"]
