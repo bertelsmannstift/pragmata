@@ -150,7 +150,7 @@ def _load_hf_dataset(dataset: Dataset) -> list[dict[str, Any]]:
 
 def _load_dataframe(df: pd.DataFrame) -> list[dict[str, Any]]:
     """Convert a pandas DataFrame to list[dict]."""
-    return df.to_dict("records")
+    return df.to_dict("records")  # type: ignore[return-value]
 
 
 # ---------------------------------------------------------------------------
