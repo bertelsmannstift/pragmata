@@ -1,4 +1,4 @@
-"""Unit tests for synthetic query blueprint deduplication helpers."""
+"""Unit tests for synthetic query blueprint deduplication."""
 
 import hashlib
 import json
@@ -316,3 +316,40 @@ def test_deduplicate_blueprints_applies_near_duplicate_selection_in_original_ord
 
 def test_deduplicate_blueprints_returns_empty_list_for_empty_input() -> None:
     assert deduplicate_blueprints([]) == []
+
+
+def test_deduplicate_blueprints_short_circuits_when_exact_dedup_leaves_one(
+    make_blueprint: Callable[..., QueryBlueprint],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """deduplicate_blueprints should skip embedding when exact deduplication leaves one blueprint."""
+    first = make_blueprint(candidate_id="c001", topic="education")
+    duplicate = make_blueprint(candidate_id="c002", topic="education")
+
+    embed_called = False
+    load_called = False
+
+    def _fake_embed_blueprints(*args: object, **kwargs: object) -> object:
+        nonlocal embed_called
+        embed_called = True
+        raise AssertionError("_embed_blueprints should not be called")
+
+    def _fake_load_embedding_model(*args: object, **kwargs: object) -> object:
+        nonlocal load_called
+        load_called = True
+        raise AssertionError("_load_embedding_model should not be called")
+
+    monkeypatch.setattr(
+        "pragmata.core.querygen.deduplication._embed_blueprints",
+        _fake_embed_blueprints,
+    )
+    monkeypatch.setattr(
+        "pragmata.core.querygen.deduplication._load_embedding_model",
+        _fake_load_embedding_model,
+    )
+
+    result = deduplicate_blueprints([first, duplicate])
+
+    assert result == [first]
+    assert embed_called is False
+    assert load_called is False

@@ -1,4 +1,4 @@
-"""Deduplication helpers for synthetic query blueprints."""
+"""Deterministic deduplication for synthetic query blueprints."""
 
 from __future__ import annotations
 
@@ -51,7 +51,7 @@ def _select_non_duplicate_indices(
     threshold: float = 0.95,
 ) -> list[int]:
     """Select non-duplicate indices deterministically from a similarity matrix."""
-    matrix = np.asarray(similarities, dtype=np.float32)
+    matrix = similarities
 
     if matrix.ndim != 2 or matrix.shape[0] != matrix.shape[1]:
         raise ValueError("similarities must be a square 2D matrix")
@@ -72,7 +72,7 @@ def _select_non_duplicate_indices(
     return retained_indices
 
 
-@lru_cache(maxsize=None)
+@lru_cache(maxsize=1)
 def _load_embedding_model(checkpoint: str = "all-MiniLM-L6-v2") -> SentenceTransformer:
     """Load the embedding model used for semantic blueprint deduplication."""
     try:
@@ -87,9 +87,6 @@ def _load_embedding_model(checkpoint: str = "all-MiniLM-L6-v2") -> SentenceTrans
 
 def _embed_blueprints(candidates: list[QueryBlueprint]) -> NDArray[np.float32]:
     """Embed blueprint content in one normalized batch."""
-    if not candidates:
-        return np.empty((0, 0), dtype=np.float32)
-
     serialized_candidates = [_serialize_blueprint_content(candidate) for candidate in candidates]
     model = _load_embedding_model()
     embeddings = model.encode(
@@ -117,7 +114,7 @@ def deduplicate_blueprints(candidates: list[QueryBlueprint]) -> list[QueryBluepr
         seen_content_keys.add(content_key)
         exact_deduplicated.append(candidate)
 
-    if len(exact_deduplicated) <= 1:
+    if len(exact_deduplicated) == 1:
         return exact_deduplicated
 
     embeddings = _embed_blueprints(exact_deduplicated)

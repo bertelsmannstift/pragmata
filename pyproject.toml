@@ -17,6 +17,7 @@ dependencies = [
     "pyyaml>=6.0",
     "langchain>=1.0.8",
     "langchain-mistralai",
+    "numpy",
 ]
 
 [project.optional-dependencies]

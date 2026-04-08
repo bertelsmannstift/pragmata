@@ -2078,6 +2078,7 @@ source = { editable = "." }
 dependencies = [
     { name = "langchain" },
     { name = "langchain-mistralai" },
+    { name = "numpy" },
     { name = "pydantic" },
     { name = "pyyaml" },
     { name = "typer" },
@@ -2137,6 +2138,7 @@ requires-dist = [
     { name = "langchain-mistralai" },
     { name = "langchain-openai", marker = "extra == 'openai'" },
     { name = "mypy", marker = "extra == 'type'", specifier = ">=1.19" },
+    { name = "numpy" },
     { name = "pragmata", extras = ["test", "lint", "type", "annotation", "querygen"], marker = "extra == 'dev'" },
     { name = "pydantic", specifier = ">=2.0,<3.0" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=9.0" },
