@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, PositiveInt
+from pydantic import BaseModel, ConfigDict, NonNegativeInt, PositiveInt
 
 from pragmata.core.types import NonEmptyStr
 
@@ -31,7 +31,8 @@ class SyntheticQueriesMeta(BaseModel):
 
     run_id: str
     created_at: datetime
-    n_queries: PositiveInt
+    n_requested_queries: PositiveInt
+    n_returned_queries: NonNegativeInt
     model_provider: str
     planning_model: str
     realization_model: str
