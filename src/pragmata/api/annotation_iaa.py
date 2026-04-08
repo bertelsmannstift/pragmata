@@ -1,6 +1,7 @@
 """Annotation IAA API — compute inter-annotator agreement from export CSVs."""
 
 import logging
+from datetime import datetime
 from pathlib import Path
 
 from pragmata.api._error_log import error_log
@@ -24,6 +25,9 @@ def compute_iaa(
     n_resamples: int = 1000,
     ci: float = 0.95,
     seed: int | None = None,
+    exclude_annotators: list[str] | None = None,
+    after: datetime | None = None,
+    before: datetime | None = None,
     config_path: str | Path | Unset = UNSET,
 ) -> IaaReport:
     """Compute inter-annotator agreement metrics from an existing export.
@@ -40,6 +44,9 @@ def compute_iaa(
         n_resamples: Number of bootstrap iterations for CIs.
         ci: Confidence level (e.g. 0.95 for 95% CI).
         seed: Optional RNG seed for reproducible bootstrap.
+        exclude_annotators: Annotator IDs to exclude from analysis.
+        after: Only include annotations created after this datetime.
+        before: Only include annotations created before this datetime.
         config_path: Path to YAML config file for settings resolution.
 
     Returns:
@@ -55,7 +62,17 @@ def compute_iaa(
     resolved_tasks = tasks if tasks is not None else list(Task)
 
     with error_log(export_paths.tool_root):
-        report = run_iaa(export_paths, iaa_paths, resolved_tasks, n_resamples=n_resamples, ci=ci, seed=seed)
+        report = run_iaa(
+            export_paths,
+            iaa_paths,
+            resolved_tasks,
+            n_resamples=n_resamples,
+            ci=ci,
+            seed=seed,
+            exclude_annotators=exclude_annotators,
+            after=after,
+            before=before,
+        )
 
     logger.info(
         "IAA complete: %d task(s) analysed, report at %s",

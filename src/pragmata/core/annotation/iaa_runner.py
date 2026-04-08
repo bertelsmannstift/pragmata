@@ -114,6 +114,29 @@ def _compute_pairwise_kappa(
     return pairs
 
 
+def _filter_rows(
+    rows: list[dict[str, str]],
+    *,
+    exclude_annotators: list[str] | None = None,
+    after: datetime | None = None,
+    before: datetime | None = None,
+) -> list[dict[str, str]]:
+    """Filter annotation rows by annotator and/or time window."""
+    excluded = set(exclude_annotators) if exclude_annotators else set()
+    filtered = []
+    for row in rows:
+        if row["annotator_id"] in excluded:
+            continue
+        if after or before:
+            created = datetime.fromisoformat(row["created_at"])
+            if after and created < after:
+                continue
+            if before and created > before:
+                continue
+        filtered.append(row)
+    return filtered
+
+
 def run_iaa(
     export_paths: AnnotationExportPaths,
     iaa_paths: IaaPaths,
@@ -122,6 +145,9 @@ def run_iaa(
     n_resamples: int = 1000,
     ci: float = 0.95,
     seed: int | None = None,
+    exclude_annotators: list[str] | None = None,
+    after: datetime | None = None,
+    before: datetime | None = None,
 ) -> IaaReport:
     """Run IAA analysis on exported annotation CSVs.
 
@@ -132,6 +158,9 @@ def run_iaa(
         n_resamples: Bootstrap iterations for confidence intervals.
         ci: Confidence level for bootstrap CIs.
         seed: Optional RNG seed for reproducible bootstrap.
+        exclude_annotators: Annotator IDs to exclude from analysis.
+        after: Only include annotations created after this datetime.
+        before: Only include annotations created before this datetime.
 
     Returns:
         Populated IAA report, also written to ``iaa_paths.report``.
@@ -144,7 +173,12 @@ def run_iaa(
             logger.warning("Skipping %s: CSV not found at %s", task.value, csv_path)
             continue
 
-        rows = _read_csv(csv_path)
+        rows = _filter_rows(
+            _read_csv(csv_path),
+            exclude_annotators=exclude_annotators,
+            after=after,
+            before=before,
+        )
         if not rows:
             logger.warning("Skipping %s: CSV is empty", task.value)
             continue
