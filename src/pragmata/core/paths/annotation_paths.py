@@ -56,7 +56,6 @@ class AnnotationExportPaths:
     def ensure_dirs(self) -> Self:
         """Create the export directory scaffold."""
         self.export_dir.mkdir(parents=True, exist_ok=True)
-        self.tool_root.mkdir(parents=True, exist_ok=True)
         return self
 
 

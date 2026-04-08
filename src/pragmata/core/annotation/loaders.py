@@ -12,7 +12,7 @@ import json
 import logging
 from collections import defaultdict
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, TypeAlias, cast
+from typing import TYPE_CHECKING, Any, TypeAlias
 
 logger = logging.getLogger(__name__)
 
@@ -150,7 +150,7 @@ def _load_hf_dataset(dataset: Dataset) -> list[dict[str, Any]]:
 
 def _load_dataframe(df: pd.DataFrame) -> list[dict[str, Any]]:
     """Convert a pandas DataFrame to list[dict]."""
-    return cast(list[dict[str, Any]], df.to_dict("records"))
+    return [{str(k): v for k, v in row.items()} for row in df.to_dict("records")]
 
 
 # ---------------------------------------------------------------------------
