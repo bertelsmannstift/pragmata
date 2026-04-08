@@ -19,7 +19,6 @@ def krippendorff_alpha_nominal(data: NDArray[np.floating]) -> float:
     """
     n_units = data.shape[1]
 
-    # Collect observed coincidences across all items.
     observed: dict[tuple[float, float], float] = {}
     expected_counts: dict[float, float] = {}
     total_pairs = 0.0
@@ -44,7 +43,6 @@ def krippendorff_alpha_nominal(data: NDArray[np.floating]) -> float:
     if total_pairs < 2:
         return float("nan")
 
-    # Observed disagreement.
     d_o = 0.0
     n_o = 0.0
     for (v, w), count in observed.items():
