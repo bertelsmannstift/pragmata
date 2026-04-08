@@ -11,6 +11,7 @@ from pathlib import Path
 
 import numpy as np
 
+from pragmata.core.annotation.export_runner import TASK_CSV_ATTR, TASK_SCHEMA
 from pragmata.core.annotation.iaa import (
     bootstrap_alpha,
     cohen_kappa,
@@ -29,21 +30,8 @@ from pragmata.core.schemas.iaa_report import (
 logger = logging.getLogger(__name__)
 
 TASK_LABELS: dict[Task, list[str]] = {
-    Task.RETRIEVAL: ["topically_relevant", "evidence_sufficient", "misleading"],
-    Task.GROUNDING: [
-        "support_present",
-        "unsupported_claim_present",
-        "contradicted_claim_present",
-        "source_cited",
-        "fabricated_source",
-    ],
-    Task.GENERATION: ["proper_action", "response_on_topic", "helpful", "incomplete", "unsafe_content"],
-}
-
-_TASK_CSV: dict[Task, str] = {
-    Task.RETRIEVAL: "retrieval_annotation_csv",
-    Task.GROUNDING: "grounding_annotation_csv",
-    Task.GENERATION: "generation_annotation_csv",
+    task: [name for name, info in schema.model_fields.items() if info.annotation is bool]
+    for task, schema in TASK_SCHEMA.items()
 }
 
 
@@ -57,52 +45,54 @@ def _to_bool(value: str) -> bool:
     return value.lower() == "true"
 
 
-def _pivot_label(rows: list[dict[str, str]], label: str) -> tuple[np.ndarray, list[str]]:
-    """Pivot long-format rows into a wide (annotators x items) matrix.
+def _pivot_task(
+    rows: list[dict[str, str]], labels: list[str]
+) -> tuple[dict[str, np.ndarray], list[str], dict[str, dict[str, dict[str, bool]]]]:
+    """Pivot all labels for a task in a single pass over rows.
 
     Returns:
-        Tuple of (data matrix with NaN for missing, sorted annotator IDs).
+        Tuple of (label -> (annotators x items) matrix, sorted annotator IDs,
+        parsed records structure for pairwise kappa).
     """
-    records: dict[str, dict[str, bool]] = {}
     annotators: set[str] = set()
+    # record_uuid -> annotator_id -> {label: bool}
+    records: dict[str, dict[str, dict[str, bool]]] = {}
     for row in rows:
         rid = row["record_uuid"]
         aid = row["annotator_id"]
         annotators.add(aid)
-        records.setdefault(rid, {})[aid] = _to_bool(row[label])
+        records.setdefault(rid, {}).setdefault(aid, {})
+        for lab in labels:
+            records[rid][aid][lab] = _to_bool(row[lab])
 
     ann_list = sorted(annotators)
     item_list = sorted(records.keys())
     ann_idx = {a: i for i, a in enumerate(ann_list)}
 
-    data = np.full((len(ann_list), len(item_list)), np.nan)
-    for j, rid in enumerate(item_list):
-        for aid, val in records[rid].items():
-            data[ann_idx[aid], j] = float(val)
+    matrices: dict[str, np.ndarray] = {}
+    for lab in labels:
+        data = np.full((len(ann_list), len(item_list)), np.nan)
+        for j, rid in enumerate(item_list):
+            for aid, vals in records[rid].items():
+                data[ann_idx[aid], j] = float(vals[lab])
+        matrices[lab] = data
 
-    return data, ann_list
+    return matrices, ann_list, records
 
 
 def _compute_pairwise_kappa(
-    rows: list[dict[str, str]], labels: list[str], annotators: list[str]
+    records: dict[str, dict[str, dict[str, bool]]], labels: list[str], annotators: list[str]
 ) -> list[AnnotatorPair]:
     """Compute mean Cohen's kappa across labels for each annotator pair."""
-    # Build per-record, per-annotator label vectors.
-    by_annotator: dict[str, dict[str, dict[str, bool]]] = {}
-    for row in rows:
-        aid = row["annotator_id"]
-        rid = row["record_uuid"]
-        by_annotator.setdefault(aid, {})[rid] = {lab: _to_bool(row[lab]) for lab in labels}
-
     pairs: list[AnnotatorPair] = []
     for a, b in combinations(annotators, 2):
-        shared = sorted(set(by_annotator.get(a, {})) & set(by_annotator.get(b, {})))
+        shared = sorted(rid for rid, anns in records.items() if a in anns and b in anns)
         if not shared:
             continue
         kappas = []
         for lab in labels:
-            arr_a = np.array([by_annotator[a][r][lab] for r in shared], dtype=np.int8)
-            arr_b = np.array([by_annotator[b][r][lab] for r in shared], dtype=np.int8)
+            arr_a = np.array([records[r][a][lab] for r in shared], dtype=np.int8)
+            arr_b = np.array([records[r][b][lab] for r in shared], dtype=np.int8)
             k = cohen_kappa(arr_a, arr_b)
             if not np.isnan(k):
                 kappas.append(k)
@@ -168,7 +158,7 @@ def run_iaa(
     task_results: list[TaskAgreement] = []
 
     for task in tasks:
-        csv_path: Path = getattr(export_paths, _TASK_CSV[task])
+        csv_path: Path = getattr(export_paths, TASK_CSV_ATTR[task])
         if not csv_path.exists():
             logger.warning("Skipping %s: CSV not found at %s", task.value, csv_path)
             continue
@@ -184,19 +174,15 @@ def run_iaa(
             continue
 
         labels = TASK_LABELS[task]
-        label_results: list[LabelAgreement] = []
-        all_annotators: list[str] = []
+        matrices, annotators, records = _pivot_task(rows, labels)
 
+        label_results: list[LabelAgreement] = []
         for label in labels:
-            data, annotators = _pivot_label(rows, label)
-            if not all_annotators:
-                all_annotators = annotators
+            data = matrices[label]
 
             alpha = krippendorff_alpha_nominal(data)
             ci_lower, ci_upper = bootstrap_alpha(data, n_resamples=n_resamples, ci=ci, seed=seed)
             pct = percentage_agreement(data)
-
-            # Count items with >= 2 annotations.
             n_items = int(np.sum(np.sum(~np.isnan(data), axis=0) >= 2))
 
             label_results.append(
@@ -211,7 +197,7 @@ def run_iaa(
                 )
             )
 
-        pairwise = _compute_pairwise_kappa(rows, labels, all_annotators)
+        pairwise = _compute_pairwise_kappa(records, labels, annotators)
         task_results.append(TaskAgreement(task=task, labels=label_results, pairwise_kappa=pairwise))
         logger.info("IAA for %s: %d labels, %d annotator pairs", task.value, len(label_results), len(pairwise))
 
