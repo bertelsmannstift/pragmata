@@ -259,7 +259,7 @@ def mock_client() -> MagicMock:
     user = MagicMock()
     user.id = _UID1
     user.username = "annotator1"
-    client.users.return_value = [user]
+    client.users.list.return_value = [user]
     dataset = MagicMock()
     dataset.records.return_value = iter([])
     client.datasets.return_value = dataset

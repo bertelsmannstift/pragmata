@@ -113,7 +113,7 @@ def mock_client() -> MagicMock:
     user = MagicMock()
     user.id = _UID1
     user.username = "annotator1"
-    client.users.return_value = [user]
+    client.users.list.return_value = [user]
     dataset = MagicMock()
     dataset.records.return_value = iter([])
     client.datasets.return_value = dataset
@@ -144,7 +144,7 @@ class TestExportAnnotations:
     def test_one_row_per_annotator_per_record(self, tmp_path: Path, mock_client: MagicMock) -> None:
         from pragmata.api.annotation_export import export_annotations
 
-        mock_client.users.return_value = [
+        mock_client.users.list.return_value = [
             MagicMock(id=_UID1, username="annotator1"),
             MagicMock(id=_UID2, username="annotator2"),
         ]
@@ -217,7 +217,7 @@ class TestExportAnnotations:
     def test_annotator_id_is_username(self, tmp_path: Path, mock_client: MagicMock) -> None:
         from pragmata.api.annotation_export import export_annotations
 
-        mock_client.users.return_value = [MagicMock(id=_UID1, username="alice")]
+        mock_client.users.list.return_value = [MagicMock(id=_UID1, username="alice")]
         record = _make_record(
             fields=RETRIEVAL_FIELDS,
             metadata=BASE_METADATA,
