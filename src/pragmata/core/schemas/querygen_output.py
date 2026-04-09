@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, NonNegativeInt, PositiveInt
+from pydantic import BaseModel, ConfigDict, NonNegativeInt, PositiveInt, model_validator
 
 from pragmata.core.types import NonEmptyStr
 
@@ -36,3 +36,10 @@ class SyntheticQueriesMeta(BaseModel):
     model_provider: str
     planning_model: str
     realization_model: str
+
+    @model_validator(mode="after")
+    def validate_query_counts(self) -> "SyntheticQueriesMeta":
+        """Enforce logical consistency between requested and returned counts."""
+        if self.n_returned_queries > self.n_requested_queries:
+            raise ValueError("n_returned_queries must be less than or equal to n_requested_queries")
+        return self
