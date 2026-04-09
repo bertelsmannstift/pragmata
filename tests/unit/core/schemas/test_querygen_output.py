@@ -109,7 +109,7 @@ def test_synthetic_queries_meta_accepts_valid_payload(valid_meta_payload: dict[s
 
 
 def test_synthetic_queries_meta_rejects_non_positive_n_queries(valid_meta_payload: dict[str, object]) -> None:
-    """n_queries must be strictly positive."""
+    """n_requested_queries must be strictly positive."""
     payload = dict(valid_meta_payload)
     payload["n_requested_queries"] = 0
     with pytest.raises(ValidationError):
