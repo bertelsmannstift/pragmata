@@ -1,6 +1,6 @@
 """Unit tests for the synthetic query generation output contract."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 
 import pytest
 from pydantic import ValidationError
@@ -132,3 +132,29 @@ def test_synthetic_queries_meta_rejects_extra_keys(valid_meta_payload: dict[str,
     payload["unexpected"] = "boom"
     with pytest.raises(ValidationError):
         SyntheticQueriesMeta.model_validate(payload)
+
+    meta = SyntheticQueriesMeta(
+        run_id="run_123",
+        created_at=datetime.now(UTC),
+        n_requested_queries=5,
+        n_returned_queries=0,
+        model_provider="mistralai",
+        planning_model="magistral-medium-latest",
+        realization_model="mistral-medium-latest",
+    )
+
+    assert meta.n_requested_queries == 5
+    assert meta.n_returned_queries == 0
+
+
+def test_synthetic_queries_meta_rejects_returned_queries_above_requested() -> None:
+    with pytest.raises(ValidationError, match="n_returned_queries must be less than or equal to n_requested_queries"):
+        SyntheticQueriesMeta(
+            run_id="run_123",
+            created_at=datetime.now(UTC),
+            n_requested_queries=5,
+            n_returned_queries=6,
+            model_provider="mistralai",
+            planning_model="magistral-medium-latest",
+            realization_model="mistral-medium-latest",
+        )
