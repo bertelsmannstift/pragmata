@@ -3,7 +3,21 @@
 import hashlib
 import json
 
+from pragmata.core.querygen.llm import LlmInitializationError, build_llm_runnable
+from pragmata.core.querygen.planning import format_string_list, format_weighted_values
+from pragmata.core.querygen.prompts import (
+    SYSTEM_PROMPT_PLANNING_SUMMARY,
+    USER_PROMPT_PLANNING_SUMMARY,
+)
+from pragmata.core.querygen.realization import format_blueprint
 from pragmata.core.schemas.querygen_input import QueryGenSpec
+from pragmata.core.schemas.querygen_plan import QueryBlueprint
+from pragmata.core.schemas.querygen_summary import PlanningSummaryState
+from pragmata.core.settings.querygen_settings import LlmSettings
+
+
+class PlanningSummaryStageError(RuntimeError):
+    """Raised when a planning-summary-stage invocation fails."""
 
 
 def _serialize_spec_content(
@@ -27,7 +41,9 @@ def _serialize_spec_content(
     )
 
 
-def fingerprint_querygen_spec(spec: QueryGenSpec) -> str:
+def fingerprint_querygen_spec(
+    spec: QueryGenSpec,
+) -> str:
     """Return a deterministic SHA-256 fingerprint for a querygen spec.
 
     Args:
@@ -38,3 +54,113 @@ def fingerprint_querygen_spec(spec: QueryGenSpec) -> str:
     """
     serialized = _serialize_spec_content(spec)
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+
+def _format_prior_summary_state(
+    prior_summary_state: PlanningSummaryState,
+) -> str:
+    """Format a prior planning summary for prompt injection.
+
+    Args:
+        prior_summary_state: Prior summary state carried forward from earlier batches.
+
+    Returns:
+        A deterministic human-readable representation of the prior planning summary.
+    """
+    return (
+        "- redundancy_patterns:\n"
+        f"  {prior_summary_state.redundancy_patterns}\n"
+        "- diversification_targets:\n"
+        f"  {prior_summary_state.diversification_targets}\n"
+        "- coverage_notes:\n"
+        f"  {prior_summary_state.coverage_notes}"
+    )
+
+
+def _build_planning_summary_prompt_vars(
+    spec: QueryGenSpec,
+    candidates: list[QueryBlueprint],
+    prior_summary_state: PlanningSummaryState | None,
+) -> dict[str, object]:
+    """Build invoke-time prompt variables for one planning-summary.
+
+    Args:
+        spec: Resolved query-generation specification.
+        candidates: Stage-1 candidates for this single summary-updater invocation.
+        prior_summary_state: Optional prior planning summary state.
+
+    Returns:
+        Prompt variables aligned with the summary-updater prompt placeholders.
+    """
+    if not candidates:
+        raise ValueError("candidates must not be empty")
+
+    formatted_blueprints = "\n\n".join(format_blueprint(candidate) for candidate in candidates)
+
+    return {
+        "domains": format_weighted_values(spec.domain_context.domains),
+        "roles": format_weighted_values(spec.domain_context.roles),
+        "languages": format_weighted_values(spec.domain_context.languages),
+        "topics": format_weighted_values(spec.knowledge_scope.topics),
+        "intents": format_weighted_values(spec.scenario.intents),
+        "tasks": format_weighted_values(spec.scenario.tasks),
+        "difficulty": format_weighted_values(spec.scenario.difficulty),
+        "formats": format_weighted_values(spec.format_requests.formats),
+        "disallowed_topics": format_string_list(spec.safety.disallowed_topics),
+        "prior_planning_summary": (
+            _format_prior_summary_state(prior_summary_state)
+            if prior_summary_state is not None
+            else "No prior planning summary available yet."
+        ),
+        "query_blueprints": formatted_blueprints,
+    }
+
+
+def run_planning_summary(
+    spec: QueryGenSpec,
+    candidates: list[QueryBlueprint],
+    llm_settings: LlmSettings,
+    api_key: str,
+    prior_summary_state: PlanningSummaryState | None = None,
+) -> PlanningSummaryState:
+    """Run one summary-updater invocation.
+
+    Args:
+        spec: Resolved query-generation specification.
+        candidates: Stage-1 candidates for this single summary-updater invocation.
+        llm_settings: LLM settings for the query-generation workflow.
+        api_key: Provider API key for the configured planning model.
+        prior_summary_state: Optional prior planning summary state.
+
+    Returns:
+        The updated planning summary state.
+    """
+    prompt_vars = _build_planning_summary_prompt_vars(
+        spec=spec,
+        candidates=candidates,
+        prior_summary_state=prior_summary_state,
+    )
+
+    try:
+        llm_runnable = build_llm_runnable(
+            system_text=SYSTEM_PROMPT_PLANNING_SUMMARY,
+            user_text=USER_PROMPT_PLANNING_SUMMARY,
+            model_provider=llm_settings.model_provider,
+            model=llm_settings.planning_model,
+            api_key=api_key,
+            output_schema=PlanningSummaryState,
+            requests_per_second=llm_settings.requests_per_second,
+            check_every_n_seconds=llm_settings.check_every_n_seconds,
+            max_bucket_size=llm_settings.max_bucket_size,
+            base_url=llm_settings.base_url,
+            model_kwargs=llm_settings.model_kwargs,
+        )
+        llm_output = llm_runnable.invoke(prompt_vars)
+    except LlmInitializationError:
+        raise
+    except Exception as exc:
+        raise PlanningSummaryStageError(
+            "Planning stage invocation failed while updating the planning summary."
+        ) from exc
+
+    return llm_output
