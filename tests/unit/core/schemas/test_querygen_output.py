@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timezone
 import pytest
 from pydantic import ValidationError
 
-from pragmata.core.schemas.querygen_output import PlanningMemoryArtifact, SyntheticQueriesMeta, SyntheticQueryRow
+from pragmata.core.schemas.querygen_output import PlanningSummaryArtifact, SyntheticQueriesMeta, SyntheticQueryRow
 
 
 @pytest.fixture()
@@ -187,8 +187,8 @@ def test_synthetic_queries_meta_rejects_returned_queries_above_requested() -> No
 def test_planning_memory_artifact_accepts_valid_payload(
     valid_planning_memory_payload: dict[str, object],
 ) -> None:
-    """PlanningMemoryArtifact validates a complete nested payload."""
-    artifact = PlanningMemoryArtifact.model_validate(valid_planning_memory_payload)
+    """PlanningSummaryArtifact validates a complete nested payload."""
+    artifact = PlanningSummaryArtifact.model_validate(valid_planning_memory_payload)
 
     assert artifact.spec_fingerprint.startswith("9d8b6d94")
     assert artifact.source_run_id == "run_20260309_001"
@@ -201,24 +201,24 @@ def test_planning_memory_artifact_accepts_valid_payload(
 def test_planning_memory_artifact_rejects_extra_keys(
     valid_planning_memory_payload: dict[str, object],
 ) -> None:
-    """PlanningMemoryArtifact rejects unexpected top-level fields."""
+    """PlanningSummaryArtifact rejects unexpected top-level fields."""
     payload = dict(valid_planning_memory_payload)
     payload["unexpected"] = "boom"
 
     with pytest.raises(ValidationError):
-        PlanningMemoryArtifact.model_validate(payload)
+        PlanningSummaryArtifact.model_validate(payload)
 
 
 def test_planning_memory_artifact_rejects_extra_keys_in_nested_state(
     valid_planning_memory_payload: dict[str, object],
 ) -> None:
-    """PlanningMemoryArtifact rejects unexpected nested state fields."""
+    """PlanningSummaryArtifact rejects unexpected nested state fields."""
     payload = dict(valid_planning_memory_payload)
     payload["state"] = dict(payload["state"])
     payload["state"]["unexpected"] = "boom"
 
     with pytest.raises(ValidationError):
-        PlanningMemoryArtifact.model_validate(payload)
+        PlanningSummaryArtifact.model_validate(payload)
 
 
 @pytest.mark.parametrize(
@@ -235,7 +235,7 @@ def test_planning_memory_artifact_validates_nested_state_field_lengths(
     payload["state"][field_name] = ""
 
     with pytest.raises(ValidationError):
-        PlanningMemoryArtifact.model_validate(payload)
+        PlanningSummaryArtifact.model_validate(payload)
 
 
 def test_planning_memory_artifact_rejects_missing_nested_state_field(
@@ -247,4 +247,4 @@ def test_planning_memory_artifact_rejects_missing_nested_state_field(
     payload["state"].pop("coverage_notes")
 
     with pytest.raises(ValidationError):
-        PlanningMemoryArtifact.model_validate(payload)
+        PlanningSummaryArtifact.model_validate(payload)

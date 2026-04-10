@@ -46,7 +46,7 @@ class SyntheticQueriesMeta(BaseModel):
         return self
 
 
-class PlanningMemoryArtifact(BaseModel):
+class PlanningSummaryArtifact(BaseModel):
     """Schema for persisted planning-memory metadata and state."""
 
     model_config = ConfigDict(extra="forbid")
