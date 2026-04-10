@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+from pathlib import Path
 
 from pragmata.core.querygen.llm import LlmInitializationError, build_llm_runnable
 from pragmata.core.querygen.planning import format_string_list, format_weighted_values
@@ -11,6 +12,7 @@ from pragmata.core.querygen.prompts import (
 )
 from pragmata.core.querygen.realization import format_blueprint
 from pragmata.core.schemas.querygen_input import QueryGenSpec
+from pragmata.core.schemas.querygen_output import PlanningMemoryArtifact
 from pragmata.core.schemas.querygen_plan import QueryBlueprint
 from pragmata.core.schemas.querygen_summary import PlanningSummaryState
 from pragmata.core.settings.querygen_settings import LlmSettings
@@ -54,6 +56,35 @@ def fingerprint_querygen_spec(
     """
     serialized = _serialize_spec_content(spec)
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+
+def read_planning_summary_artifact(
+    artifact_path: Path,
+    spec: QueryGenSpec,
+) -> PlanningMemoryArtifact | None:
+    """Read a planning-summary artifact if it matches the current spec.
+
+    Args:
+        artifact_path: Path to the persisted planning-summary artifact JSON file.
+        spec: Resolved query-generation specification for the current run.
+
+    Returns:
+        The validated planning-summary artifact when the file exists and its
+        ``spec_fingerprint`` exactly matches the current spec fingerprint.
+        Returns ``None`` when the path does not exist or when the artifact
+        fingerprint is incompatible with the current spec.
+    """
+    if not artifact_path.exists():
+        return None
+
+    payload = json.loads(artifact_path.read_text(encoding="utf-8"))
+    artifact = PlanningMemoryArtifact.model_validate(payload)
+
+    current_spec_fingerprint = fingerprint_querygen_spec(spec)
+    if artifact.spec_fingerprint != current_spec_fingerprint:
+        return None
+
+    return artifact
 
 
 def _format_prior_summary_state(
