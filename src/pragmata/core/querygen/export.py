@@ -14,7 +14,7 @@ def export_queries(
     meta_path: Path,
 ) -> None:
     """Export synthetic query rows to CSV and run metadata to JSON.
-    
+
     Args:
         rows: Final assembled synthetic query rows to export as CSV.
         meta: Dataset-level metadata sidecar to export as JSON.
