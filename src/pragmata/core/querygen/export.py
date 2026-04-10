@@ -13,7 +13,7 @@ def export_queries(
     queries_path: Path,
     meta_path: Path,
 ) -> None:
-    """Write assembled synthetic query artifacts to disk.
+    """Export synthetic query rows to CSV and run metadata to JSON.
     
     Args:
         rows: Final assembled synthetic query rows to export as CSV.

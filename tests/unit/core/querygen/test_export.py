@@ -106,18 +106,6 @@ def test_export_queries_writes_rows_to_csv(tmp_path: Path) -> None:
     ]
 
 
-def test_export_queries_writes_meta_to_json(tmp_path: Path) -> None:
-    """export_queries should write dataset-level metadata to JSON."""
-    rows = [_make_row()]
-    meta = _make_meta(n_returned_queries=1)
-    queries_path = tmp_path / "synthetic_queries.csv"
-    meta_path = tmp_path / "synthetic_queries.meta.json"
-
-    export_queries(rows=rows, meta=meta, queries_path=queries_path, meta_path=meta_path)
-
-    assert json.loads(meta_path.read_text(encoding="utf-8")) == meta.model_dump(mode="json")
-
-
 def test_export_queries_reuses_write_csv_helper(monkeypatch, tmp_path: Path) -> None:
     """export_queries should delegate CSV writing to the shared write_csv helper."""
     rows = [_make_row()]
@@ -138,6 +126,7 @@ def test_export_queries_reuses_write_csv_helper(monkeypatch, tmp_path: Path) -> 
         "rows": rows,
         "path": queries_path,
     }
+    assert json.loads(meta_path.read_text(encoding="utf-8")) == meta.model_dump(mode="json")
 
 
 def test_export_queries_serializes_empty_optional_row_fields(tmp_path: Path) -> None:
