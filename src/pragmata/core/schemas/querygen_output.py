@@ -45,6 +45,7 @@ class SyntheticQueriesMeta(BaseModel):
             raise ValueError("n_returned_queries must be less than or equal to n_requested_queries")
         return self
 
+
 class PlanningMemoryArtifact(BaseModel):
     """Schema for persisted planning-memory metadata and state."""
 
@@ -54,4 +55,3 @@ class PlanningMemoryArtifact(BaseModel):
     source_run_id: str
     created_at: datetime
     state: PlanningSummaryState
-
