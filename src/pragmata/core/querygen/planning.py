@@ -13,7 +13,7 @@ class PlanningStageError(RuntimeError):
     """Raised when a planning-stage invocation fails."""
 
 
-def _format_weighted_values(values: list[WeightedValue] | None) -> str:
+def format_weighted_values(values: list[WeightedValue] | None) -> str:
     """Format weighted categorical values for prompt injection.
 
     Args:
@@ -28,7 +28,7 @@ def _format_weighted_values(values: list[WeightedValue] | None) -> str:
     return ", ".join(f"{item.value} (weight={item.weight:g})" for item in values)
 
 
-def _format_string_list(values: list[str] | None) -> str:
+def format_string_list(values: list[str] | None) -> str:
     """Format string lists for prompt injection.
 
     Args:
@@ -61,15 +61,15 @@ def _build_planning_prompt_vars(
 
     return {
         "candidate_ids": "\n    - " + "\n    - ".join(batch_candidate_ids),
-        "domains": _format_weighted_values(spec.domain_context.domains),
-        "roles": _format_weighted_values(spec.domain_context.roles),
-        "languages": _format_weighted_values(spec.domain_context.languages),
-        "topics": _format_weighted_values(spec.knowledge_scope.topics),
-        "intents": _format_weighted_values(spec.scenario.intents),
-        "tasks": _format_weighted_values(spec.scenario.tasks),
-        "difficulty": _format_weighted_values(spec.scenario.difficulty),
-        "formats": _format_weighted_values(spec.format_requests.formats),
-        "disallowed_topics": _format_string_list(spec.safety.disallowed_topics),
+        "domains": format_weighted_values(spec.domain_context.domains),
+        "roles": format_weighted_values(spec.domain_context.roles),
+        "languages": format_weighted_values(spec.domain_context.languages),
+        "topics": format_weighted_values(spec.knowledge_scope.topics),
+        "intents": format_weighted_values(spec.scenario.intents),
+        "tasks": format_weighted_values(spec.scenario.tasks),
+        "difficulty": format_weighted_values(spec.scenario.difficulty),
+        "formats": format_weighted_values(spec.format_requests.formats),
+        "disallowed_topics": format_string_list(spec.safety.disallowed_topics),
         "n_queries": len(batch_candidate_ids),
     }
 
