@@ -12,7 +12,7 @@ from pragmata.core.querygen.prompts import (
 )
 from pragmata.core.querygen.realization import format_blueprint
 from pragmata.core.schemas.querygen_input import QueryGenSpec
-from pragmata.core.schemas.querygen_output import PlanningMemoryArtifact
+from pragmata.core.schemas.querygen_output import PlanningSummaryArtifact
 from pragmata.core.schemas.querygen_plan import QueryBlueprint
 from pragmata.core.schemas.querygen_summary import PlanningSummaryState
 from pragmata.core.settings.querygen_settings import LlmSettings
@@ -61,7 +61,7 @@ def fingerprint_querygen_spec(
 def read_planning_summary_artifact(
     artifact_path: Path,
     spec: QueryGenSpec,
-) -> PlanningMemoryArtifact | None:
+) -> PlanningSummaryArtifact | None:
     """Read a planning-summary artifact if it matches the current spec.
 
     Args:
@@ -78,7 +78,7 @@ def read_planning_summary_artifact(
         return None
 
     payload = json.loads(artifact_path.read_text(encoding="utf-8"))
-    artifact = PlanningMemoryArtifact.model_validate(payload)
+    artifact = PlanningSummaryArtifact.model_validate(payload)
 
     current_spec_fingerprint = fingerprint_querygen_spec(spec)
     if artifact.spec_fingerprint != current_spec_fingerprint:
