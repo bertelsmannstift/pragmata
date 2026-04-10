@@ -1,4 +1,4 @@
-"""Validation and filtering for positional candidate-ID alignment."""
+"""Filtering for positional candidate-ID alignment."""
 
 from pragmata.core.types import CandidateItemT
 
