@@ -6,15 +6,15 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+import pragmata.core.querygen.deduplication as deduplication
+import pragmata.core.querygen.planning as planning
+import pragmata.core.querygen.realization as realization
 from pragmata import querygen
 from pragmata.core.csv_io import read_csv
 from pragmata.core.schemas.querygen_output import SyntheticQueriesMeta, SyntheticQueryRow
 from pragmata.core.schemas.querygen_plan import QueryBlueprint, QueryBlueprintList
 from pragmata.core.schemas.querygen_realize import RealizedQuery, RealizedQueryList
 from pragmata.core.settings.settings_base import MissingSecretError
-import pragmata.core.querygen.deduplication as deduplication
-import pragmata.core.querygen.planning as planning
-import pragmata.core.querygen.realization as realization
 
 pytestmark = [pytest.mark.integration, pytest.mark.querygen]
 
@@ -74,11 +74,7 @@ def _make_blueprint(
 
 def _parse_candidate_ids_block(block: str) -> list[str]:
     """Parse the planning prompt variable containing candidate IDs."""
-    return [
-        line.strip().removeprefix("- ").strip()
-        for line in block.splitlines()
-        if line.strip()
-    ]
+    return [line.strip().removeprefix("- ").strip() for line in block.splitlines() if line.strip()]
 
 
 def _parse_realization_candidate_ids(block: str) -> list[str]:
@@ -113,12 +109,8 @@ class _PlanningRunnableStub:
         self._planning_calls = planning_calls
         self._duplicate_blueprint_kwargs = {
             "topic": "coverage appeals",
-            "user_scenario": (
-                "My insurer denied a request and I need help understanding the appeal process."
-            ),
-            "information_need": (
-                "I need the concrete steps for appealing a denied coverage request."
-            ),
+            "user_scenario": ("My insurer denied a request and I need help understanding the appeal process."),
+            "information_need": ("I need the concrete steps for appealing a denied coverage request."),
         }
 
     def invoke(self, prompt_vars: dict[str, object]) -> QueryBlueprintList:
@@ -311,7 +303,6 @@ def test_gen_queries_executes_staged_workflow_and_writes_expected_artifacts(
     assert meta.realization_model == "mistral-medium-latest"
 
 
-
 def test_gen_queries_raises_when_provider_api_key_missing(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -331,6 +322,7 @@ def test_gen_queries_raises_when_provider_api_key_missing(
         )
 
     assert not expected_run_dir.exists()
+
 
 def test_gen_queries_propagates_planning_timeout_and_writes_no_artifacts(
     monkeypatch: pytest.MonkeyPatch,
