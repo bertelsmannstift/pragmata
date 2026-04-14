@@ -1,10 +1,15 @@
 """Boundary schemas for IAA (inter-annotator agreement) reports."""
 
 from datetime import datetime
+from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, NonNegativeInt, PositiveInt
 
 from pragmata.core.schemas.annotation_task import Task
+
+AgreementScore = Annotated[float, Field(ge=-1.0, le=1.0)]
+Proportion = Annotated[float, Field(ge=0.0, le=1.0)]
+CiLevel = Annotated[float, Field(gt=0.0, lt=1.0)]
 
 
 class LabelAgreement(BaseModel):
@@ -17,12 +22,12 @@ class LabelAgreement(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     label: str
-    alpha: float | None
-    ci_lower: float | None
-    ci_upper: float | None
-    n_items: int
-    n_annotators: int
-    pct_agreement: float | None
+    alpha: AgreementScore | None
+    ci_lower: AgreementScore | None
+    ci_upper: AgreementScore | None
+    n_items: NonNegativeInt
+    n_annotators: NonNegativeInt
+    pct_agreement: Proportion | None
 
 
 class AnnotatorPair(BaseModel):
@@ -32,8 +37,8 @@ class AnnotatorPair(BaseModel):
 
     annotator_a: str
     annotator_b: str
-    kappa: float
-    n_shared_items: int
+    kappa: AgreementScore
+    n_shared_items: NonNegativeInt
 
 
 class TaskAgreement(BaseModel):
@@ -54,5 +59,5 @@ class IaaReport(BaseModel):
     export_id: str
     created_at: datetime
     tasks: list[TaskAgreement]
-    n_bootstrap_resamples: int
-    ci_level: float
+    n_bootstrap_resamples: PositiveInt
+    ci_level: CiLevel

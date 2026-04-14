@@ -111,6 +111,19 @@ class TestCohenKappa:
         assert isinstance(kappa, float)
         assert not math.isnan(kappa)
 
+    def test_binary_contract_bool_matches_int(self):
+        """Bool and {0, 1} int inputs must produce identical kappa values.
+
+        Locks the binary-only contract: the function treats ``1`` as positive
+        and anything else as negative, so bool and ``{0, 1}`` int inputs
+        representing the same labels must agree exactly.
+        """
+        bool_a = np.array([True, False, True, True, False, False])
+        bool_b = np.array([True, True, True, False, False, False])
+        int_a = bool_a.astype(np.int8)
+        int_b = bool_b.astype(np.int8)
+        assert cohen_kappa(bool_a, bool_b) == pytest.approx(cohen_kappa(int_a, int_b))
+
 
 class TestBootstrapAlpha:
     """Tests for bootstrap confidence intervals."""

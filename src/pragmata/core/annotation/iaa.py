@@ -1,7 +1,5 @@
 """Pure-NumPy implementations of inter-annotator agreement metrics."""
 
-from __future__ import annotations
-
 import numpy as np
 from numpy.typing import NDArray
 
@@ -71,11 +69,19 @@ def krippendorff_alpha_nominal(data: NDArray[np.floating]) -> float:
 
 
 def cohen_kappa(labels_a: NDArray[np.integer | np.bool_], labels_b: NDArray[np.integer | np.bool_]) -> float:
-    """Compute Cohen's kappa for two annotators on the same items.
+    """Compute binary Cohen's kappa for two annotators on the same items.
+
+    Binary-only: inputs must contain values in ``{0, 1}`` (or bool). Expected
+    agreement is computed treating ``1`` as the positive class and anything
+    else as negative, so multi-class nominal input produces undefined results.
+    This matches the upstream annotation schemas, which are binary by design
+    (see ADR-0009).
 
     Args:
-        labels_a: 1-D array of labels from annotator A (no NaN).
-        labels_b: 1-D array of labels from annotator B, same length.
+        labels_a: 1-D array of ``{0, 1}`` / bool labels from annotator A
+            (no NaN).
+        labels_b: 1-D array of ``{0, 1}`` / bool labels from annotator B,
+            same length as ``labels_a``.
 
     Returns:
         Kappa in the range [-1, 1]. Returns ``nan`` when the expected
