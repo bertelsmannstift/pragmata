@@ -1,6 +1,6 @@
 """Unit tests for the synthetic query generation output contract."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 
 import pytest
 from pydantic import ValidationError
@@ -31,7 +31,8 @@ def valid_meta_payload() -> dict[str, object]:
     return {
         "run_id": "run_20260309_001",
         "created_at": "2026-03-09T10:30:00Z",
-        "n_queries": 25,
+        "n_requested_queries": 25,
+        "n_returned_queries": 21,
         "model_provider": "openai",
         "planning_model": "gpt-4.1-mini",
         "realization_model": "gpt-4.1-mini",
@@ -100,16 +101,27 @@ def test_synthetic_queries_meta_accepts_valid_payload(valid_meta_payload: dict[s
     meta = SyntheticQueriesMeta.model_validate(valid_meta_payload)
     assert meta.run_id == "run_20260309_001"
     assert meta.created_at == datetime(2026, 3, 9, 10, 30, tzinfo=timezone.utc)
-    assert meta.n_queries == 25
+    assert meta.n_requested_queries == 25
+    assert meta.n_returned_queries == 21
     assert meta.model_provider == "openai"
     assert meta.planning_model == "gpt-4.1-mini"
     assert meta.realization_model == "gpt-4.1-mini"
 
 
 def test_synthetic_queries_meta_rejects_non_positive_n_queries(valid_meta_payload: dict[str, object]) -> None:
-    """n_queries must be strictly positive."""
+    """n_requested_queries must be strictly positive."""
     payload = dict(valid_meta_payload)
-    payload["n_queries"] = 0
+    payload["n_requested_queries"] = 0
+    with pytest.raises(ValidationError):
+        SyntheticQueriesMeta.model_validate(payload)
+
+
+def test_synthetic_queries_meta_rejects_negative_n_returned_queries(
+    valid_meta_payload: dict[str, object],
+) -> None:
+    """n_returned_queries must be non-negative."""
+    payload = dict(valid_meta_payload)
+    payload["n_returned_queries"] = -1
     with pytest.raises(ValidationError):
         SyntheticQueriesMeta.model_validate(payload)
 
@@ -120,3 +132,29 @@ def test_synthetic_queries_meta_rejects_extra_keys(valid_meta_payload: dict[str,
     payload["unexpected"] = "boom"
     with pytest.raises(ValidationError):
         SyntheticQueriesMeta.model_validate(payload)
+
+    meta = SyntheticQueriesMeta(
+        run_id="run_123",
+        created_at=datetime.now(UTC),
+        n_requested_queries=5,
+        n_returned_queries=0,
+        model_provider="mistralai",
+        planning_model="magistral-medium-latest",
+        realization_model="mistral-medium-latest",
+    )
+
+    assert meta.n_requested_queries == 5
+    assert meta.n_returned_queries == 0
+
+
+def test_synthetic_queries_meta_rejects_returned_queries_above_requested() -> None:
+    with pytest.raises(ValidationError, match="n_returned_queries must be less than or equal to n_requested_queries"):
+        SyntheticQueriesMeta(
+            run_id="run_123",
+            created_at=datetime.now(UTC),
+            n_requested_queries=5,
+            n_returned_queries=6,
+            model_provider="mistralai",
+            planning_model="magistral-medium-latest",
+            realization_model="mistral-medium-latest",
+        )
