@@ -59,6 +59,7 @@ def gen_queries(
     base_url: str | Unset = UNSET,
     model_kwargs: dict[str, Any] | Unset = UNSET,
     batch_size: PositiveInt | Unset = UNSET,
+    enable_planning_memory: bool | Unset = UNSET,
 ) -> QueryGenRunResult:
     """Generate synthetic chatbot queries from a query-generation specification.
 
@@ -91,6 +92,10 @@ def gen_queries(
         batch_size: Number of queries to generate per LLM call. Larger
             values use fewer, bigger calls; smaller values split
             generation into more repeated calls. Defaults to 25.
+        enable_planning_memory: Whether to enable planning memory for the run.
+            Defaults to True. When enabled, an additional LLM updates and persists a
+            compact summary of prior blueprint generation across batches and compatible
+            runs to reduce redundant or near-duplicate queries and improve diversity.
         run_id: Explicit run identifier. Defaults to an auto-generated UUID
             hex string.
         model_provider: Chat model provider to use. Defaults to "mistralai".
@@ -153,6 +158,7 @@ def gen_queries(
             "run_id": run_id,
             "n_queries": n_queries,
             "batch_size": batch_size,
+            "enable_planning_memory": enable_planning_memory,
         },
     )
 
