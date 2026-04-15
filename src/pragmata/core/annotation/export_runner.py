@@ -13,10 +13,12 @@ from pragmata.core.annotation.export_fetcher import AnnotationModel, build_user_
 from pragmata.core.csv_io import _to_csv_value
 from pragmata.core.paths.annotation_paths import AnnotationExportPaths
 from pragmata.core.schemas.annotation_export import (
-    AnnotationBase,
     GenerationAnnotation,
+    GenerationExportRow,
     GroundingAnnotation,
+    GroundingExportRow,
     RetrievalAnnotation,
+    RetrievalExportRow,
 )
 from pragmata.core.schemas.annotation_task import Task
 
@@ -25,16 +27,24 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from pragmata.core.settings.annotation_settings import AnnotationSettings
 
-_TASK_CSV_ATTR = {
+TASK_CSV_ATTR = {
     Task.RETRIEVAL: "retrieval_annotation_csv",
     Task.GROUNDING: "grounding_annotation_csv",
     Task.GENERATION: "generation_annotation_csv",
 }
 
-_TASK_SCHEMA: dict[Task, type[AnnotationBase]] = {
+TASK_ANNOTATION_SCHEMA: dict[
+    Task, type[RetrievalAnnotation] | type[GroundingAnnotation] | type[GenerationAnnotation]
+] = {
     Task.RETRIEVAL: RetrievalAnnotation,
     Task.GROUNDING: GroundingAnnotation,
     Task.GENERATION: GenerationAnnotation,
+}
+
+TASK_EXPORT_ROW: dict[Task, type[RetrievalExportRow] | type[GroundingExportRow] | type[GenerationExportRow]] = {
+    Task.RETRIEVAL: RetrievalExportRow,
+    Task.GROUNDING: GroundingExportRow,
+    Task.GENERATION: GenerationExportRow,
 }
 
 
@@ -60,29 +70,33 @@ def write_export_csv(
     path: Path,
     task: Task,
 ) -> None:
-    """Write annotation rows to a CSV file with constraint columns appended.
+    """Write annotation rows to a CSV using the task's export-row schema.
 
-    Writes atomically via a .tmp file; cleans up on failure. Always writes
-    the header row even when rows is empty.
+    The schema (``TASK_EXPORT_ROW[task]``) models the full on-disk format,
+    including ``constraint_violated`` and ``constraint_details``. Writes
+    atomically via a .tmp file; cleans up on failure. Always writes the
+    header row even when rows is empty.
 
     Args:
         rows: List of (annotation, violations) tuples.
         path: Final output path.
-        task: Task type — determines schema for header derivation.
+        task: Task type — determines the export-row schema.
     """
-    schema_cls = _TASK_SCHEMA[task]
-    headers = list(schema_cls.model_fields.keys()) + ["constraint_violated", "constraint_details"]
+    row_cls = TASK_EXPORT_ROW[task]
+    headers = list(row_cls.model_fields.keys())
     tmp = path.with_suffix(".tmp")
     try:
         with tmp.open("w", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=headers)
             writer.writeheader()
             for annotation, violations in rows:
-                raw = annotation.model_dump(mode="json")
-                row = {k: _to_csv_value(raw[k]) for k in schema_cls.model_fields}
-                row["constraint_violated"] = "true" if violations else "false"
-                row["constraint_details"] = ";".join(violations)
-                writer.writerow(row)
+                export_row = row_cls(
+                    **annotation.model_dump(),
+                    constraint_violated=bool(violations),
+                    constraint_details=";".join(violations),
+                )
+                raw = export_row.model_dump(mode="json")
+                writer.writerow({k: _to_csv_value(raw[k]) for k in headers})
         tmp.rename(path)
         logger.info("Wrote %d rows to %s", len(rows), path)
     except Exception:
@@ -107,7 +121,7 @@ def run_export(
     for task in tasks:
         task_rows[task] = fetch_task(client, settings, task, user_lookup)
 
-    task_paths = {task: getattr(paths, _TASK_CSV_ATTR[task]) for task in tasks}
+    task_paths = {task: getattr(paths, TASK_CSV_ATTR[task]) for task in tasks}
 
     written: list[Path] = []
     try:

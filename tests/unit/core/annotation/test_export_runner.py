@@ -8,7 +8,12 @@ from uuid import UUID
 
 import pytest
 
-from pragmata.core.annotation.export_runner import ExportResult, write_export_csv
+from pragmata.core.annotation.export_runner import (
+    TASK_EXPORT_ROW,
+    ExportResult,
+    write_export_csv,
+)
+from pragmata.core.csv_io import read_csv
 from pragmata.core.paths.annotation_paths import AnnotationExportPaths
 from pragmata.core.schemas.annotation_export import (
     GroundingAnnotation,
@@ -212,6 +217,34 @@ class TestWriteExportCsv:
         grounding_fields = list(GroundingAnnotation.model_fields.keys())
         for field in grounding_fields:
             assert field in header
+
+
+# ---------------------------------------------------------------------------
+# Export-row schema round-trip via csv_io
+# ---------------------------------------------------------------------------
+
+
+class TestExportRowRoundTrip:
+    def test_csv_header_matches_export_row_schema(self, tmp_path: Path) -> None:
+        out = tmp_path / "out.csv"
+        write_export_csv([(_retrieval(), [])], out, Task.RETRIEVAL)
+        with out.open() as f:
+            header = next(csv.reader(f))
+        assert header == list(TASK_EXPORT_ROW[Task.RETRIEVAL].model_fields.keys())
+
+    def test_csv_roundtrips_via_read_csv(self, tmp_path: Path) -> None:
+        out = tmp_path / "out.csv"
+        write_export_csv(
+            [(_retrieval(), []), (_retrieval(chunk_id="c2"), ["rule_a", "rule_b"])],
+            out,
+            Task.RETRIEVAL,
+        )
+        rows = read_csv(out, TASK_EXPORT_ROW[Task.RETRIEVAL])
+        assert len(rows) == 2
+        assert rows[0].constraint_violated is False
+        assert rows[0].constraint_details == ""
+        assert rows[1].constraint_violated is True
+        assert rows[1].constraint_details == "rule_a;rule_b"
 
 
 # ---------------------------------------------------------------------------
