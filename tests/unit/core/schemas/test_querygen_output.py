@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timezone
 import pytest
 from pydantic import ValidationError
 
-from pragmata.core.schemas.querygen_output import SyntheticQueriesMeta, SyntheticQueryRow
+from pragmata.core.schemas.querygen_output import PlanningSummaryArtifact, SyntheticQueriesMeta, SyntheticQueryRow
 
 
 @pytest.fixture()
@@ -36,6 +36,30 @@ def valid_meta_payload() -> dict[str, object]:
         "model_provider": "openai",
         "planning_model": "gpt-4.1-mini",
         "realization_model": "gpt-4.1-mini",
+    }
+
+
+@pytest.fixture()
+def valid_planning_memory_payload() -> dict[str, object]:
+    """Return a valid planning-memory artifact payload."""
+    return {
+        "spec_fingerprint": "9d8b6d94d8f3a4b74e9e2cb7d5d4a3a2a6d4f7b5b2f8e3c1d6a9b7c4e2f1a0d3",
+        "source_run_id": "run_20260309_001",
+        "created_at": "2026-03-09T10:45:00Z",
+        "state": {
+            "redundancy_patterns": (
+                "Avoid repeating candidate blueprints centered on first-time housing-benefit "
+                "eligibility checks with near-identical applicant situations."
+            ),
+            "diversification_targets": (
+                "Favor candidate blueprints about document preparation, appeal procedures, "
+                "and deadline clarification with distinct scenarios and information needs."
+            ),
+            "coverage_notes": (
+                "Basic housing-support eligibility scenarios have already appeared and should "
+                "not be revisited too closely in the next planning batch."
+            ),
+        },
     }
 
 
@@ -158,3 +182,69 @@ def test_synthetic_queries_meta_rejects_returned_queries_above_requested() -> No
             planning_model="magistral-medium-latest",
             realization_model="mistral-medium-latest",
         )
+
+
+def test_planning_memory_artifact_accepts_valid_payload(
+    valid_planning_memory_payload: dict[str, object],
+) -> None:
+    """PlanningSummaryArtifact validates a complete nested payload."""
+    artifact = PlanningSummaryArtifact.model_validate(valid_planning_memory_payload)
+
+    assert artifact.spec_fingerprint.startswith("9d8b6d94")
+    assert artifact.source_run_id == "run_20260309_001"
+    assert artifact.created_at == datetime(2026, 3, 9, 10, 45, tzinfo=timezone.utc)
+    assert artifact.state.redundancy_patterns.startswith("Avoid repeating")
+    assert artifact.state.diversification_targets.startswith("Favor candidate blueprints")
+    assert artifact.state.coverage_notes.startswith("Basic housing-support")
+
+
+def test_planning_memory_artifact_rejects_extra_keys(
+    valid_planning_memory_payload: dict[str, object],
+) -> None:
+    """PlanningSummaryArtifact rejects unexpected top-level fields."""
+    payload = dict(valid_planning_memory_payload)
+    payload["unexpected"] = "boom"
+
+    with pytest.raises(ValidationError):
+        PlanningSummaryArtifact.model_validate(payload)
+
+
+def test_planning_memory_artifact_rejects_extra_keys_in_nested_state(
+    valid_planning_memory_payload: dict[str, object],
+) -> None:
+    """PlanningSummaryArtifact rejects unexpected nested state fields."""
+    payload = dict(valid_planning_memory_payload)
+    payload["state"] = dict(payload["state"])
+    payload["state"]["unexpected"] = "boom"
+
+    with pytest.raises(ValidationError):
+        PlanningSummaryArtifact.model_validate(payload)
+
+
+@pytest.mark.parametrize(
+    "field_name",
+    ["redundancy_patterns", "diversification_targets", "coverage_notes"],
+)
+def test_planning_memory_artifact_validates_nested_state_field_lengths(
+    valid_planning_memory_payload: dict[str, object],
+    field_name: str,
+) -> None:
+    """Nested PlanningSummaryState field constraints are enforced through the artifact."""
+    payload = dict(valid_planning_memory_payload)
+    payload["state"] = dict(payload["state"])
+    payload["state"][field_name] = ""
+
+    with pytest.raises(ValidationError):
+        PlanningSummaryArtifact.model_validate(payload)
+
+
+def test_planning_memory_artifact_rejects_missing_nested_state_field(
+    valid_planning_memory_payload: dict[str, object],
+) -> None:
+    """Nested PlanningSummaryState requires all summary fields."""
+    payload = dict(valid_planning_memory_payload)
+    payload["state"] = dict(payload["state"])
+    payload["state"].pop("coverage_notes")
+
+    with pytest.raises(ValidationError):
+        PlanningSummaryArtifact.model_validate(payload)
