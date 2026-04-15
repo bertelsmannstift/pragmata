@@ -24,6 +24,9 @@ from pragmata.core.annotation.export_runner import (
 from pragmata.core.annotation.setup import (
     SetupResult as SetupResult,
 )
+from pragmata.core.schemas.annotation_task import (
+    Task as Task,
+)
 from pragmata.core.schemas.iaa_report import (
     IaaReport as IaaReport,
 )

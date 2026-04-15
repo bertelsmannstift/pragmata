@@ -1,9 +1,13 @@
 """Parsing helpers for CLI option values."""
 
 import json
-from typing import Any
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 from pragmata.api import UNSET
+
+if TYPE_CHECKING:
+    from pragmata.annotation import Task, UserSpec
 
 
 def parse_cli_value(value: str | None) -> Any:
@@ -32,3 +36,30 @@ def parse_cli_value(value: str | None) -> Any:
         return parsed
 
     return value
+
+
+def parse_tasks(raw: str | None) -> "list[Task] | None":
+    """Parse a comma-separated task list (e.g. ``retrieval,grounding``).
+
+    Returns None when no tasks are supplied, leaving task selection to
+    the downstream default.
+    """
+    from pragmata.annotation import Task
+
+    if raw is None:
+        return None
+    return [Task(item.strip()) for item in raw.split(",")]
+
+
+def parse_user_specs(path: str | None) -> "list[UserSpec] | None":
+    """Load annotator user specs from a JSON file.
+
+    The file must contain a list of dicts; each dict is forwarded to
+    ``UserSpec(**entry)``. Returns None when ``path`` is None.
+    """
+    from pragmata.annotation import UserSpec
+
+    if path is None:
+        return None
+    raw = json.loads(Path(path).read_text())
+    return [UserSpec(**entry) for entry in raw]
