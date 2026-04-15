@@ -1,7 +1,5 @@
 """Orchestrate IAA computation from exported annotation CSVs."""
 
-from __future__ import annotations
-
 import csv
 import logging
 import math

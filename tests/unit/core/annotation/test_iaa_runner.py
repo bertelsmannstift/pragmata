@@ -248,6 +248,37 @@ class TestRunIaa:
         # Only r2 (April) should be included.
         assert report.tasks[0].labels[0].n_items == 1
 
+    def test_pairwise_kappa_omitted_no_shared_items(self, export_dir: AnnotationExportPaths, iaa_dir: IaaPaths):
+        """Pairs with no shared items are silently omitted from pairwise_kappa."""
+        labels = {"topically_relevant": True, "evidence_sufficient": True, "misleading": False}
+        rows = [
+            # ann1 annotates r1 only, ann2 annotates r2 only — no overlap
+            _make_row("r1", "ann1", Task.RETRIEVAL, labels),
+            _make_row("r2", "ann2", Task.RETRIEVAL, labels),
+        ]
+        _write_csv(export_dir.retrieval_annotation_csv, Task.RETRIEVAL, rows)
+
+        report = run_iaa(export_dir, iaa_dir, [Task.RETRIEVAL], n_resamples=50, seed=42)
+
+        assert report.tasks[0].pairwise_kappa == []
+
+    def test_pairwise_kappa_omitted_all_nan(self, export_dir: AnnotationExportPaths, iaa_dir: IaaPaths):
+        """Pairs where all per-label kappas are NaN (constant labels) are omitted."""
+        # Both annotators agree perfectly on every label -> kappa is undefined (NaN)
+        labels = {"topically_relevant": True, "evidence_sufficient": True, "misleading": False}
+        rows = [
+            _make_row("r1", "ann1", Task.RETRIEVAL, labels),
+            _make_row("r1", "ann2", Task.RETRIEVAL, labels),
+            _make_row("r2", "ann1", Task.RETRIEVAL, labels),
+            _make_row("r2", "ann2", Task.RETRIEVAL, labels),
+        ]
+        _write_csv(export_dir.retrieval_annotation_csv, Task.RETRIEVAL, rows)
+
+        report = run_iaa(export_dir, iaa_dir, [Task.RETRIEVAL], n_resamples=50, seed=42)
+
+        # Perfect constant agreement -> cohen_kappa returns NaN for each label -> pair dropped
+        assert report.tasks[0].pairwise_kappa == []
+
     def test_filter_before_date(self, export_dir: AnnotationExportPaths, iaa_dir: IaaPaths):
         labels = {"topically_relevant": True, "evidence_sufficient": True, "misleading": False}
         rows = [
