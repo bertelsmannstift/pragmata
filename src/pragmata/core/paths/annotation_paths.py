@@ -59,6 +59,37 @@ class AnnotationExportPaths:
         return self
 
 
+@dataclass(frozen=True, slots=True)
+class IaaPaths:
+    """Path bundle for an IAA analysis run scoped to an export.
+
+    Attributes:
+        iaa_dir: Directory for IAA outputs.
+        report: Path to the JSON report file.
+    """
+
+    iaa_dir: Path
+    report: Path
+
+    def ensure_dirs(self) -> Self:
+        """Create the IAA output directory."""
+        self.iaa_dir.mkdir(parents=True, exist_ok=True)
+        return self
+
+
+def resolve_iaa_paths(*, export_paths: AnnotationExportPaths) -> IaaPaths:
+    """Build the path bundle for an IAA run within an export.
+
+    Args:
+        export_paths: Export path bundle that this IAA run analyses.
+
+    Returns:
+        Path bundle for IAA outputs.
+    """
+    iaa_dir = export_paths.export_dir / "iaa"
+    return IaaPaths(iaa_dir=iaa_dir, report=iaa_dir / "report.json")
+
+
 def resolve_export_paths(*, workspace: WorkspacePaths, export_id: str) -> AnnotationExportPaths:
     """Build the path bundle for an annotation export run.
 
