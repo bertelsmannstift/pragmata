@@ -51,7 +51,7 @@ class PlanningSummaryArtifact(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    spec_fingerprint: str
-    source_run_id: str
+    spec_fingerprint: NonEmptyStr
+    source_run_id: NonEmptyStr
     created_at: datetime
     state: PlanningSummaryState
