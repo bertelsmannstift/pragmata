@@ -1,4 +1,4 @@
-"""Stage-1 planning memory helpers for synthetic query generation."""
+"""Stage-1 planning summary executor for synthetic query generation."""
 
 import hashlib
 import json

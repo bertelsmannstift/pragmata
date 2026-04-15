@@ -1,4 +1,4 @@
-"""Tests for the synthetic query-generation stage-1 planning executor."""
+"""Tests for the synthetic query-generation stage-1 planning summary executor."""
 
 import hashlib
 import json
@@ -8,7 +8,7 @@ from unittest.mock import Mock
 import pytest
 
 from pragmata.core.querygen.llm import LlmInitializationError
-from pragmata.core.querygen.planning_memory import (
+from pragmata.core.querygen.planning_summary import (
     PlanningSummaryStageError,
     _build_planning_summary_prompt_vars,
     _format_prior_summary_state,
