@@ -1,5 +1,6 @@
 """API orchestration for the synthetic query generation workflow."""
 
+from itertools import islice
 from pathlib import Path
 from typing import Any
 
@@ -7,16 +8,25 @@ from pydantic import BaseModel, ConfigDict, PositiveInt
 
 from pragmata.core.paths.paths import WorkspacePaths
 from pragmata.core.paths.querygen_paths import QueryGenRunPaths, resolve_querygen_paths
+from pragmata.core.querygen.assembly import assemble_queries_meta, assemble_query_rows
+from pragmata.core.querygen.batching import build_candidate_ids, chunk_blueprints, iter_batch_sizes
+from pragmata.core.querygen.deduplication import deduplicate_blueprints
+from pragmata.core.querygen.export import export_queries
+from pragmata.core.querygen.filtering import filter_aligned_candidate_ids
+from pragmata.core.querygen.planning import run_planning_stage
+from pragmata.core.querygen.realization import run_realization_stage
+from pragmata.core.schemas.querygen_plan import QueryBlueprint
+from pragmata.core.schemas.querygen_realize import RealizedQuery
 from pragmata.core.settings.querygen_settings import QueryGenRunSettings
 from pragmata.core.settings.settings_base import UNSET, Unset, load_config_file, resolve_provider_api_key
 
 
 class QueryGenRunResult(BaseModel):
-    """Prepared invocation state for a synthetic query generation run.
+    """Returned run descriptor for a synthetic query generation run.
 
     Attributes:
-        settings: Fully resolved run settings.
-        paths: Filesystem paths for run artifacts.
+        settings: Fully resolved run settings used for the run.
+        paths: Filesystem paths to the exported run artifacts.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -50,11 +60,11 @@ def gen_queries(
     model_kwargs: dict[str, Any] | Unset = UNSET,
     batch_size: PositiveInt | Unset = UNSET,
 ) -> QueryGenRunResult:
-    """Prepare a synthetic query generation run.
+    """Generate synthetic chatbot queries from a query-generation specification.
 
-    This function resolves the effective runtime configuration,
-    validates provider credentials, and prepares filesystem paths
-    for the run. It does not yet execute the query generation workflow.
+    This function resolves the effective runtime configuration, validates provider
+    credentials, prepares filesystem paths for the run, executes the staged query-generation
+    workflow, and exports the generated query artifacts to disk.
 
     Args:
         domains: Domain choices for the generated queries. The domain is the
@@ -101,8 +111,8 @@ def gen_queries(
             through to the underlying chat model.
 
     Returns:
-        QueryGenRunResult: Prepared run state containing resolved settings
-        and filesystem paths.
+        QueryGenRunResult: Run descriptor containing the resolved settings used
+        for the run and the filesystem paths to the exported artifacts.
     """
     settings = QueryGenRunSettings.resolve(
         config=load_config_file(config_path) if isinstance(config_path, (str, Path)) else None,
@@ -146,11 +156,80 @@ def gen_queries(
         },
     )
 
-    resolve_provider_api_key(settings.llm.model_provider)
+    api_key = resolve_provider_api_key(settings.llm.model_provider)
 
     paths = resolve_querygen_paths(
         workspace=WorkspacePaths.from_base_dir(settings.base_dir),
         run_id=settings.run_id,
     ).ensure_dirs()
+
+    # Stage 1: planning
+    candidate_ids = build_candidate_ids(settings.n_queries)
+    candidate_id_iter = iter(candidate_ids)
+    planning_outputs: list[QueryBlueprint] = []
+
+    for current_batch_size in iter_batch_sizes(
+        n_queries=settings.n_queries,
+        batch_size=settings.batch_size,
+    ):
+        batch_candidate_ids = list(islice(candidate_id_iter, current_batch_size))
+        planning_outputs.extend(
+            run_planning_stage(
+                spec=settings.spec,
+                llm_settings=settings.llm,
+                api_key=api_key,
+                batch_candidate_ids=batch_candidate_ids,
+            )
+        )
+
+    filtered_planning_outputs = filter_aligned_candidate_ids(
+        items=planning_outputs,
+        expected_candidate_ids=candidate_ids,
+    )
+
+    selected_blueprints = deduplicate_blueprints(filtered_planning_outputs)
+
+    # Stage 2: realization
+    realization_outputs: list[RealizedQuery] = []
+
+    for blueprint_batch in chunk_blueprints(
+        blueprints=selected_blueprints,
+        chunk_size=settings.batch_size,
+    ):
+        realization_outputs.extend(
+            run_realization_stage(
+                candidates=blueprint_batch,
+                llm_settings=settings.llm,
+                api_key=api_key,
+            )
+        )
+
+    filtered_realization_outputs = filter_aligned_candidate_ids(
+        items=realization_outputs,
+        expected_candidate_ids=[blueprint.candidate_id for blueprint in selected_blueprints],
+    )
+
+    # Assembly and export:
+    rows = assemble_query_rows(
+        blueprints=selected_blueprints,
+        realized_queries=filtered_realization_outputs,
+        run_id=settings.run_id,
+    )
+
+    meta = assemble_queries_meta(
+        run_id=settings.run_id,
+        n_requested_queries=settings.n_queries,
+        n_returned_queries=len(rows),
+        model_provider=settings.llm.model_provider,
+        planning_model=settings.llm.planning_model,
+        realization_model=settings.llm.realization_model,
+    )
+
+    export_queries(
+        rows=rows,
+        meta=meta,
+        queries_path=paths.synthetic_queries_csv,
+        meta_path=paths.synthetic_queries_meta_json,
+    )
 
     return QueryGenRunResult(settings=settings, paths=paths)
