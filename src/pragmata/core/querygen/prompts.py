@@ -94,9 +94,9 @@ Behavioral guardrails:
 
 - Maximize useful diversity across the full candidate set while remaining faithful to the provided weighted \
 specification
-- When planning memory is present, use it as advisory context to reduce redundancy and improve useful diversity across \
+- When planning summary is present, use it as advisory context to reduce redundancy and improve useful diversity across \
 the candidate set
-- Planning memory must not override the weighted specification and must not justify introducing unsupported \
+- Planning summary must not override the weighted specification and must not justify introducing unsupported \
 dimensions, values, constraints, or assumptions
 - Respect all constraints provided in the query-generation specification, including disallowed topics
 - Do not introduce unsupported assumptions or dimensions that were not provided
@@ -111,7 +111,7 @@ dimensions, values, constraints, or assumptions
 
 USER_PROMPT_PLANNING = """CONTEXT
 
-{planning_memory}The following is the list of candidate IDs. Each ID corresponds to exactly one candidate blueprint.
+{planning_summary}The following is the list of candidate IDs. Each ID corresponds to exactly one candidate blueprint.
 
 - candidate_ids: {candidate_ids}
 
@@ -142,7 +142,7 @@ distribution for candidate query blueprints.
 TASK
 
 Generate {n_queries} candidate query blueprints from this specification, using exactly the provided candidate IDs.\
-{planning_memory_task_context}
+{planning_summary_task_context}
 """
 
 SYSTEM_PROMPT_REALIZATION = """ROLE
