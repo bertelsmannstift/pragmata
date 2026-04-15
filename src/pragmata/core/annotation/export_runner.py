@@ -33,6 +33,14 @@ TASK_CSV_ATTR = {
     Task.GENERATION: "generation_annotation_csv",
 }
 
+TASK_ANNOTATION_SCHEMA: dict[
+    Task, type[RetrievalAnnotation] | type[GroundingAnnotation] | type[GenerationAnnotation]
+] = {
+    Task.RETRIEVAL: RetrievalAnnotation,
+    Task.GROUNDING: GroundingAnnotation,
+    Task.GENERATION: GenerationAnnotation,
+}
+
 TASK_EXPORT_ROW: dict[Task, type[RetrievalExportRow] | type[GroundingExportRow] | type[GenerationExportRow]] = {
     Task.RETRIEVAL: RetrievalExportRow,
     Task.GROUNDING: GroundingExportRow,
