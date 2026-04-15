@@ -3,9 +3,11 @@
 import hashlib
 import json
 from collections.abc import Callable
+from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
+from pydantic import ValidationError
 
 from pragmata.core.querygen.llm import LlmInitializationError
 from pragmata.core.querygen.planning_summary import (
@@ -14,6 +16,7 @@ from pragmata.core.querygen.planning_summary import (
     _format_prior_summary_state,
     _serialize_spec_content,
     fingerprint_querygen_spec,
+    read_planning_summary_artifact,
     run_planning_summary,
 )
 from pragmata.core.querygen.prompts import (
@@ -21,6 +24,7 @@ from pragmata.core.querygen.prompts import (
     USER_PROMPT_PLANNING_SUMMARY,
 )
 from pragmata.core.schemas.querygen_input import QueryGenSpec
+from pragmata.core.schemas.querygen_output import PlanningSummaryArtifact
 from pragmata.core.schemas.querygen_plan import QueryBlueprint
 from pragmata.core.schemas.querygen_summary import PlanningSummaryState
 from pragmata.core.settings.querygen_settings import LlmSettings
@@ -112,6 +116,21 @@ def prior_summary_state() -> PlanningSummaryState:
         redundancy_patterns="Coverage-letter clarification scenarios recur.",
         diversification_targets="Add more comparison and multilingual scenarios.",
         coverage_notes="Basic benefits lookup appears well covered.",
+    )
+
+
+@pytest.fixture()
+def planning_summary_artifact(
+    make_spec: Callable[..., QueryGenSpec],
+    prior_summary_state: PlanningSummaryState,
+) -> PlanningSummaryArtifact:
+    spec = make_spec()
+
+    return PlanningSummaryArtifact(
+        spec_fingerprint=fingerprint_querygen_spec(spec),
+        source_run_id="run-123",
+        created_at="2026-04-15T12:00:00Z",
+        state=prior_summary_state,
     )
 
 
@@ -609,4 +628,111 @@ def test_run_planning_summary_propagates_empty_candidates_error(
             candidates=[],
             llm_settings=llm_settings,
             api_key="test-api-key",
+        )
+
+
+def test_read_planning_summary_artifact_returns_valid_artifact_for_matching_spec(
+    tmp_path: Path,
+    make_spec: Callable[..., QueryGenSpec],
+    planning_summary_artifact: PlanningSummaryArtifact,
+) -> None:
+    spec = make_spec()
+    artifact_path = tmp_path / "planning_summary.json"
+    artifact_path.write_text(
+        json.dumps(planning_summary_artifact.model_dump(mode="json")),
+        encoding="utf-8",
+    )
+
+    result = read_planning_summary_artifact(
+        artifact_path=artifact_path,
+        spec=spec,
+    )
+
+    assert result == planning_summary_artifact
+    assert isinstance(result, PlanningSummaryArtifact)
+
+
+def test_read_planning_summary_artifact_returns_none_when_file_missing(
+    tmp_path: Path,
+    make_spec: Callable[..., QueryGenSpec],
+) -> None:
+    spec = make_spec()
+
+    result = read_planning_summary_artifact(
+        artifact_path=tmp_path / "does_not_exist.json",
+        spec=spec,
+    )
+
+    assert result is None
+
+
+def test_read_planning_summary_artifact_returns_none_for_fingerprint_mismatch(
+    tmp_path: Path,
+    make_spec: Callable[..., QueryGenSpec],
+    prior_summary_state: PlanningSummaryState,
+) -> None:
+    current_spec = make_spec(domains="education policy")
+    other_spec = make_spec(domains="health policy")
+
+    artifact = PlanningSummaryArtifact(
+        spec_fingerprint=fingerprint_querygen_spec(other_spec),
+        source_run_id="run-123",
+        created_at="2026-04-15T12:00:00Z",
+        state=prior_summary_state,
+    )
+
+    artifact_path = tmp_path / "planning_summary.json"
+    artifact_path.write_text(
+        json.dumps(artifact.model_dump(mode="json")),
+        encoding="utf-8",
+    )
+
+    result = read_planning_summary_artifact(
+        artifact_path=artifact_path,
+        spec=current_spec,
+    )
+
+    assert result is None
+
+
+def test_read_planning_summary_artifact_raises_on_malformed_json(
+    tmp_path: Path,
+    make_spec: Callable[..., QueryGenSpec],
+) -> None:
+    spec = make_spec()
+    artifact_path = tmp_path / "planning_summary.json"
+    artifact_path.write_text('{"spec_fingerprint": ', encoding="utf-8")
+
+    with pytest.raises(json.JSONDecodeError):
+        read_planning_summary_artifact(
+            artifact_path=artifact_path,
+            spec=spec,
+        )
+
+
+def test_read_planning_summary_artifact_raises_on_schema_invalid_content(
+    tmp_path: Path,
+    make_spec: Callable[..., QueryGenSpec],
+) -> None:
+    spec = make_spec()
+    artifact_path = tmp_path / "planning_summary.json"
+    artifact_path.write_text(
+        json.dumps(
+            {
+                "spec_fingerprint": fingerprint_querygen_spec(spec),
+                "source_run_id": "run-123",
+                "created_at": "2026-04-15T12:00:00Z",
+                # invalid: missing required state fields
+                "state": {
+                    "redundancy_patterns": "Repeated clarification requests.",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValidationError):
+        read_planning_summary_artifact(
+            artifact_path=artifact_path,
+            spec=spec,
         )
