@@ -14,14 +14,6 @@ import textwrap
 import pytest
 
 
-@pytest.fixture(autouse=True)
-def _fresh_facade() -> None:
-    """Force a fresh facade import per test so __getattr__ runs cleanly."""
-    for name in list(sys.modules):
-        if name == "pragmata.annotation" or name.startswith("pragmata.annotation."):
-            del sys.modules[name]
-
-
 def _run_isolated(script: str) -> subprocess.CompletedProcess:
     return subprocess.run(
         [sys.executable, "-c", textwrap.dedent(script)],
