@@ -66,21 +66,21 @@ class GenerationAnnotation(AnnotationBase):
 
 
 class RetrievalExportRow(RetrievalAnnotation):
-    """On-disk CSV row for retrieval: annotation plus constraint metadata."""
+    """Full on-disk CSV row for retrieval: extends RetrievalAnnotation with constraint metadata."""
 
     constraint_violated: bool
     constraint_details: str = ""
 
 
 class GroundingExportRow(GroundingAnnotation):
-    """On-disk CSV row for grounding: annotation plus constraint metadata."""
+    """Full on-disk CSV row for grounding: extends GroundingAnnotation with constraint metadata."""
 
     constraint_violated: bool
     constraint_details: str = ""
 
 
 class GenerationExportRow(GenerationAnnotation):
-    """On-disk CSV row for generation: annotation plus constraint metadata."""
+    """Full on-disk CSV row for generation: extends GenerationAnnotation with constraint metadata."""
 
     constraint_violated: bool
     constraint_details: str = ""
