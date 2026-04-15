@@ -440,7 +440,7 @@ def test_run_planning_summary_wires_summary_prompt_assets_and_settings_into_llm_
 
     build_llm_runnable_mock = Mock(return_value=mock_runnable)
     monkeypatch.setattr(
-        "pragmata.core.querygen.planning_memory.build_llm_runnable",
+        "pragmata.core.querygen.planning_summary.build_llm_runnable",
         build_llm_runnable_mock,
     )
 
@@ -502,7 +502,7 @@ def test_run_planning_summary_invokes_runnable_once_and_returns_summary_state(
     fake_runnable = FakeRunnable()
 
     monkeypatch.setattr(
-        "pragmata.core.querygen.planning_memory.build_llm_runnable",
+        "pragmata.core.querygen.planning_summary.build_llm_runnable",
         lambda **_: fake_runnable,
     )
 
@@ -527,7 +527,7 @@ def test_run_planning_summary_propagates_llm_initialization_error(
     spec = make_spec()
 
     monkeypatch.setattr(
-        "pragmata.core.querygen.planning_memory.build_llm_runnable",
+        "pragmata.core.querygen.planning_summary.build_llm_runnable",
         Mock(side_effect=LlmInitializationError("bad config")),
     )
 
@@ -552,7 +552,7 @@ def test_run_planning_summary_wraps_invoke_failures(
             raise RuntimeError("provider failure")
 
     monkeypatch.setattr(
-        "pragmata.core.querygen.planning_memory.build_llm_runnable",
+        "pragmata.core.querygen.planning_summary.build_llm_runnable",
         lambda **_: FakeRunnable(),
     )
 
