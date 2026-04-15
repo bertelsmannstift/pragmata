@@ -1,13 +1,13 @@
 """Unit tests for the IAA runner (orchestration + report writing)."""
 
-import csv
 import json
 from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 
-from pragmata.core.annotation.iaa_runner import TASK_LABELS, run_iaa
+from pragmata.core.annotation.export_runner import TASK_EXPORT_ROW, write_export_csv
+from pragmata.core.annotation.iaa_runner import run_iaa
 from pragmata.core.paths.annotation_paths import (
     AnnotationExportPaths,
     IaaPaths,
@@ -16,26 +16,64 @@ from pragmata.core.paths.annotation_paths import (
 from pragmata.core.schemas.annotation_task import Task
 from pragmata.core.schemas.iaa_report import IaaReport
 
+_BASE_FIELDS = {
+    "language": "en",
+    "inserted_at": datetime(2026, 1, 1, tzinfo=timezone.utc),
+    "record_status": "submitted",
+}
 
-def _write_csv(path: Path, task: Task, rows: list[dict]) -> None:
-    """Write a minimal export CSV for a task."""
-    labels = TASK_LABELS[task]
-    fieldnames = (
-        [
-            "record_uuid",
-            "annotator_id",
-            "task",
-            "created_at",
-        ]
-        + labels
-        + ["constraint_violated", "constraint_details"]
+_RETRIEVAL_DEFAULTS = {
+    "query": "q",
+    "chunk": "c",
+    "chunk_id": "cid",
+    "doc_id": "did",
+    "chunk_rank": 1,
+    "notes": "",
+}
+
+_GENERATION_DEFAULTS = {
+    "query": "q",
+    "answer": "a",
+    "notes": "",
+}
+
+_GROUNDING_DEFAULTS = {
+    "answer": "a",
+    "context_set": "ctx",
+    "notes": "",
+}
+
+
+def _make_annotation(
+    record_uuid: str,
+    annotator_id: str,
+    task: Task,
+    label_values: dict[str, bool],
+    created_at: datetime = datetime(2026, 4, 1, tzinfo=timezone.utc),
+):
+    if task == Task.RETRIEVAL:
+        extra = _RETRIEVAL_DEFAULTS
+    elif task == Task.GENERATION:
+        extra = _GENERATION_DEFAULTS
+    else:
+        extra = _GROUNDING_DEFAULTS
+    schema_cls = TASK_EXPORT_ROW[task].__bases__[0]  # annotation (not export-row) class
+    return schema_cls.model_validate(
+        {
+            **_BASE_FIELDS,
+            **extra,
+            "record_uuid": record_uuid,
+            "annotator_id": annotator_id,
+            "created_at": created_at,
+        }
+        | label_values
     )
+
+
+def _write_csv(path: Path, task: Task, rows: list[tuple]) -> None:
+    """Write an export CSV using the real write_export_csv function."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
-        for row in rows:
-            writer.writerow(row)
+    write_export_csv(rows, path, task)
 
 
 def _make_row(
@@ -43,19 +81,10 @@ def _make_row(
     annotator_id: str,
     task: Task,
     label_values: dict[str, bool],
-    created_at: str = "2026-04-01T10:00:00+00:00",
-) -> dict:
-    row: dict[str, str] = {
-        "record_uuid": record_uuid,
-        "annotator_id": annotator_id,
-        "task": task.value,
-        "created_at": created_at,
-        "constraint_violated": "false",
-        "constraint_details": "",
-    }
-    for label, val in label_values.items():
-        row[label] = "true" if val else "false"
-    return row
+    created_at: datetime = datetime(2026, 4, 1, tzinfo=timezone.utc),
+) -> tuple:
+    annotation = _make_annotation(record_uuid, annotator_id, task, label_values, created_at)
+    return (annotation, [])
 
 
 @pytest.fixture()
@@ -229,10 +258,10 @@ class TestRunIaa:
         labels = {"topically_relevant": True, "evidence_sufficient": True, "misleading": False}
         labels_diff = {"topically_relevant": False, "evidence_sufficient": True, "misleading": False}
         rows = [
-            _make_row("r1", "ann1", Task.RETRIEVAL, labels, created_at="2026-03-01T10:00:00+00:00"),
-            _make_row("r1", "ann2", Task.RETRIEVAL, labels, created_at="2026-03-01T10:00:00+00:00"),
-            _make_row("r2", "ann1", Task.RETRIEVAL, labels_diff, created_at="2026-04-01T10:00:00+00:00"),
-            _make_row("r2", "ann2", Task.RETRIEVAL, labels_diff, created_at="2026-04-01T10:00:00+00:00"),
+            _make_row("r1", "ann1", Task.RETRIEVAL, labels, created_at=datetime(2026, 3, 1, tzinfo=timezone.utc)),
+            _make_row("r1", "ann2", Task.RETRIEVAL, labels, created_at=datetime(2026, 3, 1, tzinfo=timezone.utc)),
+            _make_row("r2", "ann1", Task.RETRIEVAL, labels_diff, created_at=datetime(2026, 4, 1, tzinfo=timezone.utc)),
+            _make_row("r2", "ann2", Task.RETRIEVAL, labels_diff, created_at=datetime(2026, 4, 1, tzinfo=timezone.utc)),
         ]
         _write_csv(export_dir.retrieval_annotation_csv, Task.RETRIEVAL, rows)
 
@@ -282,10 +311,10 @@ class TestRunIaa:
     def test_filter_before_date(self, export_dir: AnnotationExportPaths, iaa_dir: IaaPaths):
         labels = {"topically_relevant": True, "evidence_sufficient": True, "misleading": False}
         rows = [
-            _make_row("r1", "ann1", Task.RETRIEVAL, labels, created_at="2026-03-01T10:00:00+00:00"),
-            _make_row("r1", "ann2", Task.RETRIEVAL, labels, created_at="2026-03-01T10:00:00+00:00"),
-            _make_row("r2", "ann1", Task.RETRIEVAL, labels, created_at="2026-04-01T10:00:00+00:00"),
-            _make_row("r2", "ann2", Task.RETRIEVAL, labels, created_at="2026-04-01T10:00:00+00:00"),
+            _make_row("r1", "ann1", Task.RETRIEVAL, labels, created_at=datetime(2026, 3, 1, tzinfo=timezone.utc)),
+            _make_row("r1", "ann2", Task.RETRIEVAL, labels, created_at=datetime(2026, 3, 1, tzinfo=timezone.utc)),
+            _make_row("r2", "ann1", Task.RETRIEVAL, labels, created_at=datetime(2026, 4, 1, tzinfo=timezone.utc)),
+            _make_row("r2", "ann2", Task.RETRIEVAL, labels, created_at=datetime(2026, 4, 1, tzinfo=timezone.utc)),
         ]
         _write_csv(export_dir.retrieval_annotation_csv, Task.RETRIEVAL, rows)
 

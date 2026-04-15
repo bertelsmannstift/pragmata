@@ -1,6 +1,5 @@
 """Orchestrate IAA computation from exported annotation CSVs."""
 
-import csv
 import logging
 import math
 from datetime import datetime, timezone
@@ -9,14 +8,16 @@ from pathlib import Path
 
 import numpy as np
 
-from pragmata.core.annotation.export_runner import TASK_CSV_ATTR, TASK_SCHEMA
+from pragmata.core.annotation.export_runner import TASK_ANNOTATION_SCHEMA, TASK_CSV_ATTR, TASK_EXPORT_ROW
 from pragmata.core.annotation.iaa import (
     bootstrap_alpha,
     cohen_kappa,
     krippendorff_alpha_nominal,
     percentage_agreement,
 )
+from pragmata.core.csv_io import read_csv
 from pragmata.core.paths.annotation_paths import AnnotationExportPaths, IaaPaths
+from pragmata.core.schemas.annotation_export import AnnotationBase
 from pragmata.core.schemas.annotation_task import Task
 from pragmata.core.schemas.iaa_report import (
     AnnotatorPair,
@@ -29,18 +30,8 @@ logger = logging.getLogger(__name__)
 
 TASK_LABELS: dict[Task, list[str]] = {
     task: [name for name, info in schema.model_fields.items() if info.annotation is bool]
-    for task, schema in TASK_SCHEMA.items()
+    for task, schema in TASK_ANNOTATION_SCHEMA.items()
 }
-
-
-def _read_csv(path: Path) -> list[dict[str, str]]:
-    """Read a CSV file into a list of row dicts."""
-    with path.open(newline="", encoding="utf-8") as f:
-        return list(csv.DictReader(f))
-
-
-def _to_bool(value: str) -> bool:
-    return value.lower() == "true"
 
 
 def _or_none(value: float) -> float | None:
@@ -49,7 +40,7 @@ def _or_none(value: float) -> float | None:
 
 
 def _pivot_task(
-    rows: list[dict[str, str]], labels: list[str]
+    rows: list[AnnotationBase], labels: list[str]
 ) -> tuple[dict[str, np.ndarray], list[str], dict[str, dict[str, dict[str, bool]]]]:
     """Pivot all labels for a task in a single pass over rows.
 
@@ -61,12 +52,12 @@ def _pivot_task(
     # record_uuid -> annotator_id -> {label: bool}
     records: dict[str, dict[str, dict[str, bool]]] = {}
     for row in rows:
-        rid = row["record_uuid"]
-        aid = row["annotator_id"]
+        rid = row.record_uuid
+        aid = row.annotator_id
         annotators.add(aid)
         records.setdefault(rid, {}).setdefault(aid, {})
         for lab in labels:
-            records[rid][aid][lab] = _to_bool(row[lab])
+            records[rid][aid][lab] = getattr(row, lab)
 
     ann_list = sorted(annotators)
     item_list = sorted(records.keys())
@@ -108,24 +99,22 @@ def _compute_pairwise_kappa(
 
 
 def _filter_rows(
-    rows: list[dict[str, str]],
+    rows: list[AnnotationBase],
     *,
     exclude_annotators: list[str] | None = None,
     after: datetime | None = None,
     before: datetime | None = None,
-) -> list[dict[str, str]]:
+) -> list[AnnotationBase]:
     """Filter annotation rows by annotator and/or time window."""
     excluded = set(exclude_annotators) if exclude_annotators else set()
     filtered = []
     for row in rows:
-        if row["annotator_id"] in excluded:
+        if row.annotator_id in excluded:
             continue
-        if after or before:
-            created = datetime.fromisoformat(row["created_at"])
-            if after and created < after:
-                continue
-            if before and created > before:
-                continue
+        if after and row.created_at < after:
+            continue
+        if before and row.created_at > before:
+            continue
         filtered.append(row)
     return filtered
 
@@ -167,7 +156,7 @@ def run_iaa(
             continue
 
         rows = _filter_rows(
-            _read_csv(csv_path),
+            read_csv(csv_path, TASK_EXPORT_ROW[task]),
             exclude_annotators=exclude_annotators,
             after=after,
             before=before,
