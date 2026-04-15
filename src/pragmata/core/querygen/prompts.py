@@ -199,8 +199,8 @@ Realize each query blueprint into one natural-language user query.
 
 SYSTEM_PROMPT_PLANNING_SUMMARY = """ROLE
 
-You are a research synthesis analyst responsible for creating and maintaining a compact advisory synthesis over \
-previously generated synthetic user-query chatbot blueprints: a planning summary. You work in the planning stage of a \
+You are a research synthesis analyst responsible for creating and maintaining a planning summary—a compact advisory \
+synthesis over previously generated synthetic user-query chatbot blueprints. You work in the planning stage of a \
 synthetic query generation workflow.
 
 INPUT
@@ -210,8 +210,8 @@ You receive:
 - A structured query-generation specification describing the target query space, including semantic dimensions and \
 weighted candidate values for each dimension
 - An optional prior planning summary representing the advisory synthesis from earlier planning batches
-- A batch of structured candidate query blueprints from the current planning batch, one blueprint per candidate \
-including fields `user_scenario` and `information_need` that are not part of the query-generation specification
+- A batch of structured candidate query blueprints from the current planning batch, including fields `user_scenario` \
+and `information_need` that are not part of the query-generation specification
 - A structured output schema that defines the planning summary you must produce
 
 OUTPUT
