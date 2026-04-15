@@ -13,7 +13,6 @@ from pragmata.core.annotation.export_fetcher import AnnotationModel, build_user_
 from pragmata.core.csv_io import _to_csv_value
 from pragmata.core.paths.annotation_paths import AnnotationExportPaths
 from pragmata.core.schemas.annotation_export import (
-    AnnotationBase,
     GenerationAnnotation,
     GenerationExportRow,
     GroundingAnnotation,
@@ -34,13 +33,15 @@ TASK_CSV_ATTR = {
     Task.GENERATION: "generation_annotation_csv",
 }
 
-TASK_ANNOTATION_SCHEMA: dict[Task, type[AnnotationBase]] = {
+TASK_ANNOTATION_SCHEMA: dict[
+    Task, type[RetrievalAnnotation] | type[GroundingAnnotation] | type[GenerationAnnotation]
+] = {
     Task.RETRIEVAL: RetrievalAnnotation,
     Task.GROUNDING: GroundingAnnotation,
     Task.GENERATION: GenerationAnnotation,
 }
 
-TASK_EXPORT_ROW: dict[Task, type[AnnotationBase]] = {
+TASK_EXPORT_ROW: dict[Task, type[RetrievalExportRow] | type[GroundingExportRow] | type[GenerationExportRow]] = {
     Task.RETRIEVAL: RetrievalExportRow,
     Task.GROUNDING: GroundingExportRow,
     Task.GENERATION: GenerationExportRow,
