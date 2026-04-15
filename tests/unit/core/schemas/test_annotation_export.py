@@ -7,8 +7,11 @@ from pydantic import ValidationError
 
 from pragmata.core.schemas.annotation_export import (
     GenerationAnnotation,
+    GenerationExportRow,
     GroundingAnnotation,
+    GroundingExportRow,
     RetrievalAnnotation,
+    RetrievalExportRow,
 )
 from pragmata.core.schemas.annotation_task import Task
 
@@ -192,3 +195,53 @@ def test_generation_extra_rejected(valid_generation):
     valid_generation["unknown"] = "x"
     with pytest.raises(ValidationError):
         GenerationAnnotation(**valid_generation)
+
+
+def test_retrieval_export_row_constructs(valid_retrieval):
+    """Retrieval export row constructs from annotation fields plus constraint metadata."""
+    row = RetrievalExportRow(**valid_retrieval, constraint_violated=False)
+    assert row.chunk_id == "c1"
+    assert row.constraint_violated is False
+    assert row.constraint_details == ""
+
+
+def test_grounding_export_row_constructs(valid_grounding):
+    row = GroundingExportRow(**valid_grounding, constraint_violated=True, constraint_details="rule_a;rule_b")
+    assert row.constraint_violated is True
+    assert row.constraint_details == "rule_a;rule_b"
+
+
+def test_generation_export_row_constructs(valid_generation):
+    row = GenerationExportRow(**valid_generation, constraint_violated=False)
+    assert row.constraint_details == ""
+
+
+def test_export_row_frozen(valid_retrieval):
+    row = RetrievalExportRow(**valid_retrieval, constraint_violated=False)
+    with pytest.raises(ValidationError):
+        row.constraint_violated = True
+
+
+def test_export_row_extra_rejected(valid_retrieval):
+    with pytest.raises(ValidationError):
+        RetrievalExportRow(**valid_retrieval, constraint_violated=False, unknown="x")
+
+
+def test_export_row_requires_constraint_violated(valid_retrieval):
+    with pytest.raises(ValidationError):
+        RetrievalExportRow(**valid_retrieval)
+
+
+@pytest.mark.parametrize(
+    ("row_cls", "annotation_cls"),
+    [
+        (RetrievalExportRow, RetrievalAnnotation),
+        (GroundingExportRow, GroundingAnnotation),
+        (GenerationExportRow, GenerationAnnotation),
+    ],
+)
+def test_export_row_field_order(row_cls, annotation_cls):
+    """Export row fields are annotation fields followed by the two constraint columns, in order."""
+    fields = list(row_cls.model_fields.keys())
+    expected = list(annotation_cls.model_fields.keys()) + ["constraint_violated", "constraint_details"]
+    assert fields == expected
