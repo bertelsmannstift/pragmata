@@ -7,11 +7,15 @@ from pydantic import ValidationError
 
 from pragmata.core.querygen.assembly import (
     _build_query_ids,
+    assemble_planning_summary,
     assemble_queries_meta,
     assemble_query_rows,
 )
+from pragmata.core.querygen.planning_memory import fingerprint_querygen_spec
+from pragmata.core.schemas.querygen_input import QueryGenSpec
 from pragmata.core.schemas.querygen_plan import QueryBlueprint
 from pragmata.core.schemas.querygen_realize import RealizedQuery
+from pragmata.core.schemas.querygen_summary import PlanningSummaryState
 
 
 def _make_blueprint(
@@ -52,6 +56,40 @@ def _make_realized_query(
     return RealizedQuery(
         candidate_id=candidate_id,
         query=query,
+    )
+
+
+def _make_spec() -> QueryGenSpec:
+    """Build a valid QueryGenSpec for planning-summary assembly tests."""
+    return QueryGenSpec(
+        domain_context={
+            "domains": "foundation research",
+            "roles": "program officer",
+            "languages": "en",
+        },
+        knowledge_scope={
+            "topics": "education outcomes",
+        },
+        scenario={
+            "intents": "understand",
+            "tasks": "summarize",
+            "difficulty": "basic",
+        },
+        format_requests={
+            "formats": "bullet list",
+        },
+        safety={
+            "disallowed_topics": ["medical diagnosis"],
+        },
+    )
+
+
+def _make_planning_summary_state() -> PlanningSummaryState:
+    """Build a valid PlanningSummaryState for assembly tests."""
+    return PlanningSummaryState(
+        redundancy_patterns="Repeated briefing-style education-overview requests for internal staff.",
+        diversification_targets="Add more distinct user situations and information needs within the same spec.",
+        coverage_notes="English foundation-research summaries on education outcomes are already well covered.",
     )
 
 
@@ -223,6 +261,43 @@ def test_assemble_queries_meta_stamps_created_at_in_utc_now_range() -> None:
     after = datetime.now(UTC)
 
     assert before <= meta.created_at <= after
+
+
+def test_assemble_planning_summary_builds_artifact_from_spec_run_id_and_state() -> None:
+    """assemble_planning_summary should construct a validated planning-summary artifact."""
+    spec = _make_spec()
+    state = _make_planning_summary_state()
+
+    artifact = assemble_planning_summary(
+        spec=spec,
+        run_id="run123",
+        state=state,
+    )
+
+    assert artifact.model_dump(exclude={"created_at"}) == {
+        "spec_fingerprint": fingerprint_querygen_spec(spec),
+        "source_run_id": "run123",
+        "state": state.model_dump(mode="json"),
+    }
+    assert isinstance(artifact.created_at, datetime)
+    assert artifact.created_at.tzinfo == UTC
+
+
+def test_assemble_planning_summary_stamps_created_at_in_utc_now_range() -> None:
+    """assemble_planning_summary should stamp created_at internally at construction time."""
+    spec = _make_spec()
+    state = _make_planning_summary_state()
+    before = datetime.now(UTC)
+
+    artifact = assemble_planning_summary(
+        spec=spec,
+        run_id="run123",
+        state=state,
+    )
+
+    after = datetime.now(UTC)
+
+    assert before <= artifact.created_at <= after
 
 
 def test_assemble_queries_meta_rejects_non_positive_requested_queries() -> None:
