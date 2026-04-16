@@ -19,6 +19,10 @@ def _configure_logging(verbosity: int) -> None:
         level=level,
     )
 
+    if level <= logging.INFO:
+        logging.getLogger("httpx").setLevel(logging.WARNING)
+        logging.getLogger("sentence_transformers.SentenceTransformer").setLevel(logging.WARNING)
+
 
 @app.callback(invoke_without_command=True)
 def main(
