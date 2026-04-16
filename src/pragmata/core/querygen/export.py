@@ -32,11 +32,11 @@ def export_planning_summary(
     artifact: PlanningSummaryArtifact,
     artifact_path: Path,
 ) -> None:
-    """Write a planning-memory artifact to disk as JSON.
+    """Write a planning-summary artifact to disk as JSON.
 
     Args:
-        artifact: Validated planning-memory artifact to persist.
-        path: Destination path for the JSON artifact.
+        artifact: Validated planning-summary artifact to persist.
+        artifact_path: Destination path for the JSON artifact.
     """
     artifact_path.write_text(
         json.dumps(artifact.model_dump(mode="json")),

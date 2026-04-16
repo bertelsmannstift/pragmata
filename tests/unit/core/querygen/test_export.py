@@ -237,7 +237,8 @@ def test_export_planning_summary_serializes_nested_state_json_values(tmp_path: P
         "created_at": "2026-03-09T10:30:00Z",
         "state": {
             "redundancy_patterns": "Repeated policy-eligibility scenarios for the same target group.",
-            "diversification_targets": "Add more distinct user situations and information needs within the allowed spec.",
+            "diversification_targets": "Add more distinct user situations and information needs "
+            "within the allowed spec.",
             "coverage_notes": "English public-policy eligibility requests are already well covered.",
         },
     }
