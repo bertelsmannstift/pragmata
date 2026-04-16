@@ -4,10 +4,18 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from pragmata.core.schemas.annotation_task import Task
 from pragmata.core.settings.settings_base import ResolveSettings
+
+
+class ArgillaSettings(BaseModel):
+    """Argilla connection settings (URL only; API key is resolved from env)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    api_url: str | None = None
 
 
 class AnnotationSettings(ResolveSettings):
@@ -18,6 +26,7 @@ class AnnotationSettings(ResolveSettings):
     core/annotation/argilla_task_definitions.py.
     """
 
+    argilla: ArgillaSettings = Field(default_factory=ArgillaSettings)
     base_dir: Path = Field(default_factory=Path.cwd)
     workspace_prefix: str = ""
     workspace_dataset_map: dict[str, list[Task]] = Field(

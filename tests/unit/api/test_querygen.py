@@ -714,7 +714,7 @@ def test_gen_queries_raises_when_provider_secret_resolution_fails(
     """Provider-secret resolution failures stop the workflow before stage execution."""
     monkeypatch.setattr(
         querygen_api,
-        "resolve_provider_api_key",
+        "resolve_api_key",
         lambda provider: (_ for _ in ()).throw(RuntimeError("missing secret")),
     )
     monkeypatch.setattr(

@@ -134,7 +134,7 @@ Built-in defaults
 
 ### Secrets
 
-Secrets (API keys, credentials) are resolved separately from settings — they do not appear in config files or settings models. `core/settings/settings_base.py` provides a `resolve_provider_api_key()` helper that reads API keys from pre-known environment variables (e.g. `MISTRAL_API_KEY`, `OPENAI_API_KEY`). A `MissingSecretError` is raised when the required key is not set.
+Secrets (API keys, credentials) are resolved separately from settings — they do not appear in config files or settings models. `core/settings/settings_base.py` provides a `resolve_api_key()` helper that reads API keys from pre-known environment variables (e.g. `MISTRAL_API_KEY`, `OPENAI_API_KEY`, `ARGILLA_API_KEY`). A `MissingSecretError` is raised when the required key is not set.
 
 ### Tool-specific settings
 

@@ -20,7 +20,7 @@ from pragmata.core.querygen.realization import run_realization_stage
 from pragmata.core.schemas.querygen_plan import QueryBlueprint
 from pragmata.core.schemas.querygen_realize import RealizedQuery
 from pragmata.core.settings.querygen_settings import QueryGenRunSettings
-from pragmata.core.settings.settings_base import UNSET, Unset, load_config_file, resolve_provider_api_key
+from pragmata.core.settings.settings_base import UNSET, Unset, load_config_file, resolve_api_key
 
 logger = logging.getLogger(__name__)
 
@@ -160,7 +160,7 @@ def gen_queries(
         },
     )
 
-    api_key = resolve_provider_api_key(settings.llm.model_provider)
+    api_key = resolve_api_key(settings.llm.model_provider)
 
     paths = resolve_querygen_paths(
         workspace=WorkspacePaths.from_base_dir(settings.base_dir),
