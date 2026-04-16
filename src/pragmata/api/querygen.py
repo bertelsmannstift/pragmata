@@ -1,11 +1,13 @@
 """API orchestration for the synthetic query generation workflow."""
 
+import logging
 from itertools import islice
 from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, PositiveInt
 
+from pragmata.api._error_log import error_log
 from pragmata.core.paths.paths import WorkspacePaths
 from pragmata.core.paths.querygen_paths import QueryGenRunPaths, resolve_querygen_paths
 from pragmata.core.querygen.assembly import assemble_queries_meta, assemble_query_rows
@@ -19,6 +21,8 @@ from pragmata.core.schemas.querygen_plan import QueryBlueprint
 from pragmata.core.schemas.querygen_realize import RealizedQuery
 from pragmata.core.settings.querygen_settings import QueryGenRunSettings
 from pragmata.core.settings.settings_base import UNSET, Unset, load_config_file, resolve_provider_api_key
+
+logger = logging.getLogger(__name__)
 
 
 class QueryGenRunResult(BaseModel):
@@ -163,73 +167,101 @@ def gen_queries(
         run_id=settings.run_id,
     ).ensure_dirs()
 
-    # Stage 1: planning
-    candidate_ids = build_candidate_ids(settings.n_queries)
-    candidate_id_iter = iter(candidate_ids)
-    planning_outputs: list[QueryBlueprint] = []
+    logger.info(
+        "Starting query generation run %s (n_queries=%d, batch_size=%d)",
+        settings.run_id,
+        settings.n_queries,
+        settings.batch_size,
+    )
 
-    for current_batch_size in iter_batch_sizes(
-        n_queries=settings.n_queries,
-        batch_size=settings.batch_size,
-    ):
-        batch_candidate_ids = list(islice(candidate_id_iter, current_batch_size))
-        planning_outputs.extend(
-            run_planning_stage(
-                spec=settings.spec,
-                llm_settings=settings.llm,
-                api_key=api_key,
-                batch_candidate_ids=batch_candidate_ids,
+    with error_log(paths.run_dir):
+        # Stage 1: planning
+        candidate_ids = build_candidate_ids(settings.n_queries)
+        candidate_id_iter = iter(candidate_ids)
+        planning_outputs: list[QueryBlueprint] = []
+
+        for current_batch_size in iter_batch_sizes(
+            n_queries=settings.n_queries,
+            batch_size=settings.batch_size,
+        ):
+            batch_candidate_ids = list(islice(candidate_id_iter, current_batch_size))
+            planning_outputs.extend(
+                run_planning_stage(
+                    spec=settings.spec,
+                    llm_settings=settings.llm,
+                    api_key=api_key,
+                    batch_candidate_ids=batch_candidate_ids,
+                )
             )
+
+        filtered_planning_outputs = filter_aligned_candidate_ids(
+            items=planning_outputs,
+            expected_candidate_ids=candidate_ids,
         )
 
-    filtered_planning_outputs = filter_aligned_candidate_ids(
-        items=planning_outputs,
-        expected_candidate_ids=candidate_ids,
-    )
+        selected_blueprints = deduplicate_blueprints(filtered_planning_outputs)
 
-    selected_blueprints = deduplicate_blueprints(filtered_planning_outputs)
-
-    # Stage 2: realization
-    realization_outputs: list[RealizedQuery] = []
-
-    for blueprint_batch in chunk_blueprints(
-        blueprints=selected_blueprints,
-        chunk_size=settings.batch_size,
-    ):
-        realization_outputs.extend(
-            run_realization_stage(
-                candidates=blueprint_batch,
-                llm_settings=settings.llm,
-                api_key=api_key,
-            )
+        logger.info(
+            "Stage 1 (query planning) complete for run %s (%d planned -> %d selected)",
+            settings.run_id,
+            len(planning_outputs),
+            len(selected_blueprints),
         )
 
-    filtered_realization_outputs = filter_aligned_candidate_ids(
-        items=realization_outputs,
-        expected_candidate_ids=[blueprint.candidate_id for blueprint in selected_blueprints],
-    )
+        # Stage 2: realization
+        realization_outputs: list[RealizedQuery] = []
 
-    # Assembly and export:
-    rows = assemble_query_rows(
-        blueprints=selected_blueprints,
-        realized_queries=filtered_realization_outputs,
-        run_id=settings.run_id,
-    )
+        for blueprint_batch in chunk_blueprints(
+            blueprints=selected_blueprints,
+            chunk_size=settings.batch_size,
+        ):
+            realization_outputs.extend(
+                run_realization_stage(
+                    candidates=blueprint_batch,
+                    llm_settings=settings.llm,
+                    api_key=api_key,
+                )
+            )
 
-    meta = assemble_queries_meta(
-        run_id=settings.run_id,
-        n_requested_queries=settings.n_queries,
-        n_returned_queries=len(rows),
-        model_provider=settings.llm.model_provider,
-        planning_model=settings.llm.planning_model,
-        realization_model=settings.llm.realization_model,
-    )
+        filtered_realization_outputs = filter_aligned_candidate_ids(
+            items=realization_outputs,
+            expected_candidate_ids=[blueprint.candidate_id for blueprint in selected_blueprints],
+        )
 
-    export_queries(
-        rows=rows,
-        meta=meta,
-        queries_path=paths.synthetic_queries_csv,
-        meta_path=paths.synthetic_queries_meta_json,
+        logger.info(
+            "Stage 2 (query realization) complete for run %s (%d realized -> %d selected)",
+            settings.run_id,
+            len(realization_outputs),
+            len(filtered_realization_outputs),
+        )
+
+        # Assembly and export:
+        rows = assemble_query_rows(
+            blueprints=selected_blueprints,
+            realized_queries=filtered_realization_outputs,
+            run_id=settings.run_id,
+        )
+
+        meta = assemble_queries_meta(
+            run_id=settings.run_id,
+            n_requested_queries=settings.n_queries,
+            n_returned_queries=len(rows),
+            model_provider=settings.llm.model_provider,
+            planning_model=settings.llm.planning_model,
+            realization_model=settings.llm.realization_model,
+        )
+
+        export_queries(
+            rows=rows,
+            meta=meta,
+            queries_path=paths.synthetic_queries_csv,
+            meta_path=paths.synthetic_queries_meta_json,
+        )
+
+    logger.info(
+        "Query generation run %s complete (%d returned queries)",
+        settings.run_id,
+        len(rows),
     )
 
     return QueryGenRunResult(settings=settings, paths=paths)
