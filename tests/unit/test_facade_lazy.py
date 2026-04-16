@@ -13,7 +13,8 @@ import textwrap
 
 import pytest
 
-from pragmata.annotation import _LAZY, __all__ as facade_all
+from pragmata.annotation import _LAZY
+from pragmata.annotation import __all__ as facade_all
 
 
 def _run_isolated(script: str) -> subprocess.CompletedProcess:
