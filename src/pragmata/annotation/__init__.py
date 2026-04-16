@@ -1,12 +1,13 @@
 """Public annotation namespace.
 
-Acts as the import boundary between the public annotation surface and the
-argilla-dependent internals in ``pragmata.core.annotation.*``. Re-exports are
-resolved lazily via :pep:`562` ``__getattr__`` so importing
-``pragmata.annotation`` does not trigger ``import argilla``
-until an attribute is actually accessed. This keeps the ``annotation`` optional
-extra genuinely optional: users who installed pragmata without it can still
-import the package and run non-annotation commands.
+Acts as the import boundary between the public annotation surface and its
+argilla-dependent internals (spanning ``pragmata.api.annotation_*`` and
+``pragmata.core.annotation.*``). Re-exports are resolved lazily via
+:pep:`562` ``__getattr__`` so importing ``pragmata.annotation`` does not
+trigger ``import argilla`` until an attribute is actually accessed. This
+keeps the ``annotation`` optional extra genuinely optional: users who
+installed pragmata without it can still import the package and run
+non-annotation commands.
 """
 
 import importlib
