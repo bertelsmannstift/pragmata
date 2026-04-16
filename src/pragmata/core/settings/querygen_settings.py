@@ -34,3 +34,4 @@ class QueryGenRunSettings(ResolveSettings):
     run_id: str = Field(default_factory=lambda: uuid4().hex)
     n_queries: PositiveInt = 50
     batch_size: PositiveInt = 25
+    enable_planning_memory: bool = True
