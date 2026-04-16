@@ -1,9 +1,9 @@
 """Unit tests for the lazy pragmata.annotation facade.
 
-Some tests run a subprocess so sys.modules isolation is guaranteed — by the
-time pytest reaches these tests, other suites have already loaded
+Laziness assertions run in a subprocess so sys.modules isolation is guaranteed
+— by the time pytest reaches these tests, other suites have already loaded
 pragmata.api.*, argilla, and most of core/annotation, so in-process sys.modules
-assertions cannot verify laziness.
+checks cannot verify laziness.
 """
 
 import importlib
@@ -12,6 +12,8 @@ import sys
 import textwrap
 
 import pytest
+
+from pragmata.annotation import _LAZY, __all__ as facade_all
 
 
 def _run_isolated(script: str) -> subprocess.CompletedProcess:
@@ -23,28 +25,38 @@ def _run_isolated(script: str) -> subprocess.CompletedProcess:
     )
 
 
-def test_importing_facade_does_not_load_argilla_or_api_modules() -> None:
-    """Importing the facade must not eagerly pull argilla-dependent modules."""
-    result = _run_isolated(
-        """
-        import sys
-        import pragmata.annotation  # noqa: F401
-        leaks = [
-            m for m in (
-                "pragmata.api.annotation_setup",
-                "pragmata.api.annotation_import",
-                "pragmata.api.annotation_export",
-                "pragmata.api.annotation_iaa",
-                "pragmata.core.annotation.setup",
-                "pragmata.core.annotation.export_runner",
-                "argilla",
-            )
-            if m in sys.modules
-        ]
-        if leaks:
-            raise SystemExit(f"eager imports leaked: {leaks}")
-        """
+_LEAK_CHECK = """
+import sys
+{import_stmt}
+leaks = [
+    m for m in (
+        "pragmata.api.annotation_setup",
+        "pragmata.api.annotation_import",
+        "pragmata.api.annotation_export",
+        "pragmata.api.annotation_iaa",
+        "pragmata.core.annotation.setup",
+        "pragmata.core.annotation.export_runner",
+        "argilla",
     )
+    if m in sys.modules
+]
+if leaks:
+    raise SystemExit(f"eager imports leaked: {{leaks}}")
+"""
+
+
+@pytest.mark.parametrize(
+    "import_stmt",
+    [
+        "import pragmata  # noqa: F401",
+        "from pragmata import annotation  # noqa: F401",
+        "import pragmata.annotation  # noqa: F401",
+    ],
+    ids=["import_pragmata", "from_pragmata_import_annotation", "import_pragmata_annotation"],
+)
+def test_facade_import_paths_do_not_load_argilla_or_api_modules(import_stmt: str) -> None:
+    """All three reachability paths must stay lazy: no argilla, no api.annotation_*."""
+    result = _run_isolated(_LEAK_CHECK.format(import_stmt=import_stmt))
     assert result.returncode == 0, result.stderr or result.stdout
 
 
@@ -63,13 +75,18 @@ def test_accessing_task_does_not_trigger_argilla() -> None:
 
 
 def test_accessing_setup_loads_api_module() -> None:
-    """Accessing an API-bound attribute resolves through importlib once."""
-    facade = importlib.import_module("pragmata.annotation")
-
-    setup = facade.setup
-
-    assert "pragmata.api.annotation_setup" in sys.modules
-    assert callable(setup)
+    """Accessing an API-bound attribute resolves the backing module on first touch."""
+    result = _run_isolated(
+        """
+        import sys
+        import pragmata.annotation as facade
+        assert "pragmata.api.annotation_setup" not in sys.modules, "api module loaded too early"
+        setup = facade.setup
+        assert "pragmata.api.annotation_setup" in sys.modules, "api module not loaded after access"
+        assert callable(setup)
+        """
+    )
+    assert result.returncode == 0, result.stderr or result.stdout
 
 
 def test_attribute_is_cached_on_first_access() -> None:
@@ -80,7 +97,6 @@ def test_attribute_is_cached_on_first_access() -> None:
     second = facade.setup
 
     assert first is second
-    # Confirm it was cached on the module itself, not just by identity.
     assert "setup" in vars(facade)
 
 
@@ -111,3 +127,8 @@ def test_dir_returns_public_surface() -> None:
     }
 
     assert set(dir(facade)) == expected
+
+
+def test_all_and_lazy_keys_match() -> None:
+    """__all__ and _LAZY must stay in sync — adding to one without the other is a bug."""
+    assert set(facade_all) == set(_LAZY)
