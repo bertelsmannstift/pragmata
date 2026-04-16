@@ -10,12 +10,12 @@ from pragmata.core.querygen.planning import (
     _build_planning_prompt_vars,
     _format_planning_summary,
     _format_planning_summary_task_context,
-    run_planning_stage
+    run_planning_stage,
 )
-from pragmata.core.schemas.querygen_summary import PlanningSummaryState
 from pragmata.core.querygen.prompts import SYSTEM_PROMPT_PLANNING, USER_PROMPT_PLANNING
 from pragmata.core.schemas.querygen_input import QueryGenSpec
 from pragmata.core.schemas.querygen_plan import QueryBlueprint, QueryBlueprintList
+from pragmata.core.schemas.querygen_summary import PlanningSummaryState
 from pragmata.core.settings.querygen_settings import LlmSettings
 
 
@@ -159,7 +159,8 @@ def test_format_planning_summary_formats_state_deterministically(
         "The following prior planning summary is provided as advisory context from earlier planning batches.\n\n"
         "- prior_planning_summary:\n"
         "  - redundancy_patterns: Repeated benefits-letter clarification scenarios for individual patients.\n"
-        "  - diversification_targets: Add more comparison and decision-support scenarios across adjacent service contexts.\n"
+        "  - diversification_targets: Add more comparison and decision-support scenarios "
+        "across adjacent service contexts.\n"
         "  - coverage_notes: Basic insurance coverage lookups already well represented across English requests.\n\n"
     )
 
@@ -231,7 +232,8 @@ def test_build_planning_prompt_vars_includes_planning_summary_when_present(
         "The following prior planning summary is provided as advisory context from earlier planning batches.\n\n"
         "- prior_planning_summary:\n"
         "  - redundancy_patterns: Repeated benefits-letter clarification scenarios for individual patients.\n"
-        "  - diversification_targets: Add more comparison and decision-support scenarios across adjacent service contexts.\n"
+        "  - diversification_targets: Add more comparison and decision-support scenarios "
+        "across adjacent service contexts.\n"
         "  - coverage_notes: Basic insurance coverage lookups already well represented across English requests.\n\n"
     )
     assert result["planning_summary_task_context"] == (
@@ -325,11 +327,14 @@ def test_run_planning_stage_wires_optional_planning_summary_through_to_runnable(
             "disallowed_topics": "self-harm, hate speech",
             "n_queries": 1,
             "planning_summary": (
-                "The following prior planning summary is provided as advisory context from earlier planning batches.\n\n"
+                "The following prior planning summary is provided as advisory context "
+                "from earlier planning batches.\n\n"
                 "- prior_planning_summary:\n"
                 "  - redundancy_patterns: Repeated benefits-letter clarification scenarios for individual patients.\n"
-                "  - diversification_targets: Add more comparison and decision-support scenarios across adjacent service contexts.\n"
-                "  - coverage_notes: Basic insurance coverage lookups already well represented across English requests.\n\n"
+                "  - diversification_targets: Add more comparison and decision-support scenarios "
+                "across adjacent service contexts.\n"
+                "  - coverage_notes: Basic insurance coverage lookups already well represented "
+                "across English requests.\n\n"
             ),
             "planning_summary_task_context": (
                 " Use the planning summary as advisory context for avoiding near-duplicate candidates."

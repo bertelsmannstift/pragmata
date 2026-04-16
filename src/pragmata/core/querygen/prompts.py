@@ -94,8 +94,8 @@ Behavioral guardrails:
 
 - Maximize useful diversity across the full candidate set while remaining faithful to the provided weighted \
 specification
-- When planning summary is present, use it as advisory context to reduce redundancy and improve useful diversity across \
-the candidate set
+- When planning summary is present, use it as advisory context to reduce redundancy and improve useful diversity \
+across the candidate set
 - Planning summary must not override the weighted specification and must not justify introducing unsupported \
 dimensions, values, constraints, or assumptions
 - Respect all constraints provided in the query-generation specification, including disallowed topics
