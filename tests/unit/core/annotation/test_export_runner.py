@@ -302,6 +302,8 @@ def mock_client(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     import pragmata.api.annotation_export as export_module
 
     monkeypatch.setattr(export_module, "resolve_argilla_client", lambda api_url, api_key: client)
+    monkeypatch.delenv("ARGILLA_API_URL", raising=False)
+    monkeypatch.setenv("ARGILLA_API_KEY", "test-key")
     return client
 
 

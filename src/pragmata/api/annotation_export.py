@@ -3,6 +3,7 @@
 import logging
 from pathlib import Path
 
+from pragmata.api._argilla_creds import resolve_api_key_override, resolve_api_url_override
 from pragmata.api._error_log import error_log
 from pragmata.core.annotation.client import resolve_argilla_client
 from pragmata.core.annotation.export_runner import ExportResult, resolve_export_id, run_export
@@ -30,9 +31,13 @@ def export_annotations(
     Queries each task dataset for submitted-only responses, groups by annotator,
     applies constraint validation, and writes atomic CSVs.
 
+    Credential resolution:
+    - ``api_url``: kwarg > ``ARGILLA_API_URL`` env > config (``argilla.api_url``)
+    - ``api_key``: kwarg > ``ARGILLA_API_KEY`` env (secrets never live in config)
+
     Args:
-        api_url: Argilla server URL. Falls back to Argilla SDK default when omitted.
-        api_key: Argilla API key. Falls back to ``ARGILLA_API_KEY`` env var.
+        api_url: Argilla server URL.
+        api_key: Argilla API key.
         export_id: Unique identifier for this export run. Auto-generated from
             prefix + ISO timestamp if not supplied.
         base_dir: Workspace base directory for run artifacts. Defaults to cwd.
@@ -46,15 +51,12 @@ def export_annotations(
     settings = AnnotationSettings.resolve(
         config=load_config_file(config_path) if isinstance(config_path, (str, Path)) else None,
         overrides={
-            "argilla": {"api_url": api_url},
+            "argilla": {"api_url": resolve_api_url_override(api_url)},
             "workspace_prefix": workspace_prefix,
             "base_dir": base_dir,
         },
     )
-    client = resolve_argilla_client(
-        settings.argilla.api_url,
-        api_key if isinstance(api_key, str) else None,
-    )
+    client = resolve_argilla_client(settings.argilla.api_url, resolve_api_key_override(api_key))
     resolved_id = resolve_export_id(settings, export_id if isinstance(export_id, str) else None)
     workspace = WorkspacePaths.from_base_dir(settings.base_dir)
     export_paths = resolve_export_paths(workspace=workspace, export_id=resolved_id).ensure_dirs()

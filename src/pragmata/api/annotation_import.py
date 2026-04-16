@@ -4,6 +4,7 @@ import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from pragmata.api._argilla_creds import resolve_api_key_override, resolve_api_url_override
 from pragmata.api._error_log import error_log
 from pragmata.core.annotation.client import resolve_argilla_client
 from pragmata.core.annotation.loaders import RecordInput, resolve_records
@@ -60,11 +61,15 @@ def import_records(
     Record IDs are derived from content hashes for idempotent upsert.
     Datasets must already exist (call setup() first).
 
+    Credential resolution:
+    - ``api_url``: kwarg > ``ARGILLA_API_URL`` env > config (``argilla.api_url``)
+    - ``api_key``: kwarg > ``ARGILLA_API_KEY`` env (secrets never live in config)
+
     Args:
         records: Input data — list[dict], file path (str/Path), HF Dataset,
             or pandas DataFrame.
-        api_url: Argilla server URL. Falls back to Argilla SDK default when omitted.
-        api_key: Argilla API key. Falls back to ``ARGILLA_API_KEY`` env var.
+        api_url: Argilla server URL.
+        api_key: Argilla API key.
         format: File format override — 'auto' (default), 'json', 'jsonl',
             or 'csv'. Only used for str/Path inputs.
         workspace_prefix: Prefix used when the environment was created.
@@ -78,15 +83,12 @@ def import_records(
     settings = AnnotationSettings.resolve(
         config=load_config_file(config_path) if isinstance(config_path, (str, Path)) else None,
         overrides={
-            "argilla": {"api_url": api_url},
+            "argilla": {"api_url": resolve_api_url_override(api_url)},
             "workspace_prefix": workspace_prefix,
             "base_dir": base_dir,
         },
     )
-    client = resolve_argilla_client(
-        settings.argilla.api_url,
-        api_key if isinstance(api_key, str) else None,
-    )
+    client = resolve_argilla_client(settings.argilla.api_url, resolve_api_key_override(api_key))
     workspace = WorkspacePaths.from_base_dir(settings.base_dir)
     paths = resolve_annotation_paths(workspace=workspace).ensure_dirs()
     with error_log(paths.tool_root):

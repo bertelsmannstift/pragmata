@@ -125,10 +125,10 @@ def mock_client(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
 
 
 @pytest.fixture(autouse=True)
-def _clear_argilla_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Isolate tests from any ambient ARGILLA_* env vars."""
+def _isolated_argilla_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Isolate tests from ambient ARGILLA_API_URL; provide a fake ARGILLA_API_KEY."""
     monkeypatch.delenv("ARGILLA_API_URL", raising=False)
-    monkeypatch.delenv("ARGILLA_API_KEY", raising=False)
+    monkeypatch.setenv("ARGILLA_API_KEY", "test-key")
 
 
 # ---------------------------------------------------------------------------
