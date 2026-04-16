@@ -37,7 +37,7 @@ CSV supports two layouts:
 ## Consequences
 
 - Users can pass common data formats directly without pre-parsing
-- CLI is a thin wrapper: `import_records(client, args.file)` — no format logic in CLI
+- CLI is a thin wrapper: `import_records(args.file)` — no format logic in CLI
 - CSV chunk representation is defined (resolve open question from original design doc)
 - Source-system-specific adapters (e.g. transforming a chatbot's raw output to canonical schema) remain out of scope
 - Adding new formats requires only a new loader function in `core/` and an extension mapping

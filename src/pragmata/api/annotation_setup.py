@@ -3,9 +3,8 @@
 import logging
 from pathlib import Path
 
-import argilla as rg
-
 from pragmata.api._error_log import error_log
+from pragmata.core.annotation.client import resolve_argilla_client
 from pragmata.core.annotation.setup import SetupResult, provision_users, setup_datasets, teardown_resources
 from pragmata.core.paths.annotation_paths import resolve_annotation_paths
 from pragmata.core.paths.paths import WorkspacePaths
@@ -16,9 +15,10 @@ logger = logging.getLogger(__name__)
 
 
 def setup(
-    client: rg.Argilla,
     users: list[UserSpec] | None = None,
     *,
+    api_url: str | Unset = UNSET,
+    api_key: str | Unset = UNSET,
     workspace_prefix: str | Unset = UNSET,
     min_submitted: int | Unset = UNSET,
     base_dir: str | Path | Unset = UNSET,
@@ -32,10 +32,12 @@ def setup(
 
     Settings are resolved from config file and/or keyword overrides. Omitted
     values fall through to config-file defaults, then built-in defaults.
+    ``api_key`` falls back to ``ARGILLA_API_KEY`` env var when omitted.
 
     Args:
-        client: Connected Argilla client instance.
         users: User accounts to provision. Pass None to skip user setup.
+        api_url: Argilla server URL. Falls back to Argilla SDK default when omitted.
+        api_key: Argilla API key. Falls back to ``ARGILLA_API_KEY`` env var.
         workspace_prefix: Prefix prepended to workspace and dataset names.
         min_submitted: Minimum annotations required per record.
         base_dir: Workspace base directory. Defaults to cwd.
@@ -47,10 +49,15 @@ def setup(
     settings = AnnotationSettings.resolve(
         config=load_config_file(config_path) if isinstance(config_path, (str, Path)) else None,
         overrides={
+            "argilla": {"api_url": api_url},
             "workspace_prefix": workspace_prefix,
             "min_submitted": min_submitted,
             "base_dir": base_dir,
         },
+    )
+    client = resolve_argilla_client(
+        settings.argilla.api_url,
+        api_key if isinstance(api_key, str) else None,
     )
     workspace = WorkspacePaths.from_base_dir(settings.base_dir)
     paths = resolve_annotation_paths(workspace=workspace).ensure_dirs()
@@ -68,8 +75,9 @@ def setup(
 
 
 def teardown(
-    client: rg.Argilla,
     *,
+    api_url: str | Unset = UNSET,
+    api_key: str | Unset = UNSET,
     workspace_prefix: str | Unset = UNSET,
     base_dir: str | Path | Unset = UNSET,
     config_path: str | Path | Unset = UNSET,
@@ -81,14 +89,23 @@ def teardown(
     are not touched.
 
     Args:
-        client: Connected Argilla client instance.
+        api_url: Argilla server URL. Falls back to Argilla SDK default when omitted.
+        api_key: Argilla API key. Falls back to ``ARGILLA_API_KEY`` env var.
         workspace_prefix: Prefix used when the environment was created.
         base_dir: Workspace base directory. Defaults to cwd.
         config_path: Path to YAML config file for settings resolution.
     """
     settings = AnnotationSettings.resolve(
         config=load_config_file(config_path) if isinstance(config_path, (str, Path)) else None,
-        overrides={"workspace_prefix": workspace_prefix, "base_dir": base_dir},
+        overrides={
+            "argilla": {"api_url": api_url},
+            "workspace_prefix": workspace_prefix,
+            "base_dir": base_dir,
+        },
+    )
+    client = resolve_argilla_client(
+        settings.argilla.api_url,
+        api_key if isinstance(api_key, str) else None,
     )
     workspace = WorkspacePaths.from_base_dir(settings.base_dir)
     paths = resolve_annotation_paths(workspace=workspace).ensure_dirs()

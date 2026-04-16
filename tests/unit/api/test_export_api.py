@@ -108,7 +108,7 @@ _UID2 = UUID("00000000-0000-0000-0000-000000000002")
 
 
 @pytest.fixture()
-def mock_client() -> MagicMock:
+def mock_client(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     client = MagicMock()
     user = MagicMock()
     user.id = _UID1
@@ -117,7 +117,18 @@ def mock_client() -> MagicMock:
     dataset = MagicMock()
     dataset.records.return_value = iter([])
     client.datasets.return_value = dataset
+
+    import pragmata.api.annotation_export as export_module
+
+    monkeypatch.setattr(export_module, "resolve_argilla_client", lambda api_url, api_key: client)
     return client
+
+
+@pytest.fixture(autouse=True)
+def _clear_argilla_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Isolate tests from any ambient ARGILLA_* env vars."""
+    monkeypatch.delenv("ARGILLA_API_URL", raising=False)
+    monkeypatch.delenv("ARGILLA_API_KEY", raising=False)
 
 
 # ---------------------------------------------------------------------------
@@ -138,7 +149,7 @@ class TestExportAnnotations:
         dataset.records.return_value = iter([submitted])
         mock_client.datasets.return_value = dataset
 
-        result = export_annotations(mock_client, base_dir=tmp_path, export_id="test-run")
+        result = export_annotations(base_dir=tmp_path, export_id="test-run")
         assert result.row_counts[Task.RETRIEVAL] == 1
 
     def test_one_row_per_annotator_per_record(self, tmp_path: Path, mock_client: MagicMock) -> None:
@@ -157,13 +168,13 @@ class TestExportAnnotations:
         dataset.records.return_value = iter([record])
         mock_client.datasets.return_value = dataset
 
-        result = export_annotations(mock_client, base_dir=tmp_path, export_id="test-run", tasks=[Task.RETRIEVAL])
+        result = export_annotations(base_dir=tmp_path, export_id="test-run", tasks=[Task.RETRIEVAL])
         assert result.row_counts[Task.RETRIEVAL] == 2
 
     def test_empty_dataset_produces_headers_only_csv(self, tmp_path: Path, mock_client: MagicMock) -> None:
         from pragmata.api.annotation_export import export_annotations
 
-        result = export_annotations(mock_client, base_dir=tmp_path, export_id="test-run", tasks=[Task.RETRIEVAL])
+        result = export_annotations(base_dir=tmp_path, export_id="test-run", tasks=[Task.RETRIEVAL])
         assert result.row_counts[Task.RETRIEVAL] == 0
         assert result.files[Task.RETRIEVAL].exists()
         rows = list(csv.DictReader(result.files[Task.RETRIEVAL].open()))
@@ -185,7 +196,7 @@ class TestExportAnnotations:
         mock_client.datasets.return_value = dataset
 
         with caplog.at_level(logging.WARNING, logger="pragmata.core.annotation.export_fetcher"):
-            result = export_annotations(mock_client, base_dir=tmp_path, export_id="test-run", tasks=[Task.RETRIEVAL])
+            result = export_annotations(base_dir=tmp_path, export_id="test-run", tasks=[Task.RETRIEVAL])
 
         assert result.row_counts[Task.RETRIEVAL] == 1
         assert any("record_uuid" in msg.lower() for msg in caplog.messages)
@@ -193,7 +204,7 @@ class TestExportAnnotations:
     def test_tasks_filter(self, tmp_path: Path, mock_client: MagicMock) -> None:
         from pragmata.api.annotation_export import export_annotations
 
-        result = export_annotations(mock_client, base_dir=tmp_path, export_id="test-run", tasks=[Task.RETRIEVAL])
+        result = export_annotations(base_dir=tmp_path, export_id="test-run", tasks=[Task.RETRIEVAL])
         assert Task.RETRIEVAL in result.files
         assert Task.GROUNDING not in result.files
         assert Task.GENERATION not in result.files
@@ -202,7 +213,7 @@ class TestExportAnnotations:
         from pragmata.api.annotation_export import export_annotations
 
         before = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
-        result = export_annotations(mock_client, base_dir=tmp_path)
+        result = export_annotations(base_dir=tmp_path)
         after = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
         export_id = result.paths.export_dir.name
         assert before <= export_id <= after
@@ -210,7 +221,7 @@ class TestExportAnnotations:
     def test_export_id_auto_generated_with_prefix(self, tmp_path: Path, mock_client: MagicMock) -> None:
         from pragmata.api.annotation_export import export_annotations
 
-        result = export_annotations(mock_client, base_dir=tmp_path, workspace_prefix="myproject")
+        result = export_annotations(base_dir=tmp_path, workspace_prefix="myproject")
         export_id = result.paths.export_dir.name
         assert export_id.startswith("myproject_")
 
@@ -227,7 +238,7 @@ class TestExportAnnotations:
         dataset.records.return_value = iter([record])
         mock_client.datasets.return_value = dataset
 
-        result = export_annotations(mock_client, base_dir=tmp_path, export_id="test-run", tasks=[Task.RETRIEVAL])
+        result = export_annotations(base_dir=tmp_path, export_id="test-run", tasks=[Task.RETRIEVAL])
         rows = list(csv.DictReader(result.files[Task.RETRIEVAL].open()))
         assert rows[0]["annotator_id"] == "alice"
 
@@ -245,7 +256,7 @@ class TestExportAnnotations:
         dataset.records.return_value = iter([record])
         mock_client.datasets.return_value = dataset
 
-        result = export_annotations(mock_client, base_dir=tmp_path, export_id="test-run", tasks=[Task.RETRIEVAL])
+        result = export_annotations(base_dir=tmp_path, export_id="test-run", tasks=[Task.RETRIEVAL])
         rows = list(csv.DictReader(result.files[Task.RETRIEVAL].open()))
         assert "2024-06-15" in rows[0]["created_at"]
 
@@ -265,7 +276,7 @@ class TestExportAnnotations:
         dataset.records.return_value = iter([record])
         mock_client.datasets.return_value = dataset
 
-        result = export_annotations(mock_client, base_dir=tmp_path, export_id="test-run", tasks=[Task.RETRIEVAL])
+        result = export_annotations(base_dir=tmp_path, export_id="test-run", tasks=[Task.RETRIEVAL])
         rows = list(csv.DictReader(result.files[Task.RETRIEVAL].open()))
         assert "2024-03-10" in rows[0]["created_at"]
 
@@ -279,7 +290,7 @@ class TestExportAnnotations:
 
         mock_client.datasets.side_effect = _fresh_dataset
 
-        result = export_annotations(mock_client, base_dir=tmp_path, export_id="test-run")
+        result = export_annotations(base_dir=tmp_path, export_id="test-run")
 
         assert set(result.files.keys()) == {Task.RETRIEVAL, Task.GROUNDING, Task.GENERATION}
         called_names = {call.args[0] for call in mock_client.datasets.call_args_list}

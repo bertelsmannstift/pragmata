@@ -4,9 +4,8 @@ import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import argilla as rg
-
 from pragmata.api._error_log import error_log
+from pragmata.core.annotation.client import resolve_argilla_client
 from pragmata.core.annotation.loaders import RecordInput, resolve_records
 from pragmata.core.annotation.record_builder import (
     RecordError,
@@ -19,10 +18,6 @@ from pragmata.core.settings.annotation_settings import AnnotationSettings
 from pragmata.core.settings.settings_base import UNSET, Unset, load_config_file
 
 logger = logging.getLogger(__name__)
-
-# ---------------------------------------------------------------------------
-# Result types
-# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
@@ -40,15 +35,11 @@ class ImportResult:
     errors: list[RecordError] = field(default_factory=list)
 
 
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
-
-
 def import_records(
-    client: rg.Argilla,
     records: RecordInput,
     *,
+    api_url: str | Unset = UNSET,
+    api_key: str | Unset = UNSET,
     format: str = "auto",
     workspace_prefix: str | Unset = UNSET,
     base_dir: str | Path | Unset = UNSET,
@@ -70,9 +61,10 @@ def import_records(
     Datasets must already exist (call setup() first).
 
     Args:
-        client: Connected Argilla client instance.
         records: Input data — list[dict], file path (str/Path), HF Dataset,
             or pandas DataFrame.
+        api_url: Argilla server URL. Falls back to Argilla SDK default when omitted.
+        api_key: Argilla API key. Falls back to ``ARGILLA_API_KEY`` env var.
         format: File format override — 'auto' (default), 'json', 'jsonl',
             or 'csv'. Only used for str/Path inputs.
         workspace_prefix: Prefix used when the environment was created.
@@ -85,7 +77,15 @@ def import_records(
     raw = resolve_records(records, format=format)
     settings = AnnotationSettings.resolve(
         config=load_config_file(config_path) if isinstance(config_path, (str, Path)) else None,
-        overrides={"workspace_prefix": workspace_prefix, "base_dir": base_dir},
+        overrides={
+            "argilla": {"api_url": api_url},
+            "workspace_prefix": workspace_prefix,
+            "base_dir": base_dir,
+        },
+    )
+    client = resolve_argilla_client(
+        settings.argilla.api_url,
+        api_key if isinstance(api_key, str) else None,
     )
     workspace = WorkspacePaths.from_base_dir(settings.base_dir)
     paths = resolve_annotation_paths(workspace=workspace).ensure_dirs()

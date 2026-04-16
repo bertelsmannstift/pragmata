@@ -3,9 +3,8 @@
 import logging
 from pathlib import Path
 
-import argilla as rg
-
 from pragmata.api._error_log import error_log
+from pragmata.core.annotation.client import resolve_argilla_client
 from pragmata.core.annotation.export_runner import ExportResult, resolve_export_id, run_export
 from pragmata.core.paths.annotation_paths import resolve_export_paths
 from pragmata.core.paths.paths import WorkspacePaths
@@ -17,8 +16,9 @@ logger = logging.getLogger(__name__)
 
 
 def export_annotations(
-    client: rg.Argilla,
     *,
+    api_url: str | Unset = UNSET,
+    api_key: str | Unset = UNSET,
     export_id: str | Unset = UNSET,
     base_dir: str | Path | Unset = UNSET,
     tasks: list[Task] | None = None,
@@ -31,7 +31,8 @@ def export_annotations(
     applies constraint validation, and writes atomic CSVs.
 
     Args:
-        client: Connected Argilla client.
+        api_url: Argilla server URL. Falls back to Argilla SDK default when omitted.
+        api_key: Argilla API key. Falls back to ``ARGILLA_API_KEY`` env var.
         export_id: Unique identifier for this export run. Auto-generated from
             prefix + ISO timestamp if not supplied.
         base_dir: Workspace base directory for run artifacts. Defaults to cwd.
@@ -44,7 +45,15 @@ def export_annotations(
     """
     settings = AnnotationSettings.resolve(
         config=load_config_file(config_path) if isinstance(config_path, (str, Path)) else None,
-        overrides={"workspace_prefix": workspace_prefix, "base_dir": base_dir},
+        overrides={
+            "argilla": {"api_url": api_url},
+            "workspace_prefix": workspace_prefix,
+            "base_dir": base_dir,
+        },
+    )
+    client = resolve_argilla_client(
+        settings.argilla.api_url,
+        api_key if isinstance(api_key, str) else None,
     )
     resolved_id = resolve_export_id(settings, export_id if isinstance(export_id, str) else None)
     workspace = WorkspacePaths.from_base_dir(settings.base_dir)
