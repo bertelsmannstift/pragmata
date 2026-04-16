@@ -3,13 +3,11 @@
 Acts as the import boundary between the public annotation surface and the
 argilla-dependent internals in ``pragmata.core.annotation.*``. Re-exports are
 resolved lazily via :pep:`562` ``__getattr__`` so importing
-``pragmata.annotation`` (e.g. from the CLI) does not trigger ``import argilla``
+``pragmata.annotation`` does not trigger ``import argilla``
 until an attribute is actually accessed. This keeps the ``annotation`` optional
 extra genuinely optional: users who installed pragmata without it can still
 import the package and run non-annotation commands.
 """
-
-from __future__ import annotations
 
 import importlib
 from typing import TYPE_CHECKING
