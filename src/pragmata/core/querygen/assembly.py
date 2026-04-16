@@ -2,9 +2,12 @@
 
 from datetime import UTC, datetime
 
-from pragmata.core.schemas.querygen_output import SyntheticQueriesMeta, SyntheticQueryRow
+from pragmata.core.querygen.planning_memory import fingerprint_querygen_spec
+from pragmata.core.schemas.querygen_input import QueryGenSpec
+from pragmata.core.schemas.querygen_output import PlanningSummaryArtifact, SyntheticQueriesMeta, SyntheticQueryRow
 from pragmata.core.schemas.querygen_plan import QueryBlueprint
 from pragmata.core.schemas.querygen_realize import RealizedQuery
+from pragmata.core.schemas.querygen_summary import PlanningSummaryState
 
 
 def _build_query_ids(
@@ -87,4 +90,28 @@ def assemble_queries_meta(
         model_provider=model_provider,
         planning_model=planning_model,
         realization_model=realization_model,
+    )
+
+
+def assemble_planning_summary(
+    spec: QueryGenSpec,
+    run_id: str,
+    state: PlanningSummaryState,
+) -> PlanningSummaryArtifact:
+    """Assemble a planning-summary artifact from the final summary state.
+
+    Args:
+        spec: Resolved query-generation specification for the run.
+        run_id: Unique run identifier used as the source for the artifact.
+        state: Final run-level planning-summary produced by the summary-updater stage.
+
+    Returns:
+        A validated ``PlanningSummaryArtifact`` with internally generated
+        ``spec_fingerprint`` and ``created_at`` metadata.
+    """
+    return PlanningSummaryArtifact(
+        spec_fingerprint=fingerprint_querygen_spec(spec),
+        source_run_id=run_id,
+        created_at=datetime.now(UTC),
+        state=state,
     )
