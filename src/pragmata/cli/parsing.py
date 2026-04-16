@@ -61,5 +61,5 @@ def parse_user_specs(path: str | None) -> "list[UserSpec] | None":
 
     if path is None:
         return None
-    raw = json.loads(Path(path).read_text())
+    raw = json.loads(Path(path).expanduser().read_text(encoding="utf-8"))
     return [UserSpec(**entry) for entry in raw]
