@@ -5,8 +5,8 @@ from unittest.mock import patch
 
 from typer.testing import CliRunner
 
+from pragmata.annotation import Task
 from pragmata.cli.app import app
-from pragmata.core.schemas.annotation_task import Task
 from pragmata.core.schemas.iaa_report import (
     AnnotatorPair,
     IaaReport,
