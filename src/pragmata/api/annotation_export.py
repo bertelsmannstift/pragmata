@@ -1,9 +1,9 @@
 """Annotation export API — fetch submitted responses and write flat CSVs per task."""
 
 import logging
+import os
 from pathlib import Path
 
-from pragmata.api._argilla_creds import resolve_api_key_override, resolve_api_url_override
 from pragmata.api._error_log import error_log
 from pragmata.core.annotation.client import resolve_argilla_client
 from pragmata.core.annotation.export_runner import ExportResult, resolve_export_id, run_export
@@ -11,7 +11,7 @@ from pragmata.core.paths.annotation_paths import resolve_export_paths
 from pragmata.core.paths.paths import WorkspacePaths
 from pragmata.core.schemas.annotation_task import Task
 from pragmata.core.settings.annotation_settings import AnnotationSettings
-from pragmata.core.settings.settings_base import UNSET, Unset, load_config_file
+from pragmata.core.settings.settings_base import UNSET, Unset, load_config_file, resolve_api_key
 
 logger = logging.getLogger(__name__)
 
@@ -50,13 +50,15 @@ def export_annotations(
     """
     settings = AnnotationSettings.resolve(
         config=load_config_file(config_path) if isinstance(config_path, (str, Path)) else None,
+        env={"argilla": {"api_url": os.environ.get("ARGILLA_API_URL")}} if os.environ.get("ARGILLA_API_URL") else None,
         overrides={
-            "argilla": {"api_url": resolve_api_url_override(api_url)},
+            "argilla": {"api_url": api_url},
             "workspace_prefix": workspace_prefix,
             "base_dir": base_dir,
         },
     )
-    client = resolve_argilla_client(settings.argilla.api_url, resolve_api_key_override(api_key))
+    api_key = api_key if isinstance(api_key, str) else resolve_api_key("argilla")
+    client = resolve_argilla_client(settings.argilla.api_url, api_key)
     resolved_id = resolve_export_id(settings, export_id if isinstance(export_id, str) else None)
     workspace = WorkspacePaths.from_base_dir(settings.base_dir)
     export_paths = resolve_export_paths(workspace=workspace, export_id=resolved_id).ensure_dirs()

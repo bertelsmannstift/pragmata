@@ -1,10 +1,10 @@
 """Annotation import API — thin orchestration over core/ implementation."""
 
 import logging
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from pragmata.api._argilla_creds import resolve_api_key_override, resolve_api_url_override
 from pragmata.api._error_log import error_log
 from pragmata.core.annotation.client import resolve_argilla_client
 from pragmata.core.annotation.loaders import RecordInput, resolve_records
@@ -16,7 +16,7 @@ from pragmata.core.annotation.record_builder import (
 from pragmata.core.paths.annotation_paths import resolve_annotation_paths
 from pragmata.core.paths.paths import WorkspacePaths
 from pragmata.core.settings.annotation_settings import AnnotationSettings
-from pragmata.core.settings.settings_base import UNSET, Unset, load_config_file
+from pragmata.core.settings.settings_base import UNSET, Unset, load_config_file, resolve_api_key
 
 logger = logging.getLogger(__name__)
 
@@ -82,13 +82,15 @@ def import_records(
     raw = resolve_records(records, format=format)
     settings = AnnotationSettings.resolve(
         config=load_config_file(config_path) if isinstance(config_path, (str, Path)) else None,
+        env={"argilla": {"api_url": os.environ.get("ARGILLA_API_URL")}} if os.environ.get("ARGILLA_API_URL") else None,
         overrides={
-            "argilla": {"api_url": resolve_api_url_override(api_url)},
+            "argilla": {"api_url": api_url},
             "workspace_prefix": workspace_prefix,
             "base_dir": base_dir,
         },
     )
-    client = resolve_argilla_client(settings.argilla.api_url, resolve_api_key_override(api_key))
+    api_key = api_key if isinstance(api_key, str) else resolve_api_key("argilla")
+    client = resolve_argilla_client(settings.argilla.api_url, api_key)
     workspace = WorkspacePaths.from_base_dir(settings.base_dir)
     paths = resolve_annotation_paths(workspace=workspace).ensure_dirs()
     with error_log(paths.tool_root):
