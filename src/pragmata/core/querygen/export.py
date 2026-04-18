@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from pragmata.core.csv_io import write_csv
-from pragmata.core.schemas.querygen_output import SyntheticQueriesMeta, SyntheticQueryRow
+from pragmata.core.schemas.querygen_output import PlanningSummaryArtifact, SyntheticQueriesMeta, SyntheticQueryRow
 
 
 def export_queries(
@@ -24,5 +24,21 @@ def export_queries(
     write_csv(rows, queries_path)
     meta_path.write_text(
         json.dumps(meta.model_dump(mode="json")),
+        encoding="utf-8",
+    )
+
+
+def export_planning_summary(
+    artifact: PlanningSummaryArtifact,
+    artifact_path: Path,
+) -> None:
+    """Write a planning-summary artifact to disk as JSON.
+
+    Args:
+        artifact: Validated planning-summary artifact to persist.
+        artifact_path: Destination path for the JSON artifact.
+    """
+    artifact_path.write_text(
+        json.dumps(artifact.model_dump(mode="json")),
         encoding="utf-8",
     )

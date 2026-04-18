@@ -5,8 +5,9 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
-from pragmata.core.querygen.export import export_queries
-from pragmata.core.schemas.querygen_output import SyntheticQueriesMeta, SyntheticQueryRow
+from pragmata.core.querygen.export import export_planning_summary, export_queries
+from pragmata.core.schemas.querygen_output import PlanningSummaryArtifact, SyntheticQueriesMeta, SyntheticQueryRow
+from pragmata.core.schemas.querygen_summary import PlanningSummaryState
 
 
 def _make_row(
@@ -56,6 +57,25 @@ def _make_meta(
         model_provider=model_provider,
         planning_model=planning_model,
         realization_model=realization_model,
+    )
+
+
+def _make_planning_summary_artifact(
+    *,
+    spec_fingerprint: str = "abc123fingerprint",
+    source_run_id: str = "run123",
+    created_at: datetime = datetime(2026, 3, 9, 10, 30, tzinfo=UTC),
+) -> PlanningSummaryArtifact:
+    """Build a valid PlanningSummaryArtifact for tests."""
+    return PlanningSummaryArtifact(
+        spec_fingerprint=spec_fingerprint,
+        source_run_id=source_run_id,
+        created_at=created_at,
+        state=PlanningSummaryState(
+            redundancy_patterns="Repeated policy-eligibility scenarios for the same target group.",
+            diversification_targets="Add more distinct user situations and information needs within the allowed spec.",
+            coverage_notes="English public-policy eligibility requests are already well covered.",
+        ),
     )
 
 
@@ -181,4 +201,44 @@ def test_export_queries_serializes_metadata_json_values(tmp_path: Path) -> None:
         "model_provider": "mistralai",
         "planning_model": "magistral-medium-latest",
         "realization_model": "mistral-medium-latest",
+    }
+
+
+def test_export_planning_summary_writes_json_artifact(tmp_path: Path) -> None:
+    """export_planning_summary should write the planning-summary artifact to JSON."""
+    artifact = _make_planning_summary_artifact()
+    artifact_path = tmp_path / "planning_summary.json"
+
+    export_planning_summary(
+        artifact=artifact,
+        artifact_path=artifact_path,
+    )
+
+    assert json.loads(artifact_path.read_text(encoding="utf-8")) == artifact.model_dump(mode="json")
+
+
+def test_export_planning_summary_serializes_nested_state_json_values(tmp_path: Path) -> None:
+    """export_planning_summary should serialize nested PlanningSummaryState as JSON-compatible values."""
+    artifact = _make_planning_summary_artifact(
+        spec_fingerprint="fingerprint-001",
+        source_run_id="run-456",
+        created_at=datetime(2026, 3, 9, 10, 30, tzinfo=UTC),
+    )
+    artifact_path = tmp_path / "planning_summary.json"
+
+    export_planning_summary(
+        artifact=artifact,
+        artifact_path=artifact_path,
+    )
+
+    assert json.loads(artifact_path.read_text(encoding="utf-8")) == {
+        "spec_fingerprint": "fingerprint-001",
+        "source_run_id": "run-456",
+        "created_at": "2026-03-09T10:30:00Z",
+        "state": {
+            "redundancy_patterns": "Repeated policy-eligibility scenarios for the same target group.",
+            "diversification_targets": "Add more distinct user situations and information needs "
+            "within the allowed spec.",
+            "coverage_notes": "English public-policy eligibility requests are already well covered.",
+        },
     }
