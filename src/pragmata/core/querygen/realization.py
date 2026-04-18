@@ -11,7 +11,7 @@ class RealizationStageError(RuntimeError):
     """Raised when a realization-stage invocation fails."""
 
 
-def _format_blueprint(
+def format_blueprint(
     candidate: QueryBlueprint,
 ) -> str:
     """Format one query blueprint for prompt injection.
@@ -65,7 +65,7 @@ def _build_realization_prompt_vars(
     if not candidates:
         raise ValueError("candidates must not be empty")
 
-    formatted_blueprints = "\n\n".join(_format_blueprint(candidate) for candidate in candidates)
+    formatted_blueprints = "\n\n".join(format_blueprint(candidate) for candidate in candidates)
 
     return {
         "query_blueprints": formatted_blueprints,
