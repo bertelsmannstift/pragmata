@@ -49,8 +49,9 @@ markers = [
     "integration: cross-component integration tests excluded from the default test run",
     "annotation: integration tests for the annotation interface, requiring a live Docker/Argilla stack",
     "querygen: integration tests for synthetic query generation",
+    "packaging: packaging/import-surface smoke tests excluded from the default test run",
 ]
-addopts = "-m 'not integration'"
+addopts = "-m 'not integration and not packaging'"
 
 [tool.ruff]
 line-length = 120
