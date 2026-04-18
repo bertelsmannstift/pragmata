@@ -2,7 +2,7 @@
 
 from datetime import UTC, datetime
 
-from pragmata.core.querygen.planning_memory import fingerprint_querygen_spec
+from pragmata.core.querygen.planning_summary import fingerprint_querygen_spec
 from pragmata.core.schemas.querygen_input import QueryGenSpec
 from pragmata.core.schemas.querygen_output import PlanningSummaryArtifact, SyntheticQueriesMeta, SyntheticQueryRow
 from pragmata.core.schemas.querygen_plan import QueryBlueprint

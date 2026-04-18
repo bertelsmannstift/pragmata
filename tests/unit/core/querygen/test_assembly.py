@@ -3,6 +3,7 @@
 from datetime import UTC, datetime
 
 import pytest
+from pragmata.core.querygen.planning_summary import fingerprint_querygen_spec
 from pydantic import ValidationError
 
 from pragmata.core.querygen.assembly import (
@@ -11,7 +12,6 @@ from pragmata.core.querygen.assembly import (
     assemble_queries_meta,
     assemble_query_rows,
 )
-from pragmata.core.querygen.planning_memory import fingerprint_querygen_spec
 from pragmata.core.schemas.querygen_input import QueryGenSpec
 from pragmata.core.schemas.querygen_plan import QueryBlueprint
 from pragmata.core.schemas.querygen_realize import RealizedQuery
