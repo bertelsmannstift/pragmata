@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 from pragmata.core.querygen.llm import LlmInitializationError, build_llm_runnable
-from pragmata.core.querygen.planning import format_string_list, format_weighted_values
+from pragmata.core.querygen.planning import format_string_list, format_weighted_values, normalize_multiline
 from pragmata.core.querygen.prompts import (
     SYSTEM_PROMPT_PLANNING_SUMMARY,
     USER_PROMPT_PLANNING_SUMMARY,
@@ -87,11 +87,6 @@ def read_planning_summary_artifact(
     return artifact
 
 
-def _normalize_multiline(value: str) -> str:
-    """Normalize multiline text to a single line for prompt safety."""
-    return " ".join(value.splitlines()).strip()
-
-
 def _format_prior_summary_state(
     prior_summary_state: PlanningSummaryState,
 ) -> str:
@@ -105,11 +100,11 @@ def _format_prior_summary_state(
     """
     return (
         "- redundancy_patterns:\n"
-        f"  {_normalize_multiline(prior_summary_state.redundancy_patterns)}\n"
+        f"  {normalize_multiline(prior_summary_state.redundancy_patterns)}\n"
         "- diversification_targets:\n"
-        f"  {_normalize_multiline(prior_summary_state.diversification_targets)}\n"
+        f"  {normalize_multiline(prior_summary_state.diversification_targets)}\n"
         "- coverage_notes:\n"
-        f"  {_normalize_multiline(prior_summary_state.coverage_notes)}"
+        f"  {normalize_multiline(prior_summary_state.coverage_notes)}"
     )
 
 

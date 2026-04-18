@@ -11,6 +11,7 @@ You receive:
 
 - A structured query-generation specification describing the target query space, including semantic dimensions and \
 weighted candidate values for each dimension
+- An optional prior planning summary representing the advisory synthesis from earlier planning batches
 - A requested number of candidate outputs and a corresponding list of candidate IDs, one per output
 - A structured output schema that defines the blueprint format you must produce
 
@@ -35,6 +36,8 @@ Your detailed task entails two tightly coupled components:
   - Combine sampled dimension values into internally coherent, realistic user-query blueprints.
   - Ensure every candidate conforms exactly to the structured output schema.
   - Generate blueprints only and do not realize them into final user-facing queries.
+  - Treat the optional prior planning summary as a compact advisory summary of prior blueprint coverage, intended to \
+  help avoid repeated or near-duplicate candidates.
 
 Taken together, each candidate blueprint is constructed by sampling across the provided dimensions and combining the \
 sampled values into a coherent query specification.
@@ -91,6 +94,10 @@ Behavioral guardrails:
 
 - Maximize useful diversity across the full candidate set while remaining faithful to the provided weighted \
 specification
+- When planning summary is present, use it as advisory context to reduce redundancy and improve useful diversity \
+across the candidate set
+- Planning summary must not override the weighted specification and must not justify introducing unsupported \
+dimensions, values, constraints, or assumptions
 - Respect all constraints provided in the query-generation specification, including disallowed topics
 - Do not introduce unsupported assumptions or dimensions that were not provided
 - Do not force awkward values into a blueprint merely for coverage if they make the result implausible
@@ -104,7 +111,7 @@ specification
 
 USER_PROMPT_PLANNING = """CONTEXT
 
-The following is the list of candidate IDs. Each ID corresponds to exactly one candidate blueprint.
+{planning_summary}The following is the list of candidate IDs. Each ID corresponds to exactly one candidate blueprint.
 
 - candidate_ids: {candidate_ids}
 
@@ -134,7 +141,8 @@ distribution for candidate query blueprints.
 
 TASK
 
-Generate {n_queries} candidate query blueprints from this specification, using exactly the provided candidate IDs.
+Generate {n_queries} candidate query blueprints from this specification, using exactly the provided candidate IDs.\
+{planning_summary_task_context}
 """
 
 SYSTEM_PROMPT_REALIZATION = """ROLE
