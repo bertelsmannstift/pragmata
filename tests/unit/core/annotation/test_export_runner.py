@@ -289,7 +289,7 @@ class TestExportResult:
 
 
 @pytest.fixture()
-def mock_client() -> MagicMock:
+def mock_client(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     client = MagicMock()
     user = MagicMock()
     user.id = _UID1
@@ -298,6 +298,12 @@ def mock_client() -> MagicMock:
     dataset = MagicMock()
     dataset.records.return_value = iter([])
     client.datasets.return_value = dataset
+
+    import pragmata.api.annotation_export as export_module
+
+    monkeypatch.setattr(export_module, "resolve_argilla_client", lambda api_url, api_key: client)
+    monkeypatch.delenv("ARGILLA_API_URL", raising=False)
+    monkeypatch.setenv("ARGILLA_API_KEY", "test-key")
     return client
 
 
@@ -314,7 +320,7 @@ class TestYesNoConversion:
         dataset.records.return_value = iter([record])
         mock_client.datasets.return_value = dataset
 
-        result = export_annotations(mock_client, base_dir=tmp_path, export_id="test-run", tasks=[Task.RETRIEVAL])
+        result = export_annotations(base_dir=tmp_path, export_id="test-run", tasks=[Task.RETRIEVAL])
         rows = list(csv.DictReader(result.files[Task.RETRIEVAL].open()))
         assert rows[0]["topically_relevant"] == "true"
         assert rows[0]["evidence_sufficient"] == "false"
@@ -333,7 +339,7 @@ class TestConstraintViolations:
         dataset.records.return_value = iter([record])
         mock_client.datasets.return_value = dataset
 
-        result = export_annotations(mock_client, base_dir=tmp_path, export_id="test-run", tasks=[Task.RETRIEVAL])
+        result = export_annotations(base_dir=tmp_path, export_id="test-run", tasks=[Task.RETRIEVAL])
         assert result.constraint_summary
         assert sum(result.constraint_summary.values()) >= 1
 
@@ -351,6 +357,6 @@ class TestNotesCoercion:
         dataset.records.return_value = iter([record])
         mock_client.datasets.return_value = dataset
 
-        result = export_annotations(mock_client, base_dir=tmp_path, export_id="test-run", tasks=[Task.RETRIEVAL])
+        result = export_annotations(base_dir=tmp_path, export_id="test-run", tasks=[Task.RETRIEVAL])
         rows = list(csv.DictReader(result.files[Task.RETRIEVAL].open()))
         assert rows[0]["notes"] == ""

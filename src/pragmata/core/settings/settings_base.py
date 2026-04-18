@@ -24,13 +24,14 @@ UNSET: Final[_UnsetType] = _UnsetType()
 type Unset = _UnsetType
 
 
-PROVIDER_API_KEY_ENV_VARS: Final[dict[str, str]] = {
+API_KEY_ENV_VARS: Final[dict[str, str]] = {
     "mistralai": "MISTRAL_API_KEY",
     "cohere": "COHERE_API_KEY",
     "deepseek": "DEEPSEEK_API_KEY",
     "openai": "OPENAI_API_KEY",
     "anthropic": "ANTHROPIC_API_KEY",
     "google-genai": "GOOGLE_API_KEY",
+    "argilla": "ARGILLA_API_KEY",
 }
 
 
@@ -38,13 +39,13 @@ class MissingSecretError(RuntimeError):
     """Raised when a required secret is missing from the environment."""
 
 
-def resolve_provider_api_key(provider: str) -> str:
-    """Resolve the API key for a supported provider from the process environment."""
-    if provider not in PROVIDER_API_KEY_ENV_VARS:
-        supported_providers = ", ".join(sorted(PROVIDER_API_KEY_ENV_VARS))
-        raise ValueError(f"Unsupported provider: {provider}. Supported providers: {supported_providers}")
+def resolve_api_key(name: str) -> str:
+    """Resolve the API key for a known provider or service from the process environment."""
+    if name not in API_KEY_ENV_VARS:
+        supported = ", ".join(sorted(API_KEY_ENV_VARS))
+        raise ValueError(f"Unsupported API key name: {name}. Supported: {supported}")
 
-    env_var = PROVIDER_API_KEY_ENV_VARS[provider]
+    env_var = API_KEY_ENV_VARS[name]
     api_key = os.environ.get(env_var)
 
     if api_key is None or not api_key.strip():

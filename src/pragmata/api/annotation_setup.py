@@ -1,24 +1,25 @@
 """Argilla annotation setup API — thin orchestration over core/ implementation."""
 
 import logging
+import os
 from pathlib import Path
 
-import argilla as rg
-
 from pragmata.api._error_log import error_log
+from pragmata.core.annotation.client import resolve_argilla_client
 from pragmata.core.annotation.setup import SetupResult, provision_users, setup_datasets, teardown_resources
 from pragmata.core.paths.annotation_paths import resolve_annotation_paths
 from pragmata.core.paths.paths import WorkspacePaths
 from pragmata.core.settings.annotation_settings import AnnotationSettings, UserSpec
-from pragmata.core.settings.settings_base import UNSET, Unset, load_config_file
+from pragmata.core.settings.settings_base import UNSET, Unset, load_config_file, resolve_api_key
 
 logger = logging.getLogger(__name__)
 
 
 def setup(
-    client: rg.Argilla,
     users: list[UserSpec] | None = None,
     *,
+    api_url: str | Unset = UNSET,
+    api_key: str | Unset = UNSET,
     workspace_prefix: str | Unset = UNSET,
     min_submitted: int | Unset = UNSET,
     base_dir: str | Path | Unset = UNSET,
@@ -33,9 +34,14 @@ def setup(
     Settings are resolved from config file and/or keyword overrides. Omitted
     values fall through to config-file defaults, then built-in defaults.
 
+    Credential resolution:
+    - ``api_url``: kwarg > ``ARGILLA_API_URL`` env > config (``argilla.api_url``)
+    - ``api_key``: kwarg > ``ARGILLA_API_KEY`` env (secrets never live in config)
+
     Args:
-        client: Connected Argilla client instance.
         users: User accounts to provision. Pass None to skip user setup.
+        api_url: Argilla server URL.
+        api_key: Argilla API key.
         workspace_prefix: Prefix prepended to workspace and dataset names.
         min_submitted: Minimum annotations required per record.
         base_dir: Workspace base directory. Defaults to cwd.
@@ -46,12 +52,16 @@ def setup(
     """
     settings = AnnotationSettings.resolve(
         config=load_config_file(config_path) if isinstance(config_path, (str, Path)) else None,
+        env={"argilla": {"api_url": os.environ.get("ARGILLA_API_URL")}} if os.environ.get("ARGILLA_API_URL") else None,
         overrides={
+            "argilla": {"api_url": api_url},
             "workspace_prefix": workspace_prefix,
             "min_submitted": min_submitted,
             "base_dir": base_dir,
         },
     )
+    api_key = api_key if isinstance(api_key, str) else resolve_api_key("argilla")
+    client = resolve_argilla_client(settings.argilla.api_url, api_key)
     workspace = WorkspacePaths.from_base_dir(settings.base_dir)
     paths = resolve_annotation_paths(workspace=workspace).ensure_dirs()
     with error_log(paths.tool_root):
@@ -68,8 +78,9 @@ def setup(
 
 
 def teardown(
-    client: rg.Argilla,
     *,
+    api_url: str | Unset = UNSET,
+    api_key: str | Unset = UNSET,
     workspace_prefix: str | Unset = UNSET,
     base_dir: str | Path | Unset = UNSET,
     config_path: str | Path | Unset = UNSET,
@@ -80,16 +91,28 @@ def teardown(
     workspaces. Missing resources are silently skipped. User accounts
     are not touched.
 
+    Credential resolution:
+    - ``api_url``: kwarg > ``ARGILLA_API_URL`` env > config (``argilla.api_url``)
+    - ``api_key``: kwarg > ``ARGILLA_API_KEY`` env (secrets never live in config)
+
     Args:
-        client: Connected Argilla client instance.
+        api_url: Argilla server URL.
+        api_key: Argilla API key.
         workspace_prefix: Prefix used when the environment was created.
         base_dir: Workspace base directory. Defaults to cwd.
         config_path: Path to YAML config file for settings resolution.
     """
     settings = AnnotationSettings.resolve(
         config=load_config_file(config_path) if isinstance(config_path, (str, Path)) else None,
-        overrides={"workspace_prefix": workspace_prefix, "base_dir": base_dir},
+        env={"argilla": {"api_url": os.environ.get("ARGILLA_API_URL")}} if os.environ.get("ARGILLA_API_URL") else None,
+        overrides={
+            "argilla": {"api_url": api_url},
+            "workspace_prefix": workspace_prefix,
+            "base_dir": base_dir,
+        },
     )
+    api_key = api_key if isinstance(api_key, str) else resolve_api_key("argilla")
+    client = resolve_argilla_client(settings.argilla.api_url, api_key)
     workspace = WorkspacePaths.from_base_dir(settings.base_dir)
     paths = resolve_annotation_paths(workspace=workspace).ensure_dirs()
     logger.info("Starting teardown (prefix=%r)", settings.workspace_prefix)

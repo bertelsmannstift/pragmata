@@ -17,6 +17,7 @@ pytestmark = [pytest.mark.integration, pytest.mark.annotation]
 _API_URL = "http://localhost:6900"
 _API_KEY = "argilla.apikey"
 _PREFIX = "testimport"
+_CREDS: dict[str, str] = {"api_url": _API_URL, "api_key": _API_KEY}
 
 _SETTINGS = AnnotationSettings(workspace_prefix=_PREFIX)
 
@@ -42,10 +43,10 @@ def client() -> rg.Argilla:
 @pytest.fixture(autouse=True, scope="module")
 def clean_environment(client: rg.Argilla):
     """Tear down and re-setup prefixed environment before/after all tests."""
-    teardown(client, workspace_prefix=_PREFIX)
+    teardown(workspace_prefix=_PREFIX, **_CREDS)
     setup_datasets(client, _SETTINGS)
     yield
-    teardown(client, workspace_prefix=_PREFIX)
+    teardown(workspace_prefix=_PREFIX, **_CREDS)
 
 
 @pytest.fixture()
@@ -60,7 +61,7 @@ def sample_records() -> list[dict]:
 
 
 def test_import_result_type(client: rg.Argilla, sample_records: list[dict]) -> None:
-    result = import_records(client, sample_records, workspace_prefix=_PREFIX)
+    result = import_records(sample_records, workspace_prefix=_PREFIX, **_CREDS)
     assert isinstance(result, ImportResult)
 
 
@@ -69,7 +70,7 @@ def test_record_counts_per_dataset(client: rg.Argilla, sample_records: list[dict
     n_records = len(sample_records)
     n_retrieval = sum(len(r["chunks"]) for r in sample_records)  # 3 + 2 = 5
 
-    result = import_records(client, sample_records, workspace_prefix=_PREFIX)
+    result = import_records(sample_records, workspace_prefix=_PREFIX, **_CREDS)
 
     assert result.total_records == n_records
     assert result.errors == []
@@ -85,7 +86,7 @@ def test_record_counts_per_dataset(client: rg.Argilla, sample_records: list[dict
 
 def test_records_exist_in_argilla(client: rg.Argilla, sample_records: list[dict]) -> None:
     """After import, all three datasets contain records."""
-    import_records(client, sample_records, workspace_prefix=_PREFIX)
+    import_records(sample_records, workspace_prefix=_PREFIX, **_CREDS)
 
     ret_ds = client.datasets(f"{_PREFIX}_task_retrieval", workspace=f"{_PREFIX}_retrieval")
     gnd_ds = client.datasets(f"{_PREFIX}_task_grounding", workspace=f"{_PREFIX}_grounding")
@@ -103,7 +104,7 @@ def test_records_exist_in_argilla(client: rg.Argilla, sample_records: list[dict]
 
 def test_record_uuid_linkage(client: rg.Argilla, sample_records: list[dict]) -> None:
     """record_uuid metadata appears in all three datasets and intersects."""
-    import_records(client, sample_records, workspace_prefix=_PREFIX)
+    import_records(sample_records, workspace_prefix=_PREFIX, **_CREDS)
 
     def _uuids(ds_name: str, ws_name: str) -> set[str]:
         ds = client.datasets(ds_name, workspace=ws_name)
@@ -125,8 +126,8 @@ def test_idempotent_reimport(client: rg.Argilla, sample_records: list[dict]) -> 
     (derive_record_uuid). Argilla upserts on Record.id, so identical IDs on the second
     import overwrite existing records rather than creating duplicates.
     """
-    import_records(client, sample_records, workspace_prefix=_PREFIX)
-    import_records(client, sample_records, workspace_prefix=_PREFIX)
+    import_records(sample_records, workspace_prefix=_PREFIX, **_CREDS)
+    import_records(sample_records, workspace_prefix=_PREFIX, **_CREDS)
 
     ret_ds = client.datasets(f"{_PREFIX}_task_retrieval", workspace=f"{_PREFIX}_retrieval")
     gnd_ds = client.datasets(f"{_PREFIX}_task_grounding", workspace=f"{_PREFIX}_grounding")
@@ -144,7 +145,7 @@ def test_invalid_records_skipped_with_errors(client: rg.Argilla) -> None:
     """Invalid dicts are reported as errors, not sent to Argilla."""
     raw = [{"query": "no answer or chunks"}, _make_raw(1)]
 
-    result = import_records(client, raw, workspace_prefix=_PREFIX)
+    result = import_records(raw, workspace_prefix=_PREFIX, **_CREDS)
 
     assert result.total_records == 2
     assert len(result.errors) == 1

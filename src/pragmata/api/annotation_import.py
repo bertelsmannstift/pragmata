@@ -1,12 +1,12 @@
 """Annotation import API — thin orchestration over core/ implementation."""
 
 import logging
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import argilla as rg
-
 from pragmata.api._error_log import error_log
+from pragmata.core.annotation.client import resolve_argilla_client
 from pragmata.core.annotation.loaders import RecordInput, resolve_records
 from pragmata.core.annotation.record_builder import (
     RecordError,
@@ -16,13 +16,9 @@ from pragmata.core.annotation.record_builder import (
 from pragmata.core.paths.annotation_paths import resolve_annotation_paths
 from pragmata.core.paths.paths import WorkspacePaths
 from pragmata.core.settings.annotation_settings import AnnotationSettings
-from pragmata.core.settings.settings_base import UNSET, Unset, load_config_file
+from pragmata.core.settings.settings_base import UNSET, Unset, load_config_file, resolve_api_key
 
 logger = logging.getLogger(__name__)
-
-# ---------------------------------------------------------------------------
-# Result types
-# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
@@ -40,15 +36,11 @@ class ImportResult:
     errors: list[RecordError] = field(default_factory=list)
 
 
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
-
-
 def import_records(
-    client: rg.Argilla,
     records: RecordInput,
     *,
+    api_url: str | Unset = UNSET,
+    api_key: str | Unset = UNSET,
     format: str = "auto",
     workspace_prefix: str | Unset = UNSET,
     base_dir: str | Path | Unset = UNSET,
@@ -69,10 +61,15 @@ def import_records(
     Record IDs are derived from content hashes for idempotent upsert.
     Datasets must already exist (call setup() first).
 
+    Credential resolution:
+    - ``api_url``: kwarg > ``ARGILLA_API_URL`` env > config (``argilla.api_url``)
+    - ``api_key``: kwarg > ``ARGILLA_API_KEY`` env (secrets never live in config)
+
     Args:
-        client: Connected Argilla client instance.
         records: Input data — list[dict], file path (str/Path), HF Dataset,
             or pandas DataFrame.
+        api_url: Argilla server URL.
+        api_key: Argilla API key.
         format: File format override — 'auto' (default), 'json', 'jsonl',
             or 'csv'. Only used for str/Path inputs.
         workspace_prefix: Prefix used when the environment was created.
@@ -85,8 +82,15 @@ def import_records(
     raw = resolve_records(records, format=format)
     settings = AnnotationSettings.resolve(
         config=load_config_file(config_path) if isinstance(config_path, (str, Path)) else None,
-        overrides={"workspace_prefix": workspace_prefix, "base_dir": base_dir},
+        env={"argilla": {"api_url": os.environ.get("ARGILLA_API_URL")}} if os.environ.get("ARGILLA_API_URL") else None,
+        overrides={
+            "argilla": {"api_url": api_url},
+            "workspace_prefix": workspace_prefix,
+            "base_dir": base_dir,
+        },
     )
+    api_key = api_key if isinstance(api_key, str) else resolve_api_key("argilla")
+    client = resolve_argilla_client(settings.argilla.api_url, api_key)
     workspace = WorkspacePaths.from_base_dir(settings.base_dir)
     paths = resolve_annotation_paths(workspace=workspace).ensure_dirs()
     with error_log(paths.tool_root):

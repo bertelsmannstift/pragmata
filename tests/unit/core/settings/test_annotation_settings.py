@@ -4,7 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from pragmata.core.schemas.annotation_task import Task
-from pragmata.core.settings.annotation_settings import AnnotationSettings, UserSpec
+from pragmata.core.settings.annotation_settings import AnnotationSettings, ArgillaSettings, UserSpec
 
 
 class TestAnnotationSettingsDefaults:
@@ -53,6 +53,32 @@ class TestAnnotationSettingsResolve:
             overrides={"min_submitted": 5},
         )
         assert s.min_submitted == 5
+
+
+class TestArgillaSettings:
+    def test_defaults_to_none_api_url(self):
+        s = AnnotationSettings()
+        assert isinstance(s.argilla, ArgillaSettings)
+        assert s.argilla.api_url is None
+
+    def test_resolve_accepts_api_url_override(self):
+        s = AnnotationSettings.resolve(overrides={"argilla": {"api_url": "http://localhost:6900"}})
+        assert s.argilla.api_url == "http://localhost:6900"
+
+    def test_resolve_loads_api_url_from_config(self):
+        s = AnnotationSettings.resolve(config={"argilla": {"api_url": "http://cfg:6900"}})
+        assert s.argilla.api_url == "http://cfg:6900"
+
+    def test_overrides_win_over_config_for_api_url(self):
+        s = AnnotationSettings.resolve(
+            config={"argilla": {"api_url": "http://cfg:6900"}},
+            overrides={"argilla": {"api_url": "http://override:6900"}},
+        )
+        assert s.argilla.api_url == "http://override:6900"
+
+    def test_argilla_settings_forbids_extra_fields(self):
+        with pytest.raises(ValidationError):
+            ArgillaSettings(api_key="sekret")  # type: ignore[call-arg]
 
 
 class TestUserSpec:

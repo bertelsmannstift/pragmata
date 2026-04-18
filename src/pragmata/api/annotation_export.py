@@ -1,24 +1,25 @@
 """Annotation export API — fetch submitted responses and write flat CSVs per task."""
 
 import logging
+import os
 from pathlib import Path
 
-import argilla as rg
-
 from pragmata.api._error_log import error_log
+from pragmata.core.annotation.client import resolve_argilla_client
 from pragmata.core.annotation.export_runner import ExportResult, resolve_export_id, run_export
 from pragmata.core.paths.annotation_paths import resolve_export_paths
 from pragmata.core.paths.paths import WorkspacePaths
 from pragmata.core.schemas.annotation_task import Task
 from pragmata.core.settings.annotation_settings import AnnotationSettings
-from pragmata.core.settings.settings_base import UNSET, Unset, load_config_file
+from pragmata.core.settings.settings_base import UNSET, Unset, load_config_file, resolve_api_key
 
 logger = logging.getLogger(__name__)
 
 
 def export_annotations(
-    client: rg.Argilla,
     *,
+    api_url: str | Unset = UNSET,
+    api_key: str | Unset = UNSET,
     export_id: str | Unset = UNSET,
     base_dir: str | Path | Unset = UNSET,
     tasks: list[Task] | None = None,
@@ -30,8 +31,13 @@ def export_annotations(
     Queries each task dataset for submitted-only responses, groups by annotator,
     applies constraint validation, and writes atomic CSVs.
 
+    Credential resolution:
+    - ``api_url``: kwarg > ``ARGILLA_API_URL`` env > config (``argilla.api_url``)
+    - ``api_key``: kwarg > ``ARGILLA_API_KEY`` env (secrets never live in config)
+
     Args:
-        client: Connected Argilla client.
+        api_url: Argilla server URL.
+        api_key: Argilla API key.
         export_id: Unique identifier for this export run. Auto-generated from
             prefix + ISO timestamp if not supplied.
         base_dir: Workspace base directory for run artifacts. Defaults to cwd.
@@ -44,8 +50,15 @@ def export_annotations(
     """
     settings = AnnotationSettings.resolve(
         config=load_config_file(config_path) if isinstance(config_path, (str, Path)) else None,
-        overrides={"workspace_prefix": workspace_prefix, "base_dir": base_dir},
+        env={"argilla": {"api_url": os.environ.get("ARGILLA_API_URL")}} if os.environ.get("ARGILLA_API_URL") else None,
+        overrides={
+            "argilla": {"api_url": api_url},
+            "workspace_prefix": workspace_prefix,
+            "base_dir": base_dir,
+        },
     )
+    api_key = api_key if isinstance(api_key, str) else resolve_api_key("argilla")
+    client = resolve_argilla_client(settings.argilla.api_url, api_key)
     resolved_id = resolve_export_id(settings, export_id if isinstance(export_id, str) else None)
     workspace = WorkspacePaths.from_base_dir(settings.base_dir)
     export_paths = resolve_export_paths(workspace=workspace, export_id=resolved_id).ensure_dirs()
