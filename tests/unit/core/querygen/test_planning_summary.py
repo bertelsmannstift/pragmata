@@ -167,7 +167,6 @@ def test_fingerprint_querygen_spec_is_stable_across_repeated_calls(
     fingerprint = fingerprint_querygen_spec(spec)
 
     assert fingerprint == fingerprint_querygen_spec(spec)
-    assert fingerprint == fingerprint_querygen_spec(spec)
     assert len(fingerprint) == 64
     assert all(char in "0123456789abcdef" for char in fingerprint)
 
@@ -265,16 +264,20 @@ def test_fingerprint_querygen_spec_matches_sha256_of_serialized_content(
     assert fingerprint_querygen_spec(spec) == expected_fingerprint
 
 
-def test_format_prior_summary_state_returns_deterministic_multiline_block(
-    prior_summary_state: PlanningSummaryState,
-) -> None:
+def test_format_prior_summary_state_normalizes_embedded_newlines() -> None:
+    prior_summary_state = PlanningSummaryState(
+        redundancy_patterns="Coverage-letter clarification scenarios recur.\nRepeated follow-up framing appears.",
+        diversification_targets="Add more comparison scenarios.\nAdd multilingual requests.",
+        coverage_notes="Basic benefits lookup appears well covered.\nFAQ-style requests also recur.",
+    )
+
     assert _format_prior_summary_state(prior_summary_state) == (
         "- redundancy_patterns:\n"
-        "  Coverage-letter clarification scenarios recur.\n"
+        "  Coverage-letter clarification scenarios recur. Repeated follow-up framing appears.\n"
         "- diversification_targets:\n"
-        "  Add more comparison and multilingual scenarios.\n"
+        "  Add more comparison scenarios. Add multilingual requests.\n"
         "- coverage_notes:\n"
-        "  Basic benefits lookup appears well covered."
+        "  Basic benefits lookup appears well covered. FAQ-style requests also recur."
     )
 
 
@@ -412,6 +415,32 @@ def test_build_planning_summary_prompt_vars_returns_exact_placeholder_mapping(
         "prior_planning_summary",
         "query_blueprints",
     }
+
+
+def test_build_planning_summary_prompt_vars_normalizes_multiline_prior_summary(
+    make_spec: Callable[..., QueryGenSpec],
+) -> None:
+    spec = make_spec()
+    prior_summary_state = PlanningSummaryState(
+        redundancy_patterns="Pattern A\nPattern B",
+        diversification_targets="Target A\nTarget B",
+        coverage_notes="Note A\nNote B",
+    )
+
+    result = _build_planning_summary_prompt_vars(
+        spec=spec,
+        candidates=[_make_blueprint("C001")],
+        prior_summary_state=prior_summary_state,
+    )
+
+    assert result["prior_planning_summary"] == (
+        "- redundancy_patterns:\n"
+        "  Pattern A Pattern B\n"
+        "- diversification_targets:\n"
+        "  Target A Target B\n"
+        "- coverage_notes:\n"
+        "  Note A Note B"
+    )
 
 
 def test_run_planning_summary_wires_summary_prompt_assets_and_settings_into_llm_builder(

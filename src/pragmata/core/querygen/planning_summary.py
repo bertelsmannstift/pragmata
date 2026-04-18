@@ -56,6 +56,11 @@ def fingerprint_querygen_spec(
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
 
+def _normalize_multiline(value: str) -> str:
+    """Normalize multiline text to a single line for prompt safety."""
+    return " ".join(value.splitlines()).strip()
+
+
 def _format_prior_summary_state(
     prior_summary_state: PlanningSummaryState,
 ) -> str:
@@ -69,11 +74,11 @@ def _format_prior_summary_state(
     """
     return (
         "- redundancy_patterns:\n"
-        f"  {prior_summary_state.redundancy_patterns}\n"
+        f"  {_normalize_multiline(prior_summary_state.redundancy_patterns)}\n"
         "- diversification_targets:\n"
-        f"  {prior_summary_state.diversification_targets}\n"
+        f"  {_normalize_multiline(prior_summary_state.diversification_targets)}\n"
         "- coverage_notes:\n"
-        f"  {prior_summary_state.coverage_notes}"
+        f"  {_normalize_multiline(prior_summary_state.coverage_notes)}"
     )
 
 
