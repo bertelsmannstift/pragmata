@@ -14,6 +14,11 @@ class PlanningStageError(RuntimeError):
     """Raised when a planning-stage invocation fails."""
 
 
+def normalize_multiline(value: str) -> str:
+    """Normalize multiline text to a single line for prompt safety."""
+    return " ".join(value.splitlines()).strip()
+
+
 def format_weighted_values(values: list[WeightedValue] | None) -> str:
     """Format weighted categorical values for prompt injection.
 
@@ -63,9 +68,9 @@ def _format_planning_summary(
     return (
         "The following prior planning summary is provided as advisory context from earlier planning batches.\n\n"
         "- prior_planning_summary:\n"
-        f"  - redundancy_patterns: {planning_summary.redundancy_patterns}\n"
-        f"  - diversification_targets: {planning_summary.diversification_targets}\n"
-        f"  - coverage_notes: {planning_summary.coverage_notes}\n\n"
+        f"  - redundancy_patterns: {normalize_multiline(planning_summary.redundancy_patterns)}\n"
+        f"  - diversification_targets: {normalize_multiline(planning_summary.diversification_targets)}\n"
+        f"  - coverage_notes: {normalize_multiline(planning_summary.coverage_notes)}\n\n"
     )
 
 
