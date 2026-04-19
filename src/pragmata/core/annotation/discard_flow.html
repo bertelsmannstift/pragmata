@@ -62,24 +62,28 @@
 <script>
 (function() {
   var pdoc = window.parent.document;
-  var HIDDEN_TITLES = ['Discard reason', 'Discard notes (optional)'];
+  // Argilla-internal selectors — re-verify on Argilla upgrade.
+  var CARD_TITLE_SEL = '.title-area';
+  var CARD_SEL = '.wrapper';
+  var NATIVE_DISCARD_SEL = '.button--discard';
+  var REASON_TITLE = 'Discard reason';
+  var NOTES_TITLE = 'Discard notes (optional)';
+  var HIDDEN_TITLES = [REASON_TITLE, NOTES_TITLE];
+  // Delay after writing hidden question values before firing native discard,
+  // so Vue has a tick to register the input/change events.
+  var DISCARD_SUBMIT_DELAY_MS = 80;
 
-  // Hide Argilla's native Discard button so the panel is the only discard
-  // path (guarantees a reason gets captured).
   if (!pdoc.getElementById('__discard_hide_style')) {
     var s = pdoc.createElement('style');
     s.id = '__discard_hide_style';
-    s.textContent = '.button--discard { display: none !important; }';
+    s.textContent = NATIVE_DISCARD_SEL + ' { display: none !important; }';
     pdoc.head.appendChild(s);
   }
 
-  // Argilla v2 renders each question as a <div class="wrapper"> containing a
-  // <div class="title-area"> header. Hide the card whose title matches ours.
   function cardFor(title) {
-    var areas = pdoc.querySelectorAll('.title-area');
+    var areas = pdoc.querySelectorAll(CARD_TITLE_SEL);
     for (var i = 0; i < areas.length; i++) {
-      var t = (areas[i].innerText || '').trim();
-      if (t === title) return areas[i].closest('.wrapper');
+      if ((areas[i].innerText || '').trim() === title) return areas[i].closest(CARD_SEL);
     }
     return null;
   }
@@ -91,13 +95,13 @@
     });
   }
 
-  // Size the iframe to its own content. scrollHeight is clamped to at least
-  // the viewport (iframe) height, so shrink to 0 first then measure —
-  // otherwise the iframe can grow but never shrink on collapse.
   function resizeSelf() {
     try {
       var frame = window.frameElement;
       if (!frame) return;
+      // scrollHeight is clamped to at least the iframe viewport, so shrink to
+      // 0 first then remeasure — otherwise the iframe can grow but can't
+      // shrink back on collapse.
       frame.style.height = '0px';
       requestAnimationFrame(function () {
         frame.style.height = document.documentElement.scrollHeight + 'px';
@@ -105,18 +109,15 @@
     } catch (e) {}
   }
 
-  // Hide the Argilla-rendered field title ("Discard this record") that sits
-  // as a sibling of the iframe inside .custom_field_component.
+  // Hide siblings of our iframe inside .custom_field_component — that's where
+  // Argilla renders the field title ("Discard this record").
   function hideFieldTitle() {
     try {
       var frame = window.frameElement;
-      if (!frame) return;
+      if (!frame || !frame.parentElement) return;
       var host = frame.parentElement;
-      if (!host) return;
       for (var i = 0; i < host.children.length; i++) {
-        if (host.children[i] !== frame) {
-          host.children[i].style.display = 'none';
-        }
+        if (host.children[i] !== frame) host.children[i].style.display = 'none';
       }
     } catch (e) {}
   }
@@ -136,8 +137,8 @@
     var notes = notesTa.value;
     if (!reason) return;
 
-    var reasonCard = cardFor('Discard reason');
-    var notesCard = cardFor('Discard notes (optional)');
+    var reasonCard = cardFor(REASON_TITLE);
+    var notesCard = cardFor(NOTES_TITLE);
     if (reasonCard) reasonCard.style.display = '';
     if (notesCard) notesCard.style.display = '';
 
@@ -163,18 +164,21 @@
 
     setTimeout(function() {
       hideStaleQuestions();
-      var discardBtn = pdoc.querySelector('.button--discard');
+      var discardBtn = pdoc.querySelector(NATIVE_DISCARD_SEL);
       if (discardBtn) discardBtn.click();
-    }, 80);
+    }, DISCARD_SUBMIT_DELAY_MS);
   });
 
+  function applyHiding() { hideStaleQuestions(); hideFieldTitle(); }
+
   resizeSelf();
-  hideStaleQuestions();
-  hideFieldTitle();
-  // Argilla re-renders on record navigation; keep hiding on every record.
-  setInterval(function () { hideStaleQuestions(); hideFieldTitle(); }, 300);
-  setTimeout(resizeSelf, 200);
-  window.addEventListener('load', function () { resizeSelf(); hideFieldTitle(); });
+  applyHiding();
+  // Argilla re-renders questions on record navigation — rehide when the
+  // parent DOM changes instead of polling.
+  try {
+    new MutationObserver(applyHiding).observe(pdoc.body, { childList: true, subtree: true });
+  } catch (e) {}
+  window.addEventListener('load', function () { resizeSelf(); applyHiding(); });
 })();
 </script>
 
