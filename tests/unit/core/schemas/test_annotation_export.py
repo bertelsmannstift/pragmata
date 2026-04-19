@@ -256,20 +256,15 @@ def test_response_status_rejects_unknown(valid_retrieval):
 
 
 @pytest.mark.parametrize(
-    ("cls_name", "fields_fixture", "label"),
+    ("cls", "fields_fixture", "label"),
     [
-        ("RetrievalAnnotation", "valid_retrieval", "topically_relevant"),
-        ("GroundingAnnotation", "valid_grounding", "support_present"),
-        ("GenerationAnnotation", "valid_generation", "proper_action"),
+        (RetrievalAnnotation, "valid_retrieval", "topically_relevant"),
+        (GroundingAnnotation, "valid_grounding", "support_present"),
+        (GenerationAnnotation, "valid_generation", "proper_action"),
     ],
 )
-def test_submitted_rejects_none_label(cls_name, fields_fixture, label, request):
+def test_submitted_rejects_none_label(cls, fields_fixture, label, request):
     """Submitted annotations must have all task-specific bool labels populated."""
-    cls = {
-        "RetrievalAnnotation": RetrievalAnnotation,
-        "GroundingAnnotation": GroundingAnnotation,
-        "GenerationAnnotation": GenerationAnnotation,
-    }[cls_name]
     fields = request.getfixturevalue(fields_fixture).copy()
     fields[label] = None
     with pytest.raises(ValidationError, match="missing required label"):
@@ -277,11 +272,11 @@ def test_submitted_rejects_none_label(cls_name, fields_fixture, label, request):
 
 
 @pytest.mark.parametrize(
-    ("cls_name", "fields_fixture", "labels"),
+    ("cls", "fields_fixture", "labels"),
     [
-        ("RetrievalAnnotation", "valid_retrieval", ("topically_relevant", "evidence_sufficient", "misleading")),
+        (RetrievalAnnotation, "valid_retrieval", ("topically_relevant", "evidence_sufficient", "misleading")),
         (
-            "GroundingAnnotation",
+            GroundingAnnotation,
             "valid_grounding",
             (
                 "support_present",
@@ -292,19 +287,14 @@ def test_submitted_rejects_none_label(cls_name, fields_fixture, label, request):
             ),
         ),
         (
-            "GenerationAnnotation",
+            GenerationAnnotation,
             "valid_generation",
             ("proper_action", "response_on_topic", "helpful", "incomplete", "unsafe_content"),
         ),
     ],
 )
-def test_discarded_allows_none_labels(cls_name, fields_fixture, labels, request):
+def test_discarded_allows_none_labels(cls, fields_fixture, labels, request):
     """Discarded annotations may have all task-specific labels as None."""
-    cls = {
-        "RetrievalAnnotation": RetrievalAnnotation,
-        "GroundingAnnotation": GroundingAnnotation,
-        "GenerationAnnotation": GenerationAnnotation,
-    }[cls_name]
     fields = request.getfixturevalue(fields_fixture).copy()
     fields["response_status"] = "discarded"
     fields["discard_reason"] = "duplicate"
