@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  html, body { margin: 0; padding: 0; }
+  .discard-panel {
+    border: 2px solid #d9534f;
+    background: #fff5f5;
+    border-radius: 6px;
+    padding: 12px;
+    font-family: system-ui, sans-serif;
+  }
+  .discard-panel summary { cursor: pointer; font-weight: 600; color: #a00; }
+  .discard-panel[open] { padding-bottom: 16px; }
+  .discard-panel label { display: block; margin-top: 12px; font-size: 13px; }
+  .discard-panel select, .discard-panel textarea {
+    width: 100%;
+    box-sizing: border-box;
+    margin-top: 4px;
+    padding: 6px;
+    font-family: inherit;
+    font-size: 14px;
+  }
+  .discard-btn {
+    margin-top: 12px; padding: 8px 16px;
+    background: #d9534f; color: white; border: none;
+    border-radius: 4px; cursor: pointer; font-weight: 600;
+  }
+  .discard-btn:hover { background: #c9302c; }
+  .discard-btn[disabled] { background: #d9a5a3; cursor: not-allowed; }
+</style>
+</head>
+<body>
+
+<details class="discard-panel" id="panel">
+  <summary>&#9888; Discard this record</summary>
+  <p style="margin-top:8px;font-size:13px;color:#555">
+    Use this if the record is unsuitable for annotation
+    (e.g. low quality, duplicate, unclear, or beyond your knowledge).
+  </p>
+
+  <label>Reason:
+    <select id="reason">
+      <option value="">&#8212; select &#8212;</option>
+      <option value="low_quality_query">Low quality / unrealistic query</option>
+      <option value="duplicate">Duplicate</option>
+      <option value="unclear">Unclear query or answer</option>
+      <option value="beyond_domain_knowledge">Beyond my domain knowledge</option>
+    </select>
+  </label>
+
+  <label>Optional notes:
+    <textarea id="discard-notes" rows="3"
+      placeholder="Any extra context (optional)"></textarea>
+  </label>
+
+  <button class="discard-btn" id="discard-go" disabled>
+    Discard
+  </button>
+</details>
+
+<script>
+(function() {
+  var pdoc = window.parent.document;
+  var HIDDEN_TITLES = ['Discard reason', 'Discard notes (optional)'];
+
+  // Hide Argilla's native Discard button so the panel is the only discard
+  // path (guarantees a reason gets captured).
+  if (!pdoc.getElementById('__discard_hide_style')) {
+    var s = pdoc.createElement('style');
+    s.id = '__discard_hide_style';
+    s.textContent = '.button--discard { display: none !important; }';
+    pdoc.head.appendChild(s);
+  }
+
+  // Argilla v2 renders each question as a <div class="wrapper"> containing a
+  // <div class="title-area"> header. Hide the card whose title matches ours.
+  function cardFor(title) {
+    var areas = pdoc.querySelectorAll('.title-area');
+    for (var i = 0; i < areas.length; i++) {
+      var t = (areas[i].innerText || '').trim();
+      if (t === title) return areas[i].closest('.wrapper');
+    }
+    return null;
+  }
+
+  function hideStaleQuestions() {
+    HIDDEN_TITLES.forEach(function(title) {
+      var card = cardFor(title);
+      if (card) card.style.display = 'none';
+    });
+  }
+
+  // Size the iframe to its own content. scrollHeight is clamped to at least
+  // the viewport (iframe) height, so shrink to 0 first then measure —
+  // otherwise the iframe can grow but never shrink on collapse.
+  function resizeSelf() {
+    try {
+      var frame = window.frameElement;
+      if (!frame) return;
+      frame.style.height = '0px';
+      requestAnimationFrame(function () {
+        frame.style.height = document.documentElement.scrollHeight + 'px';
+      });
+    } catch (e) {}
+  }
+
+  // Hide the Argilla-rendered field title ("Discard this record") that sits
+  // as a sibling of the iframe inside .custom_field_component.
+  function hideFieldTitle() {
+    try {
+      var frame = window.frameElement;
+      if (!frame) return;
+      var host = frame.parentElement;
+      if (!host) return;
+      for (var i = 0; i < host.children.length; i++) {
+        if (host.children[i] !== frame) {
+          host.children[i].style.display = 'none';
+        }
+      }
+    } catch (e) {}
+  }
+
+  var panel = document.getElementById('panel');
+  var reasonSel = document.getElementById('reason');
+  var notesTa = document.getElementById('discard-notes');
+  var btn = document.getElementById('discard-go');
+
+  panel.addEventListener('toggle', resizeSelf);
+  reasonSel.addEventListener('change', function() {
+    btn.disabled = !reasonSel.value;
+  });
+
+  btn.addEventListener('click', function() {
+    var reason = reasonSel.value;
+    var notes = notesTa.value;
+    if (!reason) return;
+
+    var reasonCard = cardFor('Discard reason');
+    var notesCard = cardFor('Discard notes (optional)');
+    if (reasonCard) reasonCard.style.display = '';
+    if (notesCard) notesCard.style.display = '';
+
+    if (reasonCard) {
+      var chips = reasonCard.querySelectorAll('input[type="radio"], label, button');
+      for (var i = 0; i < chips.length; i++) {
+        var c = chips[i];
+        if (c.value === reason || (c.textContent || '').trim() === reason) {
+          c.click();
+          break;
+        }
+      }
+    }
+    if (notes && notesCard) {
+      var ta = notesCard.querySelector('textarea, input[type="text"]');
+      if (ta) {
+        ta.focus();
+        ta.value = notes;
+        ta.dispatchEvent(new Event('input', { bubbles: true }));
+        ta.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    }
+
+    setTimeout(function() {
+      hideStaleQuestions();
+      var discardBtn = pdoc.querySelector('.button--discard');
+      if (discardBtn) discardBtn.click();
+    }, 80);
+  });
+
+  resizeSelf();
+  hideStaleQuestions();
+  hideFieldTitle();
+  // Argilla re-renders on record navigation; keep hiding on every record.
+  setInterval(function () { hideStaleQuestions(); hideFieldTitle(); }, 300);
+  setTimeout(resizeSelf, 200);
+  window.addEventListener('load', function () { resizeSelf(); hideFieldTitle(); });
+})();
+</script>
+
+</body>
+</html>
