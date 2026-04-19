@@ -11,7 +11,7 @@ const sidebars: SidebarsConfig = {
     {
       type: 'category',
       label: 'Guides',
-      items: ['guides/annotation', 'guides/querygen'],
+      items: ['guides/querygen', 'guides/annotation'],
     },
   ],
 };
