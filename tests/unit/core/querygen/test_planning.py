@@ -5,10 +5,17 @@ from unittest.mock import Mock
 import pytest
 
 from pragmata.core.querygen.llm import LlmInitializationError
-from pragmata.core.querygen.planning import PlanningStageError, _build_planning_prompt_vars, run_planning_stage
+from pragmata.core.querygen.planning import (
+    PlanningStageError,
+    _build_planning_prompt_vars,
+    _format_planning_summary,
+    _format_planning_summary_task_context,
+    run_planning_stage,
+)
 from pragmata.core.querygen.prompts import SYSTEM_PROMPT_PLANNING, USER_PROMPT_PLANNING
 from pragmata.core.schemas.querygen_input import QueryGenSpec
 from pragmata.core.schemas.querygen_plan import QueryBlueprint, QueryBlueprintList
+from pragmata.core.schemas.querygen_summary import PlanningSummaryState
 from pragmata.core.settings.querygen_settings import LlmSettings
 
 
@@ -78,6 +85,16 @@ def minimal_querygen_spec() -> QueryGenSpec:
 
 
 @pytest.fixture
+def planning_summary_state() -> PlanningSummaryState:
+    """Return a representative advisory planning summary."""
+    return PlanningSummaryState(
+        redundancy_patterns="Repeated benefits-letter clarification scenarios for individual patients.",
+        diversification_targets="Add more comparison and decision-support scenarios across adjacent service contexts.",
+        coverage_notes="Basic insurance coverage lookups already well represented across English requests.",
+    )
+
+
+@pytest.fixture
 def llm_settings() -> LlmSettings:
     """Return representative planning-stage LLM settings."""
     return LlmSettings(
@@ -107,6 +124,8 @@ def expected_prompt_vars() -> dict[str, object]:
         "formats": "bullet list (weight=0.5), table (weight=0.5)",
         "disallowed_topics": "self-harm, hate speech",
         "n_queries": 1,
+        "planning_summary": "",
+        "planning_summary_task_context": "",
     }
 
 
@@ -124,6 +143,37 @@ def _make_blueprint(candidate_id: str = "C001") -> QueryBlueprint:
         format=None,
         user_scenario="A patient reviews a benefits letter.",
         information_need="Clarify what is covered.",
+    )
+
+
+def test_format_planning_summary_returns_empty_string_when_absent() -> None:
+    assert _format_planning_summary(None) == ""
+
+
+def test_format_planning_summary_formats_state_deterministically(
+    planning_summary_state: PlanningSummaryState,
+) -> None:
+    result = _format_planning_summary(planning_summary_state)
+
+    assert result == (
+        "The following prior planning summary is provided as advisory context from earlier planning batches.\n\n"
+        "- prior_planning_summary:\n"
+        "  - redundancy_patterns: Repeated benefits-letter clarification scenarios for individual patients.\n"
+        "  - diversification_targets: Add more comparison and decision-support scenarios "
+        "across adjacent service contexts.\n"
+        "  - coverage_notes: Basic insurance coverage lookups already well represented across English requests.\n\n"
+    )
+
+
+def test_format_planning_summary_task_context_returns_empty_string_when_absent() -> None:
+    assert _format_planning_summary_task_context(None) == ""
+
+
+def test_format_planning_summary_task_context_returns_sentence_when_present(
+    planning_summary_state: PlanningSummaryState,
+) -> None:
+    assert _format_planning_summary_task_context(planning_summary_state) == (
+        " Use the planning summary as advisory context for avoiding near-duplicate candidates."
     )
 
 
@@ -147,6 +197,8 @@ def test_build_planning_prompt_vars_formats_resolved_spec(
         "formats": "bullet list (weight=0.5), table (weight=0.5)",
         "disallowed_topics": "self-harm, hate speech",
         "n_queries": 3,
+        "planning_summary": "",
+        "planning_summary_task_context": "",
     }
 
 
@@ -162,6 +214,31 @@ def test_build_planning_prompt_vars_uses_not_specified_for_missing_optional_fiel
     assert result["formats"] == "Not specified"
     assert result["disallowed_topics"] == "Not specified"
     assert result["n_queries"] == 1
+    assert result["planning_summary"] == ""
+    assert result["planning_summary_task_context"] == ""
+
+
+def test_build_planning_prompt_vars_includes_planning_summary_when_present(
+    querygen_spec: QueryGenSpec,
+    planning_summary_state: PlanningSummaryState,
+) -> None:
+    result = _build_planning_prompt_vars(
+        spec=querygen_spec,
+        batch_candidate_ids=["C001"],
+        planning_summary=planning_summary_state,
+    )
+
+    assert result["planning_summary"] == (
+        "The following prior planning summary is provided as advisory context from earlier planning batches.\n\n"
+        "- prior_planning_summary:\n"
+        "  - redundancy_patterns: Repeated benefits-letter clarification scenarios for individual patients.\n"
+        "  - diversification_targets: Add more comparison and decision-support scenarios "
+        "across adjacent service contexts.\n"
+        "  - coverage_notes: Basic insurance coverage lookups already well represented across English requests.\n\n"
+    )
+    assert result["planning_summary_task_context"] == (
+        " Use the planning summary as advisory context for avoiding near-duplicate candidates."
+    )
 
 
 def test_build_planning_prompt_vars_rejects_empty_candidate_ids(
@@ -212,6 +289,58 @@ def test_run_planning_stage_wires_planning_assets_and_settings_into_llm_builder(
         model_kwargs=llm_settings.model_kwargs,
     )
     mock_runnable.invoke.assert_called_once_with(expected_prompt_vars)
+
+
+def test_run_planning_stage_wires_optional_planning_summary_through_to_runnable(
+    monkeypatch: pytest.MonkeyPatch,
+    querygen_spec: QueryGenSpec,
+    llm_settings: LlmSettings,
+    planning_summary_state: PlanningSummaryState,
+) -> None:
+    mock_runnable = Mock()
+    mock_runnable.invoke.return_value = QueryBlueprintList(candidates=[_make_blueprint()])
+
+    monkeypatch.setattr(
+        "pragmata.core.querygen.planning.build_llm_runnable",
+        Mock(return_value=mock_runnable),
+    )
+
+    run_planning_stage(
+        spec=querygen_spec,
+        llm_settings=llm_settings,
+        api_key="test-api-key",
+        batch_candidate_ids=["C001"],
+        planning_summary=planning_summary_state,
+    )
+
+    mock_runnable.invoke.assert_called_once_with(
+        {
+            "candidate_ids": "\n    - C001",
+            "domains": "healthcare (weight=0.7), education (weight=0.3)",
+            "roles": "patient (weight=1)",
+            "languages": "English (weight=0.5), German (weight=0.5)",
+            "topics": "insurance coverage (weight=0.6), treatment options (weight=0.4)",
+            "intents": "understand (weight=0.5), compare (weight=0.5)",
+            "tasks": "summarize (weight=0.25), recommend (weight=0.75)",
+            "difficulty": "advanced (weight=1)",
+            "formats": "bullet list (weight=0.5), table (weight=0.5)",
+            "disallowed_topics": "self-harm, hate speech",
+            "n_queries": 1,
+            "planning_summary": (
+                "The following prior planning summary is provided as advisory context "
+                "from earlier planning batches.\n\n"
+                "- prior_planning_summary:\n"
+                "  - redundancy_patterns: Repeated benefits-letter clarification scenarios for individual patients.\n"
+                "  - diversification_targets: Add more comparison and decision-support scenarios "
+                "across adjacent service contexts.\n"
+                "  - coverage_notes: Basic insurance coverage lookups already well represented "
+                "across English requests.\n\n"
+            ),
+            "planning_summary_task_context": (
+                " Use the planning summary as advisory context for avoiding near-duplicate candidates."
+            ),
+        }
+    )
 
 
 def test_run_planning_stage_invokes_runnable_once_and_returns_candidates(
@@ -367,4 +496,6 @@ def test_build_planning_prompt_vars_returns_exact_placeholder_mapping(
         "formats",
         "disallowed_topics",
         "n_queries",
+        "planning_summary",
+        "planning_summary_task_context",
     }

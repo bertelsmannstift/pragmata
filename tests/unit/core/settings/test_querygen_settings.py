@@ -52,6 +52,7 @@ def test_querygen_run_settings_construction_with_defaults() -> None:
     assert settings.run_id
     assert settings.n_queries == 50
     assert settings.batch_size == 25
+    assert settings.enable_planning_memory is True
 
 
 def test_querygen_run_settings_resolve_deep_merges_nested_llm_settings() -> None:
@@ -162,3 +163,18 @@ def test_querygen_run_settings_resolve_batch_size_override_precedence() -> None:
     )
 
     assert resolved.batch_size == 7
+
+
+def test_querygen_run_settings_resolve_enable_planning_memory_override() -> None:
+    """Resolve applies explicit enable_planning_memory overrides over config values."""
+    resolved = QueryGenRunSettings.resolve(
+        config={
+            "spec": _valid_spec_payload(),
+            "enable_planning_memory": True,
+        },
+        overrides={
+            "enable_planning_memory": False,
+        },
+    )
+
+    assert resolved.enable_planning_memory is False

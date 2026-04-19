@@ -261,6 +261,7 @@ def test_gen_queries_combines_user_args_config_and_defaults(tmp_path: Path) -> N
     assert result.paths.run_dir.name == result.settings.run_id
     assert result.settings.llm.realization_model == "mistral-medium-latest"
     assert result.settings.batch_size == 12
+    assert result.settings.enable_planning_memory is True
 
 
 def test_gen_queries_orchestrates_run_paths(tmp_path: Path) -> None:
@@ -905,3 +906,29 @@ def test_gen_queries_handles_empty_selected_blueprints_after_stage1(
             "meta_path": result.paths.synthetic_queries_meta_json,
         }
     ]
+
+
+def test_gen_queries_enable_planning_memory_arg_overrides_config_value(
+    tmp_path: Path,
+) -> None:
+    """Explicit enable_planning_memory arg takes precedence over config value."""
+    config_path = tmp_path / "querygen.yml"
+    config_path.write_text(
+        dedent(
+            """\
+            llm:
+              model_provider: mistralai
+            enable_planning_memory: true
+            """
+        ),
+        encoding="utf-8",
+    )
+
+    result = querygen_api.gen_queries(
+        **_required_querygen_kwargs(tmp_path),
+        config_path=config_path,
+        enable_planning_memory=False,
+        run_id="planning-memory-precedence-check",
+    )
+
+    assert result.settings.enable_planning_memory is False
