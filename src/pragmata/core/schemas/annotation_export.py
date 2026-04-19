@@ -3,9 +3,11 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 
 from pragmata.core.schemas.annotation_task import Task
+
+ResponseStatus = Literal["submitted", "discarded"]
 
 
 class AnnotationBase(BaseModel):
@@ -20,9 +22,18 @@ class AnnotationBase(BaseModel):
     inserted_at: datetime
     created_at: datetime
     record_status: str
-    response_status: str
+    response_status: ResponseStatus
     discard_reason: str | None = None
     discard_notes: str = ""
+
+
+def _require_label_answers(model: "AnnotationBase", fields: tuple[str, ...]) -> "AnnotationBase":
+    """Enforce: submitted responses must have non-None values for all label fields."""
+    if model.response_status == "submitted":
+        missing = [f for f in fields if getattr(model, f) is None]
+        if missing:
+            raise ValueError(f"submitted {model.task.value} annotation missing required label(s): {missing}")
+    return model
 
 
 class RetrievalAnnotation(AnnotationBase):
@@ -39,6 +50,10 @@ class RetrievalAnnotation(AnnotationBase):
     misleading: bool | None = None
     notes: str = ""
 
+    @model_validator(mode="after")
+    def _check_submitted_has_labels(self) -> "RetrievalAnnotation":
+        return _require_label_answers(self, ("topically_relevant", "evidence_sufficient", "misleading"))
+
 
 class GroundingAnnotation(AnnotationBase):
     """Exported annotation for a single grounding judgement."""
@@ -53,6 +68,19 @@ class GroundingAnnotation(AnnotationBase):
     fabricated_source: bool | None = None
     notes: str = ""
 
+    @model_validator(mode="after")
+    def _check_submitted_has_labels(self) -> "GroundingAnnotation":
+        return _require_label_answers(
+            self,
+            (
+                "support_present",
+                "unsupported_claim_present",
+                "contradicted_claim_present",
+                "source_cited",
+                "fabricated_source",
+            ),
+        )
+
 
 class GenerationAnnotation(AnnotationBase):
     """Exported annotation for a single generation judgement."""
@@ -66,6 +94,13 @@ class GenerationAnnotation(AnnotationBase):
     incomplete: bool | None = None
     unsafe_content: bool | None = None
     notes: str = ""
+
+    @model_validator(mode="after")
+    def _check_submitted_has_labels(self) -> "GenerationAnnotation":
+        return _require_label_answers(
+            self,
+            ("proper_action", "response_on_topic", "helpful", "incomplete", "unsafe_content"),
+        )
 
 
 class RetrievalExportRow(RetrievalAnnotation):
