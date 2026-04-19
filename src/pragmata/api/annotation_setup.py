@@ -86,13 +86,8 @@ def teardown(
 ) -> None:
     """Remove the Argilla annotation environment.
 
-    When dataset_id is set, only datasets matching that suffix are deleted
-    and workspaces are left intact. When dataset_id is empty, all default
-    datasets and workspaces are deleted.
-
-    Deletes datasets first (Argilla requires empty workspaces), then
-    workspaces. Missing resources are silently skipped. User accounts
-    are not touched.
+    See :func:`pragmata.core.annotation.setup.teardown_resources` for deletion
+    semantics (dataset_id scoping, ordering, idempotency).
 
     Credential resolution:
     - ``api_url``: kwarg > ``ARGILLA_API_URL`` env > config (``argilla.api_url``)
@@ -101,7 +96,8 @@ def teardown(
     Args:
         api_url: Argilla server URL.
         api_key: Argilla API key.
-        dataset_id: Suffix identifying which datasets to delete.
+        dataset_id: Suffix identifying which datasets to delete. Empty tears
+            down workspaces too.
         base_dir: Workspace base directory. Defaults to cwd.
         config_path: Path to YAML config file for settings resolution.
     """
