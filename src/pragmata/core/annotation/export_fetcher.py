@@ -133,7 +133,7 @@ def fetch_task(
                 "created_at": created_at,
                 "record_status": record_status,
                 "response_status": response_status,
-                "discard_reason": answers.get("discard_reason") or None,
+                "discard_reason": answers.get("discard_reason"),
                 "discard_notes": answers.get("discard_notes") or "",
                 "notes": answers.get("notes") or "",
             }
