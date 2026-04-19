@@ -6,7 +6,7 @@ from pragmata.core.annotation.argilla_task_definitions import (
     DATASET_NAMES,
     build_task_settings,
 )
-from pragmata.core.schemas.annotation_task import Task
+from pragmata.core.schemas.annotation_task import DiscardReason, Task
 
 _TASK_SETTINGS = build_task_settings()
 _RETRIEVAL = _TASK_SETTINGS[Task.RETRIEVAL]
@@ -70,6 +70,17 @@ class TestTask1RetrievalSettings:
         assert isinstance(q, rg.TextQuestion)
         assert q.required is False
 
+    def test_discard_reason_question(self):
+        q = _get_question(_RETRIEVAL, "discard_reason")
+        assert isinstance(q, rg.LabelQuestion)
+        assert q.required is False
+        assert set(q.labels) == {r.value for r in DiscardReason}
+
+    def test_discard_notes_question(self):
+        q = _get_question(_RETRIEVAL, "discard_notes")
+        assert isinstance(q, rg.TextQuestion)
+        assert q.required is False
+
     def test_guidelines_non_empty(self):
         assert _RETRIEVAL.guidelines
         assert len(_RETRIEVAL.guidelines) > 0
@@ -127,6 +138,17 @@ class TestTask2GroundingSettings:
         assert isinstance(q, rg.TextQuestion)
         assert q.required is False
 
+    def test_discard_reason_question(self):
+        q = _get_question(_GROUNDING, "discard_reason")
+        assert isinstance(q, rg.LabelQuestion)
+        assert q.required is False
+        assert set(q.labels) == {r.value for r in DiscardReason}
+
+    def test_discard_notes_question(self):
+        q = _get_question(_GROUNDING, "discard_notes")
+        assert isinstance(q, rg.TextQuestion)
+        assert q.required is False
+
     def test_guidelines_non_empty(self):
         assert _GROUNDING.guidelines
 
@@ -167,6 +189,17 @@ class TestTask3GenerationSettings:
 
     def test_notes_question(self):
         q = _get_question(_GENERATION, "notes")
+        assert isinstance(q, rg.TextQuestion)
+        assert q.required is False
+
+    def test_discard_reason_question(self):
+        q = _get_question(_GENERATION, "discard_reason")
+        assert isinstance(q, rg.LabelQuestion)
+        assert q.required is False
+        assert set(q.labels) == {r.value for r in DiscardReason}
+
+    def test_discard_notes_question(self):
+        q = _get_question(_GENERATION, "discard_notes")
         assert isinstance(q, rg.TextQuestion)
         assert q.required is False
 
