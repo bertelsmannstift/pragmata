@@ -29,7 +29,7 @@ from pragmata.core.schemas.iaa_report import (
 logger = logging.getLogger(__name__)
 
 TASK_LABELS: dict[Task, list[str]] = {
-    task: [name for name, info in schema.model_fields.items() if info.annotation is bool]
+    task: [name for name, info in schema.model_fields.items() if info.annotation in (bool, bool | None)]
     for task, schema in TASK_ANNOTATION_SCHEMA.items()
 }
 
@@ -68,7 +68,9 @@ def _pivot_task(
         data = np.full((len(ann_list), len(item_list)), np.nan)
         for j, rid in enumerate(item_list):
             for aid, vals in records[rid].items():
-                data[ann_idx[aid], j] = float(vals[lab])
+                v = vals[lab]
+                if v is not None:
+                    data[ann_idx[aid], j] = float(v)
         matrices[lab] = data
 
     return matrices, ann_list, records

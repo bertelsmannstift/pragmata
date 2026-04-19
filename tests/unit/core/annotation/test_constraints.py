@@ -24,6 +24,7 @@ _BASE = {
     "inserted_at": _NOW,
     "created_at": _NOW,
     "record_status": "submitted",
+    "response_status": "submitted",
 }
 
 
