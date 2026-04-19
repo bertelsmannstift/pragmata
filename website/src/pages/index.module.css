@@ -1,0 +1,34 @@
+.hero {
+  padding: 6.5rem 0 4rem;
+}
+
+.inner {
+  max-width: 800px;
+}
+
+.title {
+  margin: 0 0 1.1rem;
+  font-size: clamp(2.4rem, 5vw, 3.4rem);
+  line-height: 1.08;
+  letter-spacing: -0.02em;
+}
+
+.lead {
+  margin: 0 0 0.7rem;
+  font-size: 1.2rem;
+  line-height: 1.5;
+}
+
+.description {
+  margin: 0 0 2rem;
+  max-width: 720px;
+  font-size: 1rem;
+  line-height: 1.7;
+  color: var(--ifm-color-emphasis-700);
+}
+
+.actions {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
