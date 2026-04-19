@@ -6,7 +6,7 @@ const sidebars: SidebarsConfig = {
     {
       type: 'category',
       label: 'Getting started',
-      items: ['getting-started/installation'],
+      items: ['getting-started/why-use-pragmata', 'getting-started/installation'],
     },
     {
       type: 'category',
