@@ -20,6 +20,7 @@ _BASE_FIELDS = {
     "language": "en",
     "inserted_at": datetime(2026, 1, 1, tzinfo=timezone.utc),
     "record_status": "submitted",
+    "response_status": "submitted",
 }
 
 _RETRIEVAL_DEFAULTS = {
