@@ -91,7 +91,7 @@
   function hideStaleQuestions() {
     HIDDEN_TITLES.forEach(function(title) {
       var card = cardFor(title);
-      if (card) card.style.display = 'none';
+      if (card && card.style.display !== 'none') card.style.display = 'none';
     });
   }
 
@@ -109,15 +109,15 @@
     } catch (e) {}
   }
 
-  // Hide siblings of our iframe inside .custom_field_component — that's where
-  // Argilla renders the field title ("Discard this record").
+  // Hide siblings of our iframe — that's where Argilla renders the field title.
   function hideFieldTitle() {
     try {
       var frame = window.frameElement;
       if (!frame || !frame.parentElement) return;
       var host = frame.parentElement;
       for (var i = 0; i < host.children.length; i++) {
-        if (host.children[i] !== frame) host.children[i].style.display = 'none';
+        var child = host.children[i];
+        if (child !== frame && child.style.display !== 'none') child.style.display = 'none';
       }
     } catch (e) {}
   }
@@ -171,12 +171,19 @@
 
   function applyHiding() { hideStaleQuestions(); hideFieldTitle(); }
 
+  // Coalesce mutation bursts to one apply per paint frame — Argilla's Vue
+  // app fires many mutations per render, and applyHiding is now idempotent.
+  var pendingApply = false;
+  function scheduleApply() {
+    if (pendingApply) return;
+    pendingApply = true;
+    requestAnimationFrame(function () { pendingApply = false; applyHiding(); });
+  }
+
   resizeSelf();
   applyHiding();
-  // Argilla re-renders questions on record navigation — rehide when the
-  // parent DOM changes instead of polling.
   try {
-    new MutationObserver(applyHiding).observe(pdoc.body, { childList: true, subtree: true });
+    new MutationObserver(scheduleApply).observe(pdoc.body, { childList: true, subtree: true });
   } catch (e) {}
   window.addEventListener('load', function () { resizeSelf(); applyHiding(); });
 })();
