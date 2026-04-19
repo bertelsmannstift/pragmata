@@ -28,6 +28,7 @@ def base_fields():
         "inserted_at": NOW,
         "created_at": NOW,
         "record_status": "submitted",
+        "response_status": "submitted",
     }
 
 

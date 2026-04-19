@@ -20,6 +20,9 @@ class AnnotationBase(BaseModel):
     inserted_at: datetime
     created_at: datetime
     record_status: str
+    response_status: str
+    discard_reason: str | None = None
+    discard_notes: str = ""
 
 
 class RetrievalAnnotation(AnnotationBase):
@@ -31,9 +34,9 @@ class RetrievalAnnotation(AnnotationBase):
     chunk_id: str
     doc_id: str
     chunk_rank: int
-    topically_relevant: bool
-    evidence_sufficient: bool
-    misleading: bool
+    topically_relevant: bool | None = None
+    evidence_sufficient: bool | None = None
+    misleading: bool | None = None
     notes: str = ""
 
 
@@ -43,11 +46,11 @@ class GroundingAnnotation(AnnotationBase):
     task: Literal[Task.GROUNDING] = Task.GROUNDING
     answer: str
     context_set: str
-    support_present: bool
-    unsupported_claim_present: bool
-    contradicted_claim_present: bool
-    source_cited: bool
-    fabricated_source: bool
+    support_present: bool | None = None
+    unsupported_claim_present: bool | None = None
+    contradicted_claim_present: bool | None = None
+    source_cited: bool | None = None
+    fabricated_source: bool | None = None
     notes: str = ""
 
 
@@ -57,11 +60,11 @@ class GenerationAnnotation(AnnotationBase):
     task: Literal[Task.GENERATION] = Task.GENERATION
     query: str
     answer: str
-    proper_action: bool
-    response_on_topic: bool
-    helpful: bool
-    incomplete: bool
-    unsafe_content: bool
+    proper_action: bool | None = None
+    response_on_topic: bool | None = None
+    helpful: bool | None = None
+    incomplete: bool | None = None
+    unsafe_content: bool | None = None
     notes: str = ""
 
 
