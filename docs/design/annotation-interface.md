@@ -155,6 +155,29 @@ Each task dataset includes one optional free-text field per annotated unit:
 
 - **Notes** (*Anmerkungen*, `required=False`): annotator comments on edge cases, ambiguous instances, or unusual label choices. Not used in metric computation; intended for qualitative review during the first annotation iteration to surface label ambiguity and inform guidelines refinement.
 
+### Record discard
+
+Annotators can discard a record outright when it is unsuitable for annotation (low-quality query, duplicate, unclear, or beyond their domain knowledge). The discard panel is visually distinct from the annotation label questions — a collapsible `<details>` element styled with a red border, rendered via `rg.CustomField`. Argilla's native Discard button is hidden via CSS so the panel is the only discard path and a reason is always captured.
+
+**Discard flow:**
+
+1. Annotator expands the "Discard this record" panel and selects a reason from the dropdown.
+2. Optionally adds free-text notes.
+3. Clicks "Discard". The CustomField JavaScript sets the hidden `discard_reason` and `discard_notes` question values in the parent DOM, then triggers Argilla's native Discard programmatically.
+
+**Underlying Argilla questions (hidden from annotators via CSS):**
+
+| Question | Type | Required | Description |
+|----------|------|----------|-------------|
+| `discard_reason` | `LabelQuestion` | No | Selected discard reason |
+| `discard_notes` | `TextQuestion` | No | Optional free-text detail |
+
+Hidden questions persist discard data on the discarded response so it is available at export time.
+
+**Discard reasons** (`DiscardReason` enum): `low_quality_query`, `duplicate`, `unclear`, `beyond_domain_knowledge`.
+
+**Implementation note:** The CustomField uses `srcdoc`-rendered iframe with same-origin parent DOM access (`window.parent.document`). DOM selectors (`[data-question-name="..."]`, `.button--discard`) may need re-verification on Argilla upgrades.
+
 
 ## Design Rationale
 
