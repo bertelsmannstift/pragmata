@@ -109,6 +109,7 @@ def fetch_task(
 
     dataset = client.datasets(dataset_name, workspace=workspace_name)
     query = rg.Query(filter=rg.Filter([("response.status", "in", ["submitted", "discarded"])]))
+    check_constraints = CONSTRAINT_CHECKERS[task]
 
     rows: list[tuple[AnnotationModel, list[str]]] = []
     missing_uuid_count = 0
@@ -139,7 +140,7 @@ def fetch_task(
             }
 
             row = _build_row(task, base=base, answers=answers, fields=record.fields, metadata=record.metadata)
-            violations = [] if response_status == "discarded" else CONSTRAINT_CHECKERS[task](row)
+            violations = check_constraints(row) if response_status == "submitted" else []
             rows.append((row, violations))
 
     if missing_uuid_count:
