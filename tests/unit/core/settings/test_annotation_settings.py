@@ -16,9 +16,9 @@ class TestAnnotationSettingsDefaults:
             "generation": [Task.GENERATION],
         }
 
-    def test_workspace_prefix_default(self):
+    def test_dataset_id_default(self):
         s = AnnotationSettings()
-        assert s.workspace_prefix == ""
+        assert s.dataset_id == ""
 
     def test_min_submitted_default(self):
         s = AnnotationSettings()
@@ -33,15 +33,15 @@ class TestAnnotationSettingsResolve:
     def test_resolve_with_no_args_returns_defaults(self):
         s = AnnotationSettings.resolve()
         assert s.min_submitted == 1
-        assert s.workspace_prefix == ""
+        assert s.dataset_id == ""
 
     def test_resolve_overrides_min_submitted(self):
         s = AnnotationSettings.resolve(overrides={"min_submitted": 3})
         assert s.min_submitted == 3
 
-    def test_resolve_overrides_prefix(self):
-        s = AnnotationSettings.resolve(overrides={"workspace_prefix": "pb"})
-        assert s.workspace_prefix == "pb"
+    def test_resolve_overrides_dataset_id(self):
+        s = AnnotationSettings.resolve(overrides={"dataset_id": "run1"})
+        assert s.dataset_id == "run1"
 
     def test_resolve_config_layer(self):
         s = AnnotationSettings.resolve(config={"min_submitted": 2})

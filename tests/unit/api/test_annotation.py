@@ -59,7 +59,7 @@ def _make_raw() -> dict:
 
 class TestSetup:
     @patch("pragmata.api.annotation_setup.provision_users")
-    @patch("pragmata.api.annotation_setup.setup_datasets")
+    @patch("pragmata.api.annotation_setup.setup_workspaces")
     def test_delegates_to_core(
         self,
         mock_ds: MagicMock,
@@ -69,64 +69,52 @@ class TestSetup:
         mock_ds.return_value = SetupResult(created_workspaces=["ws1"])
         mock_users.return_value = SetupResult(created_users=["alice"])
 
-        setup(workspace_prefix="test")
+        setup()
 
         mock_ds.assert_called_once()
         mock_users.assert_called_once()
         assert mock_client is mock_ds.call_args[0][0]
 
     @patch("pragmata.api.annotation_setup.provision_users")
-    @patch("pragmata.api.annotation_setup.setup_datasets")
-    def test_merges_dataset_and_user_results(self, mock_ds: MagicMock, mock_users: MagicMock) -> None:
-        mock_ds.return_value = SetupResult(created_workspaces=["ws1"], created_datasets=["ds1"])
+    @patch("pragmata.api.annotation_setup.setup_workspaces")
+    def test_merges_workspace_and_user_results(self, mock_ds: MagicMock, mock_users: MagicMock) -> None:
+        mock_ds.return_value = SetupResult(created_workspaces=["ws1"])
         mock_users.return_value = SetupResult(created_users=["alice"])
 
-        result = setup(workspace_prefix="test")
+        result = setup()
 
         assert result.created_workspaces == ["ws1"]
-        assert result.created_datasets == ["ds1"]
         assert result.created_users == ["alice"]
 
     @patch("pragmata.api.annotation_setup.provision_users")
-    @patch("pragmata.api.annotation_setup.setup_datasets")
-    def test_resolves_workspace_prefix(self, mock_ds: MagicMock, mock_users: MagicMock) -> None:
-        mock_ds.return_value = SetupResult()
-        mock_users.return_value = SetupResult()
-
-        setup(workspace_prefix="myprefix")
-
-        settings: AnnotationSettings = mock_ds.call_args[0][1]
-        assert settings.workspace_prefix == "myprefix"
-
-    @patch("pragmata.api.annotation_setup.provision_users")
-    @patch("pragmata.api.annotation_setup.setup_datasets")
+    @patch("pragmata.api.annotation_setup.setup_workspaces")
     def test_resolves_min_submitted(self, mock_ds: MagicMock, mock_users: MagicMock) -> None:
         mock_ds.return_value = SetupResult()
         mock_users.return_value = SetupResult()
 
-        setup(workspace_prefix="test", min_submitted=3)
+        setup(min_submitted=3)
 
         settings: AnnotationSettings = mock_ds.call_args[0][1]
         assert settings.min_submitted == 3
 
     @patch("pragmata.api.annotation_setup.provision_users")
-    @patch("pragmata.api.annotation_setup.setup_datasets")
+    @patch("pragmata.api.annotation_setup.setup_workspaces")
     def test_passes_users_to_provision(self, mock_ds: MagicMock, mock_users: MagicMock) -> None:
         mock_ds.return_value = SetupResult()
         mock_users.return_value = SetupResult()
         users = [UserSpec(username="alice", role="annotator")]
 
-        setup(users, workspace_prefix="test")
+        setup(users)
 
         assert mock_users.call_args[0][1] == users
 
     @patch("pragmata.api.annotation_setup.provision_users")
-    @patch("pragmata.api.annotation_setup.setup_datasets")
+    @patch("pragmata.api.annotation_setup.setup_workspaces")
     def test_none_users_passes_empty_list(self, mock_ds: MagicMock, mock_users: MagicMock) -> None:
         mock_ds.return_value = SetupResult()
         mock_users.return_value = SetupResult()
 
-        setup(workspace_prefix="test")
+        setup()
 
         assert mock_users.call_args[0][1] == []
 
@@ -139,15 +127,15 @@ class TestSetup:
 class TestTeardown:
     @patch("pragmata.api.annotation_setup.teardown_resources")
     def test_delegates_to_core(self, mock_teardown: MagicMock, mock_client: MagicMock) -> None:
-        teardown(workspace_prefix="test")
+        teardown(dataset_id="test")
         mock_teardown.assert_called_once()
         assert mock_client is mock_teardown.call_args[0][0]
 
     @patch("pragmata.api.annotation_setup.teardown_resources")
-    def test_resolves_workspace_prefix(self, mock_teardown: MagicMock) -> None:
-        teardown(workspace_prefix="myprefix")
+    def test_resolves_dataset_id(self, mock_teardown: MagicMock) -> None:
+        teardown(dataset_id="myprefix")
         settings: AnnotationSettings = mock_teardown.call_args[0][1]
-        assert settings.workspace_prefix == "myprefix"
+        assert settings.dataset_id == "myprefix"
 
 
 # ---------------------------------------------------------------------------
@@ -161,27 +149,27 @@ class TestImportRecords:
         mock_fan_out.return_value = {"ds1": 2}
         raw = [_make_raw()]
 
-        import_records(raw, workspace_prefix="test")
+        import_records(raw, dataset_id="test")
 
         mock_fan_out.assert_called_once()
         assert mock_client is mock_fan_out.call_args[0][0]
         assert len(mock_fan_out.call_args[0][1]) == 1
 
     @patch("pragmata.api.annotation_import.fan_out_records")
-    def test_resolves_workspace_prefix(self, mock_fan_out: MagicMock) -> None:
+    def test_resolves_dataset_id(self, mock_fan_out: MagicMock) -> None:
         mock_fan_out.return_value = {}
 
-        import_records([], workspace_prefix="myprefix")
+        import_records([], dataset_id="myprefix")
 
         settings: AnnotationSettings = mock_fan_out.call_args[0][2]
-        assert settings.workspace_prefix == "myprefix"
+        assert settings.dataset_id == "myprefix"
 
     @patch("pragmata.api.annotation_import.fan_out_records")
     def test_returns_import_result(self, mock_fan_out: MagicMock) -> None:
         mock_fan_out.return_value = {"ds1": 3, "ds2": 1}
         raw = [_make_raw(), _make_raw()]
 
-        result = import_records(raw, workspace_prefix="test")
+        result = import_records(raw, dataset_id="test")
 
         assert isinstance(result, ImportResult)
         assert result.total_records == 2
@@ -192,7 +180,7 @@ class TestImportRecords:
     def test_empty_records_returns_zero_totals(self, mock_fan_out: MagicMock) -> None:
         mock_fan_out.return_value = {}
 
-        result = import_records([], workspace_prefix="test")
+        result = import_records([], dataset_id="test")
 
         assert result.total_records == 0
         assert result.dataset_counts == {}
@@ -203,7 +191,7 @@ class TestImportRecords:
         mock_fan_out.return_value = {"ds1": 1}
         raw = [_make_raw(), {"query": "missing required fields"}]
 
-        result = import_records(raw, workspace_prefix="test")
+        result = import_records(raw, dataset_id="test")
 
         assert result.total_records == 2
         assert len(result.errors) == 1
@@ -216,7 +204,7 @@ class TestImportRecords:
         mock_fan_out.return_value = {}
         raw = [{"bad": "data"}, {"also": "bad"}]
 
-        result = import_records(raw, workspace_prefix="test")
+        result = import_records(raw, dataset_id="test")
 
         assert result.total_records == 2
         assert len(result.errors) == 2
@@ -229,7 +217,7 @@ class TestImportRecords:
         f = tmp_path / "data.json"
         f.write_text(json.dumps([_make_raw()]))
 
-        result = import_records(str(f), workspace_prefix="test")
+        result = import_records(str(f), dataset_id="test")
 
         assert result.total_records == 1
         mock_fan_out.assert_called_once()
@@ -240,7 +228,7 @@ class TestImportRecords:
         f = tmp_path / "data.json"
         f.write_text(json.dumps([_make_raw()]))
 
-        result = import_records(f, workspace_prefix="test")
+        result = import_records(f, dataset_id="test")
 
         assert result.total_records == 1
 
@@ -250,7 +238,7 @@ class TestImportRecords:
         f = tmp_path / "data.jsonl"
         f.write_text(json.dumps(_make_raw()) + "\n")
 
-        result = import_records(str(f), workspace_prefix="test")
+        result = import_records(str(f), dataset_id="test")
 
         assert result.total_records == 1
 
@@ -260,19 +248,19 @@ class TestImportRecords:
         f = tmp_path / "data.txt"
         f.write_text(json.dumps([_make_raw()]))
 
-        result = import_records(str(f), format="json", workspace_prefix="test")
+        result = import_records(str(f), format="json", dataset_id="test")
 
         assert result.total_records == 1
 
     def test_file_not_found_raises(self) -> None:
         with pytest.raises(FileNotFoundError):
-            import_records("/nonexistent/data.json", workspace_prefix="test")
+            import_records("/nonexistent/data.json", dataset_id="test")
 
     def test_unsupported_extension_raises(self, tmp_path: Path) -> None:
         f = tmp_path / "data.parquet"
         f.write_text("")
         with pytest.raises(ValueError, match="Unsupported file extension"):
-            import_records(str(f), workspace_prefix="test")
+            import_records(str(f), dataset_id="test")
 
     @patch("pragmata.api.annotation_import.fan_out_records")
     def test_accepts_hf_dataset(self, mock_fan_out: MagicMock) -> None:
@@ -284,7 +272,7 @@ class TestImportRecords:
         fake_mod.Dataset = FakeDataset  # type: ignore[attr-defined]
 
         with patch.dict("sys.modules", {"datasets": fake_mod}):
-            result = import_records(fake_ds, workspace_prefix="test")
+            result = import_records(fake_ds, dataset_id="test")
 
         assert result.total_records == 1
 
@@ -298,6 +286,6 @@ class TestImportRecords:
         fake_mod.DataFrame = FakeDataFrame  # type: ignore[attr-defined]
 
         with patch.dict("sys.modules", {"pandas": fake_mod}):
-            result = import_records(fake_df, workspace_prefix="test")
+            result = import_records(fake_df, dataset_id="test")
 
         assert result.total_records == 1

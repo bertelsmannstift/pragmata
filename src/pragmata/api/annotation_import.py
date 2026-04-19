@@ -42,7 +42,7 @@ def import_records(
     api_url: str | Unset = UNSET,
     api_key: str | Unset = UNSET,
     format: str = "auto",
-    workspace_prefix: str | Unset = UNSET,
+    dataset_id: str | Unset = UNSET,
     base_dir: str | Path | Unset = UNSET,
     config_path: str | Path | Unset = UNSET,
 ) -> ImportResult:
@@ -58,8 +58,9 @@ def import_records(
     failures are collected in ImportResult.errors — invalid records are
     skipped, not raised.
 
-    Record IDs are derived from content hashes for idempotent upsert.
-    Datasets must already exist (call setup() first).
+    Datasets are auto-created if they don't exist. Workspaces must already
+    exist (call setup() first). Record IDs are derived from content hashes
+    for idempotent upsert.
 
     Credential resolution:
     - ``api_url``: kwarg > ``ARGILLA_API_URL`` env > config (``argilla.api_url``)
@@ -72,7 +73,7 @@ def import_records(
         api_key: Argilla API key.
         format: File format override — 'auto' (default), 'json', 'jsonl',
             or 'csv'. Only used for str/Path inputs.
-        workspace_prefix: Prefix used when the environment was created.
+        dataset_id: Suffix appended to dataset names for run scoping.
         base_dir: Workspace base directory. Defaults to cwd.
         config_path: Path to YAML config file for settings resolution.
 
@@ -85,7 +86,7 @@ def import_records(
         env={"argilla": {"api_url": os.environ.get("ARGILLA_API_URL")}} if os.environ.get("ARGILLA_API_URL") else None,
         overrides={
             "argilla": {"api_url": api_url},
-            "workspace_prefix": workspace_prefix,
+            "dataset_id": dataset_id,
             "base_dir": base_dir,
         },
     )

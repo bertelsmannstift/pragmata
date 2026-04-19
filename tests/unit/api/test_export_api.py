@@ -221,7 +221,7 @@ class TestExportAnnotations:
     def test_export_id_auto_generated_with_prefix(self, tmp_path: Path, mock_client: MagicMock) -> None:
         from pragmata.api.annotation_export import export_annotations
 
-        result = export_annotations(base_dir=tmp_path, workspace_prefix="myproject")
+        result = export_annotations(base_dir=tmp_path, dataset_id="myproject")
         export_id = result.paths.export_dir.name
         assert export_id.startswith("myproject_")
 
@@ -294,4 +294,4 @@ class TestExportAnnotations:
 
         assert set(result.files.keys()) == {Task.RETRIEVAL, Task.GROUNDING, Task.GENERATION}
         called_names = {call.args[0] for call in mock_client.datasets.call_args_list}
-        assert called_names == {"task_retrieval", "task_grounding", "task_generation"}
+        assert called_names == {"retrieval", "grounding", "generation"}
