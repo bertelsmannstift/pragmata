@@ -1,4 +1,4 @@
-name: Deploy docs
+name: Docs
 
 on:
   pull_request:
@@ -24,6 +24,7 @@ concurrency:
 
 jobs:
   build:
+    name: Build docs
     runs-on: ubuntu-latest
 
     steps:
@@ -52,6 +53,7 @@ jobs:
           path: website/build
 
   deploy:
+    name: Deploy docs
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     needs: build
     runs-on: ubuntu-latest
