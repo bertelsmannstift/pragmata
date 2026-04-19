@@ -81,6 +81,13 @@ class TestTask1RetrievalSettings:
         assert isinstance(q, rg.TextQuestion)
         assert q.required is False
 
+    def test_discard_flow_custom_field_present(self):
+        field = _get_field(_RETRIEVAL, "discard_flow")
+        assert isinstance(field, rg.CustomField)
+        assert field.advanced_mode is True
+        assert field.required is False
+        assert "discard" in field.template.lower()
+
     def test_guidelines_non_empty(self):
         assert _RETRIEVAL.guidelines
         assert len(_RETRIEVAL.guidelines) > 0
@@ -149,6 +156,13 @@ class TestTask2GroundingSettings:
         assert isinstance(q, rg.TextQuestion)
         assert q.required is False
 
+    def test_discard_flow_custom_field_present(self):
+        field = _get_field(_GROUNDING, "discard_flow")
+        assert isinstance(field, rg.CustomField)
+        assert field.advanced_mode is True
+        assert field.required is False
+        assert "discard" in field.template.lower()
+
     def test_guidelines_non_empty(self):
         assert _GROUNDING.guidelines
 
@@ -202,6 +216,13 @@ class TestTask3GenerationSettings:
         q = _get_question(_GENERATION, "discard_notes")
         assert isinstance(q, rg.TextQuestion)
         assert q.required is False
+
+    def test_discard_flow_custom_field_present(self):
+        field = _get_field(_GENERATION, "discard_flow")
+        assert isinstance(field, rg.CustomField)
+        assert field.advanced_mode is True
+        assert field.required is False
+        assert "discard" in field.template.lower()
 
     def test_guidelines_non_empty(self):
         assert _GENERATION.guidelines
