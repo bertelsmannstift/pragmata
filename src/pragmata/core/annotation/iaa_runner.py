@@ -29,6 +29,9 @@ from pragmata.core.schemas.iaa_report import (
 logger = logging.getLogger(__name__)
 
 TASK_LABELS: dict[Task, list[str]] = {
+    # bool | None is the only shape task-label fields take — discarded rows may leave them unset,
+    # submitted rows must fill them (enforced by AnnotationBase validator). Use == (structural
+    # equality on the union) rather than `is`, which fails on separately-constructed union objects.
     task: [name for name, info in schema.model_fields.items() if info.annotation == bool | None]
     for task, schema in TASK_ANNOTATION_SCHEMA.items()
 }
