@@ -114,6 +114,7 @@ def test_dir_returns_public_surface() -> None:
     facade = importlib.import_module("pragmata.annotation")
 
     expected = {
+        "DiscardReason",
         "ExportResult",
         "IaaReport",
         "ImportResult",

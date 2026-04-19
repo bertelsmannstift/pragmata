@@ -30,6 +30,7 @@ _BASE = {
     "inserted_at": _NOW,
     "created_at": _NOW,
     "record_status": "submitted",
+    "response_status": "submitted",
 }
 
 _UID1 = UUID("00000000-0000-0000-0000-000000000001")
@@ -62,11 +63,12 @@ def _grounding(**kwargs) -> GroundingAnnotation:
     return GroundingAnnotation.model_validate({**_BASE, **defaults, **kwargs})
 
 
-def _make_response(question_name: str, value: object, user_id: UUID) -> MagicMock:
+def _make_response(question_name: str, value: object, user_id: UUID, status: str = "submitted") -> MagicMock:
     resp = MagicMock()
     resp.question_name = question_name
     resp.value = value
     resp.user_id = user_id
+    resp.status = status
     return resp
 
 

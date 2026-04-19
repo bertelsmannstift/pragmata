@@ -17,11 +17,12 @@ from pragmata.core.schemas.annotation_task import Task
 # ---------------------------------------------------------------------------
 
 
-def _make_response(question_name: str, value: Any, user_id: UUID) -> MagicMock:
+def _make_response(question_name: str, value: Any, user_id: UUID, status: str = "submitted") -> MagicMock:
     resp = MagicMock()
     resp.question_name = question_name
     resp.value = value
     resp.user_id = user_id
+    resp.status = status
     return resp
 
 

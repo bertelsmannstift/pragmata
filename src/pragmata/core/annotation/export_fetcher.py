@@ -31,16 +31,20 @@ def build_user_lookup(client: rg.Argilla) -> dict[UUID, str]:
     return {u.id: u.username for u in client.users.list()}
 
 
-def _to_bool(value: str) -> bool:
+def _to_bool(value: str | None) -> bool | None:
+    if value is None:
+        return None
     return value == "yes"
 
 
-def _group_responses_by_user(record: rg.Record) -> dict[UUID, dict[str, str]]:
-    """Group record.responses by user_id -> {question_name: value}."""
-    grouped: dict[UUID, dict[str, str]] = {}
+def _group_responses_by_user(record: rg.Record) -> dict[UUID, tuple[str, dict[str, str]]]:
+    """Group record.responses by user_id -> (response_status, {question_name: value})."""
+    grouped: dict[UUID, tuple[str, dict[str, str]]] = {}
     for resp in record.responses:
         uid: UUID = resp.user_id
-        grouped.setdefault(uid, {})[resp.question_name] = resp.value
+        if uid not in grouped:
+            grouped[uid] = (resp.status, {})
+        grouped[uid][1][resp.question_name] = resp.value
     return grouped
 
 
@@ -61,30 +65,30 @@ def _build_row(
             chunk_id=metadata.get("chunk_id", ""),
             doc_id=metadata.get("doc_id", ""),
             chunk_rank=metadata.get("chunk_rank", 0),
-            topically_relevant=_to_bool(answers["topically_relevant"]),
-            evidence_sufficient=_to_bool(answers["evidence_sufficient"]),
-            misleading=_to_bool(answers["misleading"]),
+            topically_relevant=_to_bool(answers.get("topically_relevant")),
+            evidence_sufficient=_to_bool(answers.get("evidence_sufficient")),
+            misleading=_to_bool(answers.get("misleading")),
         )
     if task == Task.GROUNDING:
         return GroundingAnnotation(
             **base,
             answer=fields["answer"],
             context_set=fields["context_set"],
-            support_present=_to_bool(answers["support_present"]),
-            unsupported_claim_present=_to_bool(answers["unsupported_claim_present"]),
-            contradicted_claim_present=_to_bool(answers["contradicted_claim_present"]),
-            source_cited=_to_bool(answers["source_cited"]),
-            fabricated_source=_to_bool(answers["fabricated_source"]),
+            support_present=_to_bool(answers.get("support_present")),
+            unsupported_claim_present=_to_bool(answers.get("unsupported_claim_present")),
+            contradicted_claim_present=_to_bool(answers.get("contradicted_claim_present")),
+            source_cited=_to_bool(answers.get("source_cited")),
+            fabricated_source=_to_bool(answers.get("fabricated_source")),
         )
     return GenerationAnnotation(
         **base,
         query=fields["query"],
         answer=fields["answer"],
-        proper_action=_to_bool(answers["proper_action"]),
-        response_on_topic=_to_bool(answers["response_on_topic"]),
-        helpful=_to_bool(answers["helpful"]),
-        incomplete=_to_bool(answers["incomplete"]),
-        unsafe_content=_to_bool(answers["unsafe_content"]),
+        proper_action=_to_bool(answers.get("proper_action")),
+        response_on_topic=_to_bool(answers.get("response_on_topic")),
+        helpful=_to_bool(answers.get("helpful")),
+        incomplete=_to_bool(answers.get("incomplete")),
+        unsafe_content=_to_bool(answers.get("unsafe_content")),
     )
 
 
@@ -104,7 +108,8 @@ def fetch_task(
             break
 
     dataset = client.datasets(dataset_name, workspace=workspace_name)
-    query = rg.Query(filter=rg.Filter([("response.status", "==", "submitted")]))
+    query = rg.Query(filter=rg.Filter([("response.status", "in", ["submitted", "discarded"])]))
+    check_constraints = CONSTRAINT_CHECKERS[task]
 
     rows: list[tuple[AnnotationModel, list[str]]] = []
     missing_uuid_count = 0
@@ -120,7 +125,7 @@ def fetch_task(
         record_status: str = record.status
 
         grouped = _group_responses_by_user(record)
-        for user_id, answers in grouped.items():
+        for user_id, (response_status, answers) in grouped.items():
             base = {
                 "record_uuid": record_uuid,
                 "annotator_id": user_lookup.get(user_id, str(user_id)),
@@ -128,11 +133,14 @@ def fetch_task(
                 "inserted_at": inserted_at,
                 "created_at": created_at,
                 "record_status": record_status,
+                "response_status": response_status,
+                "discard_reason": answers.get("discard_reason"),
+                "discard_notes": answers.get("discard_notes") or "",
                 "notes": answers.get("notes") or "",
             }
 
             row = _build_row(task, base=base, answers=answers, fields=record.fields, metadata=record.metadata)
-            violations = CONSTRAINT_CHECKERS[task](row)
+            violations = check_constraints(row) if response_status == "submitted" else []
             rows.append((row, violations))
 
     if missing_uuid_count:

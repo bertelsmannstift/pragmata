@@ -16,7 +16,7 @@ from string import Template
 
 import argilla as rg
 
-from pragmata.core.schemas.annotation_task import Task
+from pragmata.core.schemas.annotation_task import DiscardReason, Task
 
 DATASET_NAMES: dict[Task, str] = {
     Task.RETRIEVAL: "retrieval",
@@ -34,6 +34,18 @@ def _collapsible_field(name: str, title: str, template_text: str) -> rg.CustomFi
         advanced_mode=True,
         required=True,
     )
+
+
+def _discard_questions() -> list[rg.LabelQuestion | rg.TextQuestion]:
+    return [
+        rg.LabelQuestion(
+            name="discard_reason",
+            title="Discard reason",
+            labels=[r.value for r in DiscardReason],
+            required=False,
+        ),
+        rg.TextQuestion(name="discard_notes", title="Discard notes (optional)", required=False),
+    ]
 
 
 @functools.cache
@@ -72,6 +84,7 @@ def build_task_settings() -> dict[Task, rg.Settings]:
                     required=True,
                 ),
                 rg.TextQuestion(name="notes", title="Notes (optional)", required=False),
+                *_discard_questions(),
             ],
             metadata=[
                 rg.TermsMetadataProperty("record_uuid", visible_for_annotators=False),
@@ -120,6 +133,7 @@ def build_task_settings() -> dict[Task, rg.Settings]:
                     required=True,
                 ),
                 rg.TextQuestion(name="notes", title="Notes (optional)", required=False),
+                *_discard_questions(),
             ],
             metadata=[
                 rg.TermsMetadataProperty("record_uuid", visible_for_annotators=False),
@@ -165,6 +179,7 @@ def build_task_settings() -> dict[Task, rg.Settings]:
                     required=True,
                 ),
                 rg.TextQuestion(name="notes", title="Notes (optional)", required=False),
+                *_discard_questions(),
             ],
             metadata=[
                 rg.TermsMetadataProperty("record_uuid", visible_for_annotators=False),
