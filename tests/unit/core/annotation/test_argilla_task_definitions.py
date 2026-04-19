@@ -260,3 +260,16 @@ class TestDatasetNames:
         assert DATASET_NAMES[Task.RETRIEVAL] == "retrieval"
         assert DATASET_NAMES[Task.GROUNDING] == "grounding"
         assert DATASET_NAMES[Task.GENERATION] == "generation"
+
+
+class TestDiscardFlowHtmlEnumSync:
+    """Guard against drift between DiscardReason enum and discard_flow.html options."""
+
+    def test_html_option_values_match_enum(self):
+        import re
+        from importlib.resources import files
+
+        html = files("pragmata.core.annotation").joinpath("discard_flow.html").read_text(encoding="utf-8")
+        option_values = set(re.findall(r'<option value="([^"]+)"', html))
+        option_values.discard("")  # ignore placeholder "-- select --" option
+        assert option_values == {r.value for r in DiscardReason}
