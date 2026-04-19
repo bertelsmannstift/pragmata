@@ -29,7 +29,7 @@ from pragmata.core.schemas.iaa_report import (
 logger = logging.getLogger(__name__)
 
 TASK_LABELS: dict[Task, list[str]] = {
-    task: [name for name, info in schema.model_fields.items() if info.annotation in (bool, bool | None)]
+    task: [name for name, info in schema.model_fields.items() if info.annotation == bool | None]
     for task, schema in TASK_ANNOTATION_SCHEMA.items()
 }
 
@@ -68,9 +68,7 @@ def _pivot_task(
         data = np.full((len(ann_list), len(item_list)), np.nan)
         for j, rid in enumerate(item_list):
             for aid, vals in records[rid].items():
-                v = vals[lab]
-                if v is not None:
-                    data[ann_idx[aid], j] = float(v)
+                data[ann_idx[aid], j] = float(vals[lab])
         matrices[lab] = data
 
     return matrices, ann_list, records
@@ -107,10 +105,16 @@ def _filter_rows(
     after: datetime | None = None,
     before: datetime | None = None,
 ) -> list[AnnotationBase]:
-    """Filter annotation rows by annotator and/or time window."""
+    """Filter annotation rows to submitted responses, by annotator, and/or time window.
+
+    Discarded rows are always excluded: IAA measures agreement over labels, and
+    discarded responses have no labels to agree on.
+    """
     excluded = set(exclude_annotators) if exclude_annotators else set()
     filtered = []
     for row in rows:
+        if row.response_status != "submitted":
+            continue
         if row.annotator_id in excluded:
             continue
         if after and row.created_at < after:

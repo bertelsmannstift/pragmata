@@ -88,6 +88,26 @@ def _make_row(
     return (annotation, [])
 
 
+_RETRIEVAL_LABELS = ("topically_relevant", "evidence_sufficient", "misleading")
+
+
+def _make_discarded_retrieval_row(record_uuid: str, annotator_id: str) -> tuple:
+    schema_cls = TASK_EXPORT_ROW[Task.RETRIEVAL].__bases__[0]
+    annotation = schema_cls.model_validate(
+        {
+            **_BASE_FIELDS,
+            **_RETRIEVAL_DEFAULTS,
+            "record_uuid": record_uuid,
+            "annotator_id": annotator_id,
+            "created_at": datetime(2026, 4, 1, tzinfo=timezone.utc),
+            "response_status": "discarded",
+            "discard_reason": "duplicate",
+            **{label: None for label in _RETRIEVAL_LABELS},
+        }
+    )
+    return (annotation, [])
+
+
 @pytest.fixture()
 def export_dir(tmp_path: Path) -> AnnotationExportPaths:
     export = tmp_path / "exports" / "test_export"
@@ -308,6 +328,24 @@ class TestRunIaa:
 
         # Perfect constant agreement -> cohen_kappa returns NaN for each label -> pair dropped
         assert report.tasks[0].pairwise_kappa == []
+
+    def test_discarded_rows_excluded(self, export_dir: AnnotationExportPaths, iaa_dir: IaaPaths):
+        """Discarded responses are not counted in IAA — labels are absent on discard."""
+        labels = {"topically_relevant": True, "evidence_sufficient": True, "misleading": False}
+        rows = [
+            _make_row("r1", "ann1", Task.RETRIEVAL, labels),
+            _make_row("r1", "ann2", Task.RETRIEVAL, labels),
+            _make_row("r2", "ann1", Task.RETRIEVAL, labels),
+            _make_row("r2", "ann2", Task.RETRIEVAL, labels),
+            _make_discarded_retrieval_row("r3", "ann1"),
+            _make_discarded_retrieval_row("r3", "ann2"),
+        ]
+        _write_csv(export_dir.retrieval_annotation_csv, Task.RETRIEVAL, rows)
+
+        report = run_iaa(export_dir, iaa_dir, [Task.RETRIEVAL], n_resamples=50, seed=42)
+
+        # Only r1 and r2 count; r3's discarded responses are filtered out.
+        assert all(la.n_items == 2 for la in report.tasks[0].labels)
 
     def test_filter_before_date(self, export_dir: AnnotationExportPaths, iaa_dir: IaaPaths):
         labels = {"topically_relevant": True, "evidence_sufficient": True, "misleading": False}
