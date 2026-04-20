@@ -16,6 +16,8 @@ import pytest
 from pragmata.annotation import _LAZY
 from pragmata.annotation import __all__ as facade_all
 
+pytestmark = pytest.mark.packaging
+
 
 def _run_isolated(script: str) -> subprocess.CompletedProcess:
     return subprocess.run(
@@ -46,7 +48,6 @@ if leaks:
 """
 
 
-@pytest.mark.packaging
 @pytest.mark.parametrize(
     "import_stmt",
     [
@@ -62,7 +63,6 @@ def test_facade_import_paths_do_not_load_argilla_or_api_modules(import_stmt: str
     assert result.returncode == 0, result.stderr or result.stdout
 
 
-@pytest.mark.packaging
 def test_accessing_task_does_not_trigger_argilla() -> None:
     """Plain schema/enum access should not pull argilla-dependent modules."""
     result = _run_isolated(
@@ -77,7 +77,6 @@ def test_accessing_task_does_not_trigger_argilla() -> None:
     assert result.returncode == 0, result.stderr or result.stdout
 
 
-@pytest.mark.packaging
 def test_accessing_setup_loads_api_module() -> None:
     """Accessing an API-bound attribute resolves the backing module on first touch."""
     result = _run_isolated(

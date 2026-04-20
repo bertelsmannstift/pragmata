@@ -3,11 +3,14 @@
 import ast
 import pathlib
 
+import pytest
 from typer.testing import CliRunner
 
 import pragmata.cli
 from pragmata import get_version
 from pragmata.cli.app import app
+
+pytestmark = pytest.mark.packaging
 
 
 def test_package_importable() -> None:
