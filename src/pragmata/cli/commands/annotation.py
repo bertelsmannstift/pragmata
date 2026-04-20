@@ -9,8 +9,8 @@ annotation_app = typer.Typer(help="Annotation pipeline commands.")
 
 _api_url_opt = typer.Option(None, "--api-url", help="Argilla server URL. Falls back to ARGILLA_API_URL env var.")
 _api_key_opt = typer.Option(None, "--api-key", help="Argilla API key. Falls back to ARGILLA_API_KEY env var.")
-_prefix_opt = typer.Option(
-    None, "--prefix", help="Prefix prepended to workspace and dataset names. Defaults to config file value or ''."
+_dataset_id_opt = typer.Option(
+    None, "--dataset-id", help="Suffix appended to dataset names for run scoping (e.g. 'run1')."
 )
 _base_dir_opt = typer.Option(
     None, "--base-dir", help="Workspace base directory for run artifacts. Defaults to current working directory."
@@ -22,7 +22,6 @@ _config_opt = typer.Option(None, "--config", help="Path to YAML config file for 
 def setup_command(
     api_url: str | None = _api_url_opt,
     api_key: str | None = _api_key_opt,
-    prefix: str | None = _prefix_opt,
     base_dir: str | None = _base_dir_opt,
     config: str | None = _config_opt,
     min_submitted: int | None = typer.Option(
@@ -35,20 +34,21 @@ def setup_command(
         " 'workspaces' and 'password' are optional.",
     ),
 ) -> None:
-    """Create Argilla workspaces, datasets, and (optionally) user accounts."""
+    """Create Argilla workspaces and (optionally) user accounts.
+
+    Datasets are created automatically on import, not here.
+    """
     from pragmata import annotation
 
     result = annotation.setup(
         parse_user_specs(users_json),
         api_url=UNSET if api_url is None else api_url,
         api_key=UNSET if api_key is None else api_key,
-        workspace_prefix=UNSET if prefix is None else prefix,
         min_submitted=UNSET if min_submitted is None else min_submitted,
         base_dir=UNSET if base_dir is None else base_dir,
         config_path=UNSET if config is None else config,
     )
     typer.echo(f"Workspaces created: {len(result.created_workspaces)}, skipped: {len(result.skipped_workspaces)}")
-    typer.echo(f"Datasets created: {len(result.created_datasets)}, skipped: {len(result.skipped_datasets)}")
     typer.echo(f"Users created: {len(result.created_users)}, skipped: {len(result.skipped_users)}")
 
 
@@ -56,17 +56,21 @@ def setup_command(
 def teardown_command(
     api_url: str | None = _api_url_opt,
     api_key: str | None = _api_key_opt,
-    prefix: str | None = _prefix_opt,
+    dataset_id: str | None = _dataset_id_opt,
     base_dir: str | None = _base_dir_opt,
     config: str | None = _config_opt,
 ) -> None:
-    """Remove Argilla workspaces and datasets."""
+    """Remove Argilla datasets and (optionally) workspaces.
+
+    With --dataset-id, only datasets matching that suffix are deleted.
+    Without it, all default datasets and workspaces are removed.
+    """
     from pragmata import annotation
 
     annotation.teardown(
         api_url=UNSET if api_url is None else api_url,
         api_key=UNSET if api_key is None else api_key,
-        workspace_prefix=UNSET if prefix is None else prefix,
+        dataset_id=UNSET if dataset_id is None else dataset_id,
         base_dir=UNSET if base_dir is None else base_dir,
         config_path=UNSET if config is None else config,
     )
@@ -78,14 +82,17 @@ def import_command(
     records: str = typer.Argument(..., help="Path to records file (JSON, JSONL, or CSV)."),
     api_url: str | None = _api_url_opt,
     api_key: str | None = _api_key_opt,
-    prefix: str | None = _prefix_opt,
+    dataset_id: str | None = _dataset_id_opt,
     base_dir: str | None = _base_dir_opt,
     config: str | None = _config_opt,
     format: str | None = typer.Option(
         None, "--format", help="File format override (json, jsonl, csv). Auto-detected by default."
     ),
 ) -> None:
-    """Validate and import records into annotation datasets."""
+    """Validate and import records into annotation datasets.
+
+    Datasets are auto-created if they don't exist.
+    """
     from pragmata import annotation
 
     result = annotation.import_records(
@@ -93,7 +100,7 @@ def import_command(
         api_url=UNSET if api_url is None else api_url,
         api_key=UNSET if api_key is None else api_key,
         format=format or "auto",
-        workspace_prefix=UNSET if prefix is None else prefix,
+        dataset_id=UNSET if dataset_id is None else dataset_id,
         base_dir=UNSET if base_dir is None else base_dir,
         config_path=UNSET if config is None else config,
     )
@@ -109,7 +116,7 @@ def import_command(
 def export_command(
     api_url: str | None = _api_url_opt,
     api_key: str | None = _api_key_opt,
-    prefix: str | None = _prefix_opt,
+    dataset_id: str | None = _dataset_id_opt,
     base_dir: str | None = _base_dir_opt,
     config: str | None = _config_opt,
     export_id: str | None = typer.Option(None, "--export-id", help="Export run identifier. Auto-generated if omitted."),
@@ -126,7 +133,7 @@ def export_command(
         export_id=UNSET if export_id is None else export_id,
         base_dir=UNSET if base_dir is None else base_dir,
         tasks=parse_tasks(tasks),
-        workspace_prefix=UNSET if prefix is None else prefix,
+        dataset_id=UNSET if dataset_id is None else dataset_id,
         config_path=UNSET if config is None else config,
     )
     for task_name, count in result.row_counts.items():
@@ -140,7 +147,6 @@ def iaa_command(
     export_id: str = typer.Argument(..., help="Export run identifier whose CSVs to analyse."),
     base_dir: str | None = _base_dir_opt,
     config: str | None = _config_opt,
-    prefix: str | None = _prefix_opt,
     tasks: str | None = typer.Option(
         None, "--tasks", help="Comma-separated tasks to analyse (retrieval,grounding,generation)."
     ),
@@ -155,7 +161,6 @@ def iaa_command(
         export_id,
         base_dir=UNSET if base_dir is None else base_dir,
         tasks=parse_tasks(tasks),
-        workspace_prefix=UNSET if prefix is None else prefix,
         n_resamples=n_resamples,
         ci=ci,
         seed=seed,

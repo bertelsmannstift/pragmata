@@ -203,6 +203,6 @@ class TestDatasetNames:
         assert set(DATASET_NAMES.keys()) == {Task.RETRIEVAL, Task.GROUNDING, Task.GENERATION}
 
     def test_dataset_name_values(self):
-        assert DATASET_NAMES[Task.RETRIEVAL] == "task_retrieval"
-        assert DATASET_NAMES[Task.GROUNDING] == "task_grounding"
-        assert DATASET_NAMES[Task.GENERATION] == "task_generation"
+        assert DATASET_NAMES[Task.RETRIEVAL] == "retrieval"
+        assert DATASET_NAMES[Task.GROUNDING] == "grounding"
+        assert DATASET_NAMES[Task.GENERATION] == "generation"

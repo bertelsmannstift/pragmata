@@ -5,19 +5,19 @@ No Argilla server required; these tests exercise pure Python logic only.
 
 from dataclasses import fields
 
-from pragmata.core.annotation.argilla_ops import apply_prefix, generate_password
+from pragmata.core.annotation.argilla_ops import apply_suffix, generate_password
 from pragmata.core.annotation.setup import SetupResult
 
 
-class TestApplyPrefix:
-    def test_empty_prefix_returns_name(self) -> None:
-        assert apply_prefix("", "retrieval") == "retrieval"
+class TestApplySuffix:
+    def test_empty_suffix_returns_name(self) -> None:
+        assert apply_suffix("retrieval", "") == "retrieval"
 
-    def test_non_empty_prefix_prepends(self) -> None:
-        assert apply_prefix("pb", "retrieval") == "pb_retrieval"
+    def test_non_empty_suffix_appends(self) -> None:
+        assert apply_suffix("retrieval", "run1") == "retrieval_run1"
 
-    def test_non_empty_prefix_any_name(self) -> None:
-        assert apply_prefix("test", "generation") == "test_generation"
+    def test_non_empty_suffix_any_name(self) -> None:
+        assert apply_suffix("generation", "batch2") == "generation_batch2"
 
 
 class TestGeneratePassword:
@@ -42,8 +42,6 @@ class TestSetupResult:
         result = SetupResult()
         assert result.created_workspaces == []
         assert result.skipped_workspaces == []
-        assert result.created_datasets == []
-        assert result.skipped_datasets == []
         assert result.created_users == []
         assert result.skipped_users == []
 
@@ -56,8 +54,6 @@ class TestSetupResult:
         assert field_names == {
             "created_workspaces",
             "skipped_workspaces",
-            "created_datasets",
-            "skipped_datasets",
             "created_users",
             "skipped_users",
             "generated_passwords",

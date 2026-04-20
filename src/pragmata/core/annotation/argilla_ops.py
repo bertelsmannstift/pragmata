@@ -13,9 +13,9 @@ logger = logging.getLogger(__name__)
 _PASSWORD_CHARS = string.ascii_letters + string.digits + "!@#$%"
 
 
-def apply_prefix(prefix: str, name: str) -> str:
-    """Prepend prefix with underscore separator; return name unchanged if prefix is empty."""
-    return f"{prefix}_{name}" if prefix else name
+def apply_suffix(name: str, suffix: str) -> str:
+    """Append suffix with underscore separator; return name unchanged if suffix is empty."""
+    return f"{name}_{suffix}" if suffix else name
 
 
 def generate_password(length: int = 16) -> str:

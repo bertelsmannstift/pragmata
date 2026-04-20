@@ -10,7 +10,7 @@ import pytest
 from pragmata.core.annotation.setup import (
     SetupResult,
     provision_users,
-    setup_datasets,
+    setup_workspaces,
     teardown_resources,
 )
 from pragmata.core.settings.annotation_settings import AnnotationSettings, UserSpec
@@ -42,10 +42,10 @@ def clean_slate(client: rg.Argilla):
 # ---------------------------------------------------------------------------
 
 
-def test_full_setup_creates_workspaces_and_datasets(client: rg.Argilla) -> None:
+def test_setup_creates_workspaces(client: rg.Argilla) -> None:
     teardown_resources(client, _DEFAULT_SETTINGS)
 
-    result = setup_datasets(client, _DEFAULT_SETTINGS)
+    result = setup_workspaces(client, _DEFAULT_SETTINGS)
 
     assert isinstance(result, SetupResult)
 
@@ -54,61 +54,17 @@ def test_full_setup_creates_workspaces_and_datasets(client: rg.Argilla) -> None:
     assert client.workspaces("grounding") is not None
     assert client.workspaces("generation") is not None
 
-    # 3 datasets
-    assert client.datasets("task_retrieval", workspace="retrieval") is not None
-    assert client.datasets("task_grounding", workspace="grounding") is not None
-    assert client.datasets("task_generation", workspace="generation") is not None
-
     # Result accounting
     assert set(result.created_workspaces) == {"retrieval", "grounding", "generation"}
     assert result.skipped_workspaces == []
-    assert set(result.created_datasets) == {
-        "task_retrieval",
-        "task_grounding",
-        "task_generation",
-    }
-    assert result.skipped_datasets == []
-
-
-def test_dataset_field_and_question_counts(client: rg.Argilla) -> None:
-    """Verify datasets have the expected schema shape from annotation-interface.md."""
-    # Retrieval: 3 fields (query, chunk, generated_answer), 4 questions (3 label + 1 text)
-    ds1 = client.datasets("task_retrieval", workspace="retrieval")
-    assert ds1 is not None
-    assert len(ds1.settings.fields) == 3
-    assert len(ds1.settings.questions) == 4
-
-    # Grounding: 3 fields (answer, context_set, query), 6 questions (5 label + 1 text)
-    ds2 = client.datasets("task_grounding", workspace="grounding")
-    assert ds2 is not None
-    assert len(ds2.settings.fields) == 3
-    assert len(ds2.settings.questions) == 6
-
-    # Generation: 3 fields (query, answer, context_set), 6 questions (5 label + 1 text)
-    ds3 = client.datasets("task_generation", workspace="generation")
-    assert ds3 is not None
-    assert len(ds3.settings.fields) == 3
-    assert len(ds3.settings.questions) == 6
-
-
-def test_dataset_min_submitted(client: rg.Argilla) -> None:
-    ds1 = client.datasets("task_retrieval", workspace="retrieval")
-    assert ds1 is not None
-    assert ds1.settings.distribution.min_submitted == 1
 
 
 def test_idempotent_rerun(client: rg.Argilla) -> None:
-    # Datasets already exist from prior test — re-run should skip all
-    result = setup_datasets(client, _DEFAULT_SETTINGS)
+    # Workspaces already exist from prior test — re-run should skip all
+    result = setup_workspaces(client, _DEFAULT_SETTINGS)
 
     assert result.created_workspaces == []
-    assert result.created_datasets == []
     assert set(result.skipped_workspaces) == {"retrieval", "grounding", "generation"}
-    assert set(result.skipped_datasets) == {
-        "task_retrieval",
-        "task_grounding",
-        "task_generation",
-    }
 
 
 def test_user_provisioning(client: rg.Argilla) -> None:
@@ -156,48 +112,32 @@ def test_teardown_retains_user_accounts(client: rg.Argilla) -> None:
 
     teardown_resources(client, _DEFAULT_SETTINGS)
 
-    # Workspaces and datasets gone
+    # Workspaces gone
     assert client.workspaces("retrieval") is None
     assert client.workspaces("grounding") is None
     assert client.workspaces("generation") is None
-    assert client.datasets("task_retrieval", workspace="retrieval") is None
 
     # User still exists
     assert client.users(_TEST_USER) is not None
 
 
 def test_rerun_after_teardown(client: rg.Argilla) -> None:
-    result = setup_datasets(client, _DEFAULT_SETTINGS)
+    result = setup_workspaces(client, _DEFAULT_SETTINGS)
 
     assert set(result.created_workspaces) == {"retrieval", "grounding", "generation"}
-    assert set(result.created_datasets) == {
-        "task_retrieval",
-        "task_grounding",
-        "task_generation",
-    }
     assert result.skipped_workspaces == []
-    assert result.skipped_datasets == []
 
 
-def test_prefix_support(client: rg.Argilla) -> None:
-    prefixed_settings = AnnotationSettings(workspace_prefix="test")
-    teardown_resources(client, prefixed_settings)
+def test_scoped_teardown_preserves_workspaces(client: rg.Argilla) -> None:
+    """Teardown with dataset_id only deletes matching datasets, not workspaces."""
+    teardown_resources(client, _DEFAULT_SETTINGS)
+    setup_workspaces(client, _DEFAULT_SETTINGS)
 
-    result = setup_datasets(client, prefixed_settings)
+    # Scoped teardown with a dataset_id should not delete workspaces
+    scoped_settings = AnnotationSettings(dataset_id="run1")
+    teardown_resources(client, scoped_settings)
 
-    assert client.workspaces("test_retrieval") is not None
-    assert client.workspaces("test_grounding") is not None
-    assert client.workspaces("test_generation") is not None
-    assert client.datasets("test_task_retrieval", workspace="test_retrieval") is not None
-    assert client.datasets("test_task_grounding", workspace="test_grounding") is not None
-    assert client.datasets("test_task_generation", workspace="test_generation") is not None
-
-    assert set(result.created_workspaces) == {"test_retrieval", "test_grounding", "test_generation"}
-    assert set(result.created_datasets) == {
-        "test_task_retrieval",
-        "test_task_grounding",
-        "test_task_generation",
-    }
-
-    # Cleanup prefixed resources
-    teardown_resources(client, prefixed_settings)
+    # Workspaces still exist
+    assert client.workspaces("retrieval") is not None
+    assert client.workspaces("grounding") is not None
+    assert client.workspaces("generation") is not None

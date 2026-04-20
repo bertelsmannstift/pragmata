@@ -19,9 +19,9 @@ import argilla as rg
 from pragmata.core.schemas.annotation_task import Task
 
 DATASET_NAMES: dict[Task, str] = {
-    Task.RETRIEVAL: "task_retrieval",
-    Task.GROUNDING: "task_grounding",
-    Task.GENERATION: "task_generation",
+    Task.RETRIEVAL: "retrieval",
+    Task.GROUNDING: "grounding",
+    Task.GENERATION: "generation",
 }
 
 

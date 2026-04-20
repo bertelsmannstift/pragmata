@@ -13,8 +13,8 @@ from typing import Any
 import argilla as rg
 from argilla.records._dataset_records import RecordErrorHandling  # no public re-export in argilla v2; pinned to ==2.6.0
 
-from pragmata.core.annotation.argilla_ops import apply_prefix
-from pragmata.core.annotation.argilla_task_definitions import DATASET_NAMES
+from pragmata.core.annotation.argilla_ops import apply_suffix, create_dataset
+from pragmata.core.annotation.argilla_task_definitions import DATASET_NAMES, build_task_settings
 from pragmata.core.schemas.annotation_import import QueryResponsePair
 from pragmata.core.schemas.annotation_task import Task
 from pragmata.core.settings.annotation_settings import AnnotationSettings
@@ -162,11 +162,14 @@ def fan_out_records(
 ) -> dict[str, int]:
     """Build and log Argilla records to all three datasets.
 
+    Datasets are created on-the-fly if they don't exist (idempotent).
+    Workspaces must already exist (call setup() first).
+
     Returns counts of records submitted per dataset (not confirmed — individual
     record failures are logged as warnings by Argilla but not reflected in counts).
     """
-    prefix = settings.workspace_prefix
     task_to_ws = _invert_workspace_map(settings.workspace_dataset_map)
+    task_settings_map = build_task_settings()
     batches = _build_batches(records)
 
     dataset_counts: dict[str, int] = {}
@@ -179,12 +182,23 @@ def fan_out_records(
             logger.warning("Task %r not in workspace_dataset_map — skipping", task)
             continue
 
-        ws_name = apply_prefix(prefix, ws_base)
-        ds_name = apply_prefix(prefix, DATASET_NAMES[task])
+        ds_name = apply_suffix(DATASET_NAMES[task], settings.dataset_id)
 
-        dataset = client.datasets(ds_name, workspace=ws_name)
-        if dataset is None:
-            raise RuntimeError(f"Dataset {ds_name!r} in workspace {ws_name!r} not found. Run setup() first.")
+        workspace = client.workspaces(ws_base)
+        if workspace is None:
+            raise RuntimeError(f"Workspace {ws_base!r} not found. Run setup() first.")
+
+        base_settings = task_settings_map[task]
+        task_cfg = rg.Settings(
+            fields=base_settings.fields,
+            questions=base_settings.questions,
+            metadata=base_settings.metadata,
+            guidelines=base_settings.guidelines,
+            distribution=rg.TaskDistribution(min_submitted=settings.min_submitted),
+        )
+        dataset, ds_created = create_dataset(client, ds_name, ws_base, task_cfg)
+        if ds_created:
+            logger.info("Auto-created dataset %r in workspace %r", ds_name, ws_base)
 
         dataset.records.log(rg_records, on_error=RecordErrorHandling.WARN)
         dataset_counts[ds_name] = len(rg_records)

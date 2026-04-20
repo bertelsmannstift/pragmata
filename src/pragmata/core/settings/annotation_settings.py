@@ -28,7 +28,7 @@ class AnnotationSettings(ResolveSettings):
 
     argilla: ArgillaSettings = Field(default_factory=ArgillaSettings)
     base_dir: Path = Field(default_factory=Path.cwd)
-    workspace_prefix: str = ""
+    dataset_id: str = ""
     workspace_dataset_map: dict[str, list[Task]] = Field(
         default_factory=lambda: {
             "retrieval": [Task.RETRIEVAL],
