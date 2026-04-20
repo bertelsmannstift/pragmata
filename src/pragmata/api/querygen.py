@@ -16,6 +16,7 @@ from pragmata.core.querygen.deduplication import deduplicate_blueprints
 from pragmata.core.querygen.export import export_queries
 from pragmata.core.querygen.filtering import filter_aligned_candidate_ids
 from pragmata.core.querygen.planning import run_planning_stage
+from pragmata.core.querygen.planning_summary import fingerprint_querygen_spec
 from pragmata.core.querygen.realization import run_realization_stage
 from pragmata.core.schemas.querygen_plan import QueryBlueprint
 from pragmata.core.schemas.querygen_realize import RealizedQuery
@@ -171,6 +172,7 @@ def gen_queries(
     paths = resolve_querygen_paths(
         workspace=WorkspacePaths.from_base_dir(settings.base_dir),
         run_id=settings.run_id,
+        spec_fingerprint=fingerprint_querygen_spec(settings.spec),
     ).ensure_dirs()
 
     logger.info(
