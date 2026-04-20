@@ -62,7 +62,7 @@
 <script>
 (function() {
   var pdoc = window.parent.document;
-  // Argilla-internal selectors — re-verify on Argilla upgrade.
+  // Argilla-internal selectors — will need to re-verify on Argilla upgrade.
   var CARD_TITLE_SEL = '.title-area';
   var CARD_SEL = '.wrapper';
   var NATIVE_DISCARD_SEL = '.button--discard';
@@ -99,8 +99,8 @@
     try {
       var frame = window.frameElement;
       if (!frame) return;
-      // scrollHeight is clamped to at least the iframe viewport, so shrink to
-      // 0 first then remeasure — otherwise the iframe can grow but can't
+      // scrollHeight is clamped to >=  iframe viewport, so shrink to
+      // 0 first then remeasure — otherwise the iframe grows but can't
       // shrink back on collapse.
       frame.style.height = '0px';
       requestAnimationFrame(function () {

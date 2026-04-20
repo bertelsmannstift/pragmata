@@ -30,9 +30,9 @@
   var text = (typeof field === "object" && field !== null) ? (field.text || "") : (field || "");
   document.getElementById("content").textContent = text;
 
-  // Size our own iframe to match content height. scrollHeight is clamped
-  // to at least the viewport (iframe) height, so shrink to 0 first then
-  // measure — otherwise the iframe can grow but never shrink on collapse.
+  // Size iframe to match content height. scrollHeight is clamped
+  // to >= viewport (iframe) height, so shrink to 0 first then
+  // measure — otherwise the iframe grows but never shrink on collapse.
   function resizeSelf() {
     try {
       var frame = window.frameElement;
