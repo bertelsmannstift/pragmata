@@ -16,6 +16,8 @@ import pytest
 from pragmata.annotation import _LAZY
 from pragmata.annotation import __all__ as facade_all
 
+pytestmark = pytest.mark.packaging
+
 
 def _run_isolated(script: str) -> subprocess.CompletedProcess:
     return subprocess.run(

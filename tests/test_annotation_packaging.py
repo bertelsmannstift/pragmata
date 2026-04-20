@@ -4,6 +4,8 @@ import pathlib
 
 import pytest
 
+pytestmark = pytest.mark.packaging
+
 PYPROJECT_PATH = pathlib.Path(__file__).resolve().parents[1] / "pyproject.toml"
 
 

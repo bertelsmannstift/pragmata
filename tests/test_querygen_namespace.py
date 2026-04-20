@@ -1,6 +1,10 @@
 """Tests for query generation public namespace."""
 
+import pytest
+
 from pragmata import querygen
+
+pytestmark = pytest.mark.packaging
 
 
 def test_querygen_namespace_importable() -> None:

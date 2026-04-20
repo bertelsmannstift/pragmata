@@ -93,5 +93,8 @@ jobs:
       - name: Install test dependencies
         run: uv sync --extra test --frozen
 
-      - name: Run tests
+      - name: Run unit tests
         run: uv run pytest -q
+
+      - name: Run packaging tests
+        run: uv run pytest -m packaging -q
