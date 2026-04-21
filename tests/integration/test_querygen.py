@@ -415,7 +415,6 @@ def test_gen_queries_executes_staged_workflow_with_recursive_planning_summary_an
     )
 
 
-
 def test_gen_queries_raises_when_provider_api_key_missing(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
