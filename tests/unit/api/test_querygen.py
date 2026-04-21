@@ -7,6 +7,7 @@ from textwrap import dedent
 import pytest
 
 import pragmata.api.querygen as querygen_api
+from pragmata.core.paths.querygen_paths import QueryGenRunPaths
 from pragmata.core.schemas.querygen_output import SyntheticQueriesMeta, SyntheticQueryRow
 from pragmata.core.schemas.querygen_plan import QueryBlueprint
 from pragmata.core.schemas.querygen_realize import RealizedQuery
@@ -271,12 +272,69 @@ def test_gen_queries_orchestrates_run_paths(tmp_path: Path) -> None:
         run_id="run-123",
     )
 
-    expected_run_dir = tmp_path.resolve() / "querygen" / "runs" / "run-123"
+    expected_tool_root = tmp_path.resolve() / "querygen"
+    expected_run_dir = expected_tool_root / "runs" / "run-123"
 
+    assert result.paths.tool_root == expected_tool_root
     assert result.paths.run_dir == expected_run_dir
     assert result.paths.synthetic_queries_csv == expected_run_dir / "synthetic_queries.csv"
     assert result.paths.synthetic_queries_meta_json == expected_run_dir / "synthetic_queries.meta.json"
+    assert result.paths.planning_summary_artifact_json.parent == expected_tool_root
+    assert result.paths.planning_summary_artifact_json.suffix == ".json"
     assert expected_run_dir.is_dir()
+
+
+def test_gen_queries_fingerprints_spec_before_resolving_paths(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """gen_queries fingerprints the resolved spec before querygen paths are resolved."""
+    call_order: list[str] = []
+    seen: dict[str, object] = {}
+
+    def fingerprint_querygen_spec(spec):  # noqa: ANN001
+        call_order.append("fingerprint")
+        seen["fingerprint_spec"] = spec
+        return "spec-fingerprint-123"
+
+    def resolve_querygen_paths(
+        *,
+        workspace,  # noqa: ANN001
+        run_id: str,
+        spec_fingerprint: str,
+    ) -> QueryGenRunPaths:
+        call_order.append("resolve_paths")
+        seen["workspace_base_dir"] = workspace.base_dir
+        seen["run_id"] = run_id
+        seen["spec_fingerprint"] = spec_fingerprint
+
+        tool_root = tmp_path.resolve() / "querygen"
+        run_dir = tool_root / "runs" / run_id
+
+        return QueryGenRunPaths(
+            tool_root=tool_root,
+            run_dir=run_dir,
+            synthetic_queries_csv=run_dir / "synthetic_queries.csv",
+            synthetic_queries_meta_json=run_dir / "synthetic_queries.meta.json",
+            planning_summary_artifact_json=tool_root / f"{spec_fingerprint}.json",
+        )
+
+    monkeypatch.setattr(querygen_api, "fingerprint_querygen_spec", fingerprint_querygen_spec)
+    monkeypatch.setattr(querygen_api, "resolve_querygen_paths", resolve_querygen_paths)
+
+    result = querygen_api.gen_queries(
+        **_required_querygen_kwargs(tmp_path),
+        run_id="fingerprint-order-check",
+    )
+
+    assert call_order == ["fingerprint", "resolve_paths"]
+    assert seen["run_id"] == "fingerprint-order-check"
+    assert seen["workspace_base_dir"] == tmp_path.resolve()
+    assert seen["spec_fingerprint"] == "spec-fingerprint-123"
+    assert seen["fingerprint_spec"] == result.settings.spec
+    assert result.paths.planning_summary_artifact_json == (
+        tmp_path.resolve() / "querygen" / "spec-fingerprint-123.json"
+    )
 
 
 def test_gen_queries_returns_result_object(tmp_path: Path) -> None:
