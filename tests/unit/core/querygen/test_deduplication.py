@@ -284,7 +284,10 @@ def test_deduplicate_blueprints_removes_exact_duplicates_and_preserves_order(
         lambda checkpoint="all-MiniLM-L6-v2": _FakeModel(),
     )
 
-    deduplicated = deduplicate_blueprints(candidates, near_duplicate_tolerance=0.95,)
+    deduplicated = deduplicate_blueprints(
+        candidates,
+        near_duplicate_tolerance=0.95,
+    )
 
     assert [blueprint.candidate_id for blueprint in deduplicated] == ["c001", "c003"]
 
@@ -332,7 +335,10 @@ def test_deduplicate_blueprints_applies_near_duplicate_selection_in_original_ord
         lambda checkpoint="all-MiniLM-L6-v2": _FakeModel(),
     )
 
-    deduplicated = deduplicate_blueprints(candidates, near_duplicate_tolerance=0.95,)
+    deduplicated = deduplicate_blueprints(
+        candidates,
+        near_duplicate_tolerance=0.95,
+    )
 
     assert [blueprint.candidate_id for blueprint in deduplicated] == ["c001", "c003", "c004"]
 
@@ -371,7 +377,10 @@ def test_deduplicate_blueprints_short_circuits_when_exact_dedup_leaves_one(
         _fake_load_embedding_model,
     )
 
-    result = deduplicate_blueprints([first, duplicate], near_duplicate_tolerance=0.95,)
+    result = deduplicate_blueprints(
+        [first, duplicate],
+        near_duplicate_tolerance=0.95,
+    )
 
     assert result == [first]
     assert embed_called is False
