@@ -10,16 +10,21 @@ from pydantic import BaseModel, ConfigDict, PositiveInt
 from pragmata.api._error_log import error_log
 from pragmata.core.paths.paths import WorkspacePaths
 from pragmata.core.paths.querygen_paths import QueryGenRunPaths, resolve_querygen_paths
-from pragmata.core.querygen.assembly import assemble_queries_meta, assemble_query_rows
+from pragmata.core.querygen.assembly import assemble_planning_summary, assemble_queries_meta, assemble_query_rows
 from pragmata.core.querygen.batching import build_candidate_ids, chunk_blueprints, iter_batch_sizes
 from pragmata.core.querygen.deduplication import deduplicate_blueprints
-from pragmata.core.querygen.export import export_queries
+from pragmata.core.querygen.export import export_planning_summary, export_queries
 from pragmata.core.querygen.filtering import filter_aligned_candidate_ids
 from pragmata.core.querygen.planning import run_planning_stage
-from pragmata.core.querygen.planning_summary import fingerprint_querygen_spec
+from pragmata.core.querygen.planning_summary import (
+    fingerprint_querygen_spec,
+    read_planning_summary_artifact,
+    run_planning_summary,
+)
 from pragmata.core.querygen.realization import run_realization_stage
 from pragmata.core.schemas.querygen_plan import QueryBlueprint
 from pragmata.core.schemas.querygen_realize import RealizedQuery
+from pragmata.core.schemas.querygen_summary import PlanningSummaryState
 from pragmata.core.settings.querygen_settings import QueryGenRunSettings
 from pragmata.core.settings.settings_base import UNSET, Unset, load_config_file, resolve_api_key
 
@@ -183,6 +188,16 @@ def gen_queries(
     )
 
     with error_log(paths.run_dir):
+        planning_summary_state: PlanningSummaryState | None = None
+
+        if settings.enable_planning_memory:
+            planning_summary_artifact = read_planning_summary_artifact(
+                artifact_path=paths.planning_summary_artifact_json,
+                spec=settings.spec,
+            )
+            if planning_summary_artifact is not None:
+                planning_summary_state = planning_summary_artifact.state
+
         # Stage 1: planning
         candidate_ids = build_candidate_ids(settings.n_queries)
         candidate_id_iter = iter(candidate_ids)
@@ -193,14 +208,23 @@ def gen_queries(
             batch_size=settings.batch_size,
         ):
             batch_candidate_ids = list(islice(candidate_id_iter, current_batch_size))
-            planning_outputs.extend(
-                run_planning_stage(
+            batch_blueprints = run_planning_stage(
+                spec=settings.spec,
+                llm_settings=settings.llm,
+                api_key=api_key,
+                batch_candidate_ids=batch_candidate_ids,
+                planning_summary=planning_summary_state,
+            )
+            planning_outputs.extend(batch_blueprints)
+
+            if settings.enable_planning_memory:
+                planning_summary_state = run_planning_summary(
                     spec=settings.spec,
+                    candidates=batch_blueprints,
                     llm_settings=settings.llm,
                     api_key=api_key,
-                    batch_candidate_ids=batch_candidate_ids,
+                    prior_summary_state=planning_summary_state,
                 )
-            )
 
         filtered_planning_outputs = filter_aligned_candidate_ids(
             items=planning_outputs,
@@ -265,6 +289,17 @@ def gen_queries(
             queries_path=paths.synthetic_queries_csv,
             meta_path=paths.synthetic_queries_meta_json,
         )
+
+        if settings.enable_planning_memory and planning_summary_state is not None:
+            planning_summary_artifact = assemble_planning_summary(
+                spec=settings.spec,
+                run_id=settings.run_id,
+                state=planning_summary_state,
+            )
+            export_planning_summary(
+                artifact=planning_summary_artifact,
+                artifact_path=paths.planning_summary_artifact_json,
+            )
 
     logger.info(
         "Query generation run %s complete (%d returned queries)",
