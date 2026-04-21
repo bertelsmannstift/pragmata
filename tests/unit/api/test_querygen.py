@@ -8,9 +8,10 @@ import pytest
 
 import pragmata.api.querygen as querygen_api
 from pragmata.core.paths.querygen_paths import QueryGenRunPaths
-from pragmata.core.schemas.querygen_output import SyntheticQueriesMeta, SyntheticQueryRow
+from pragmata.core.schemas.querygen_output import PlanningSummaryArtifact, SyntheticQueriesMeta, SyntheticQueryRow
 from pragmata.core.schemas.querygen_plan import QueryBlueprint
 from pragmata.core.schemas.querygen_realize import RealizedQuery
+from pragmata.core.schemas.querygen_summary import PlanningSummaryState
 
 pytestmark = pytest.mark.usefixtures("workflow_stubs")
 
@@ -130,6 +131,36 @@ def _make_meta(
     )
 
 
+def _make_planning_summary_state(
+    *,
+    redundancy_patterns: str = "Repeated service-access questions for the same administrative scenario.",
+    diversification_targets: str = "Broaden toward comparison, explanation, and eligibility scenarios.",
+    coverage_notes: str = "Basic public-service access requests are already well covered.",
+) -> PlanningSummaryState:
+    """Build a valid PlanningSummaryState for tests."""
+    return PlanningSummaryState(
+        redundancy_patterns=redundancy_patterns,
+        diversification_targets=diversification_targets,
+        coverage_notes=coverage_notes,
+    )
+
+
+def _make_planning_summary_artifact(
+    *,
+    spec_fingerprint: str = "spec-fingerprint-123",
+    source_run_id: str = "prior-run",
+    created_at: datetime | None = None,
+    state: PlanningSummaryState | None = None,
+) -> PlanningSummaryArtifact:
+    """Build a valid PlanningSummaryArtifact for tests."""
+    return PlanningSummaryArtifact(
+        spec_fingerprint=spec_fingerprint,
+        source_run_id=source_run_id,
+        created_at=created_at or datetime(2026, 1, 1, tzinfo=UTC),
+        state=state or _make_planning_summary_state(),
+    )
+
+
 def _install_default_workflow_stubs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -143,15 +174,40 @@ def _install_default_workflow_stubs(
         del batch_size
         return iter([n_queries])
 
+    def read_planning_summary_artifact(
+        *,
+        artifact_path: Path,
+        spec,  # noqa: ANN001
+    ) -> PlanningSummaryArtifact | None:
+        del artifact_path, spec
+        return None
+
     def run_planning_stage(
         *,
         spec,  # noqa: ANN001
         llm_settings,  # noqa: ANN001
         api_key: str,
         batch_candidate_ids: list[str],
+        planning_summary: PlanningSummaryState | None = None,
     ) -> list[QueryBlueprint]:
-        del spec, llm_settings, api_key
+        del spec, llm_settings, api_key, planning_summary
         return [_make_blueprint(candidate_id) for candidate_id in batch_candidate_ids]
+
+    def run_planning_summary(
+        *,
+        spec,  # noqa: ANN001
+        candidates: list[QueryBlueprint],
+        llm_settings,  # noqa: ANN001
+        api_key: str,
+        prior_summary_state: PlanningSummaryState | None = None,
+    ) -> PlanningSummaryState:
+        del spec, llm_settings, api_key, prior_summary_state
+        first_candidate_id = candidates[0].candidate_id
+        return _make_planning_summary_state(
+            redundancy_patterns=f"Repeated patterns around {first_candidate_id}.",
+            diversification_targets=f"Diversify beyond {first_candidate_id}.",
+            coverage_notes=f"Coverage includes {first_candidate_id}.",
+        )
 
     def filter_aligned_candidate_ids(
         items: list[object],
@@ -212,6 +268,18 @@ def _install_default_workflow_stubs(
             realization_model=realization_model,
         )
 
+    def assemble_planning_summary(
+        *,
+        spec,  # noqa: ANN001
+        run_id: str,
+        state: PlanningSummaryState,
+    ) -> PlanningSummaryArtifact:
+        del spec
+        return _make_planning_summary_artifact(
+            source_run_id=run_id,
+            state=state,
+        )
+
     def export_queries(
         *,
         rows: list[SyntheticQueryRow],
@@ -221,16 +289,27 @@ def _install_default_workflow_stubs(
     ) -> None:
         del rows, meta, queries_path, meta_path
 
+    def export_planning_summary(
+        *,
+        artifact: PlanningSummaryArtifact,
+        artifact_path: Path,
+    ) -> None:
+        del artifact, artifact_path
+
     monkeypatch.setattr(querygen_api, "build_candidate_ids", build_candidate_ids)
     monkeypatch.setattr(querygen_api, "iter_batch_sizes", iter_batch_sizes)
+    monkeypatch.setattr(querygen_api, "read_planning_summary_artifact", read_planning_summary_artifact)
     monkeypatch.setattr(querygen_api, "run_planning_stage", run_planning_stage)
+    monkeypatch.setattr(querygen_api, "run_planning_summary", run_planning_summary)
     monkeypatch.setattr(querygen_api, "filter_aligned_candidate_ids", filter_aligned_candidate_ids)
     monkeypatch.setattr(querygen_api, "deduplicate_blueprints", deduplicate_blueprints)
     monkeypatch.setattr(querygen_api, "chunk_blueprints", chunk_blueprints)
     monkeypatch.setattr(querygen_api, "run_realization_stage", run_realization_stage)
     monkeypatch.setattr(querygen_api, "assemble_query_rows", assemble_query_rows)
     monkeypatch.setattr(querygen_api, "assemble_queries_meta", assemble_queries_meta)
+    monkeypatch.setattr(querygen_api, "assemble_planning_summary", assemble_planning_summary)
     monkeypatch.setattr(querygen_api, "export_queries", export_queries)
+    monkeypatch.setattr(querygen_api, "export_planning_summary", export_planning_summary)
 
 
 def test_gen_queries_combines_user_args_config_and_defaults(tmp_path: Path) -> None:
@@ -337,6 +416,41 @@ def test_gen_queries_fingerprints_spec_before_resolving_paths(
     )
 
 
+def test_gen_queries_reads_planning_summary_artifact_from_resolved_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """gen_queries loads the initial planning-summary artifact from the reusable artifact path."""
+    read_calls: list[dict[str, object]] = []
+
+    def read_planning_summary_artifact(
+        *,
+        artifact_path: Path,
+        spec,  # noqa: ANN001
+    ) -> PlanningSummaryArtifact | None:
+        read_calls.append(
+            {
+                "artifact_path": artifact_path,
+                "spec": spec,
+            }
+        )
+        return None
+
+    monkeypatch.setattr(querygen_api, "read_planning_summary_artifact", read_planning_summary_artifact)
+
+    result = querygen_api.gen_queries(
+        **_required_querygen_kwargs(tmp_path),
+        run_id="planning-summary-read-check",
+    )
+
+    assert read_calls == [
+        {
+            "artifact_path": result.paths.planning_summary_artifact_json,
+            "spec": result.settings.spec,
+        }
+    ]
+
+
 def test_gen_queries_returns_result_object(tmp_path: Path) -> None:
     """gen_queries returns the structured run result."""
     result = querygen_api.gen_queries(
@@ -414,8 +528,9 @@ def test_gen_queries_repeats_planning_batches_and_applies_stage1_filter_to_aggre
         llm_settings,  # noqa: ANN001
         api_key: str,
         batch_candidate_ids: list[str],
+        planning_summary: PlanningSummaryState | None = None,
     ) -> list[QueryBlueprint]:
-        del spec, llm_settings, api_key
+        del spec, llm_settings, api_key, planning_summary
         planning_batch_calls.append(list(batch_candidate_ids))
         return [_make_blueprint(candidate_id) for candidate_id in batch_candidate_ids]
 
@@ -452,6 +567,142 @@ def test_gen_queries_repeats_planning_batches_and_applies_stage1_filter_to_aggre
             "item_ids": ["c001", "c002", "c003", "c004", "c005"],
             "expected_ids": ["c001", "c002", "c003", "c004", "c005"],
         }
+    ]
+
+
+def test_gen_queries_invokes_first_planning_batch_with_none_summary_when_no_prior_artifact(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When no prior artifact is available, the first planning batch starts with no planning summary."""
+    planning_summary_seen: list[PlanningSummaryState | None] = []
+
+    monkeypatch.setattr(querygen_api, "read_planning_summary_artifact", lambda **kwargs: None)
+
+    def run_planning_stage(
+        *,
+        spec,  # noqa: ANN001
+        llm_settings,  # noqa: ANN001
+        api_key: str,
+        batch_candidate_ids: list[str],
+        planning_summary: PlanningSummaryState | None = None,
+    ) -> list[QueryBlueprint]:
+        del spec, llm_settings, api_key
+        planning_summary_seen.append(planning_summary)
+        return [_make_blueprint(candidate_id) for candidate_id in batch_candidate_ids]
+
+    monkeypatch.setattr(querygen_api, "run_planning_stage", run_planning_stage)
+
+    querygen_api.gen_queries(
+        **_required_querygen_kwargs(tmp_path),
+        n_queries=3,
+        run_id="first-planning-summary-none-check",
+    )
+
+    assert planning_summary_seen == [None]
+
+
+def test_gen_queries_threads_planning_summary_state_across_batches(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Planning-summary state is updated after each batch and threaded into the next planning batch."""
+    candidate_ids = ["c001", "c002", "c003", "c004", "c005"]
+    planning_batch_calls: list[dict[str, object]] = []
+    planning_summary_calls: list[dict[str, object]] = []
+
+    summary_state_1 = _make_planning_summary_state(
+        redundancy_patterns="summary-state-1 redundancy",
+        diversification_targets="summary-state-1 targets",
+        coverage_notes="summary-state-1 coverage",
+    )
+    summary_state_2 = _make_planning_summary_state(
+        redundancy_patterns="summary-state-2 redundancy",
+        diversification_targets="summary-state-2 targets",
+        coverage_notes="summary-state-2 coverage",
+    )
+    summary_state_3 = _make_planning_summary_state(
+        redundancy_patterns="summary-state-3 redundancy",
+        diversification_targets="summary-state-3 targets",
+        coverage_notes="summary-state-3 coverage",
+    )
+    returned_states = iter([summary_state_1, summary_state_2, summary_state_3])
+
+    monkeypatch.setattr(querygen_api, "build_candidate_ids", lambda n_queries: candidate_ids)
+    monkeypatch.setattr(querygen_api, "iter_batch_sizes", lambda n_queries, batch_size: iter([2, 2, 1]))
+    monkeypatch.setattr(querygen_api, "read_planning_summary_artifact", lambda **kwargs: None)
+
+    def run_planning_stage(
+        *,
+        spec,  # noqa: ANN001
+        llm_settings,  # noqa: ANN001
+        api_key: str,
+        batch_candidate_ids: list[str],
+        planning_summary: PlanningSummaryState | None = None,
+    ) -> list[QueryBlueprint]:
+        del spec, llm_settings, api_key
+        planning_batch_calls.append(
+            {
+                "batch_candidate_ids": list(batch_candidate_ids),
+                "planning_summary": planning_summary,
+            }
+        )
+        return [_make_blueprint(candidate_id) for candidate_id in batch_candidate_ids]
+
+    def run_planning_summary(
+        *,
+        spec,  # noqa: ANN001
+        candidates: list[QueryBlueprint],
+        llm_settings,  # noqa: ANN001
+        api_key: str,
+        prior_summary_state: PlanningSummaryState | None = None,
+    ) -> PlanningSummaryState:
+        del spec, llm_settings, api_key
+        planning_summary_calls.append(
+            {
+                "candidate_ids": [candidate.candidate_id for candidate in candidates],
+                "prior_summary_state": prior_summary_state,
+            }
+        )
+        return next(returned_states)
+
+    monkeypatch.setattr(querygen_api, "run_planning_stage", run_planning_stage)
+    monkeypatch.setattr(querygen_api, "run_planning_summary", run_planning_summary)
+
+    querygen_api.gen_queries(
+        **_required_querygen_kwargs(tmp_path),
+        n_queries=5,
+        batch_size=2,
+        run_id="planning-summary-threading-check",
+    )
+
+    assert planning_batch_calls == [
+        {
+            "batch_candidate_ids": ["c001", "c002"],
+            "planning_summary": None,
+        },
+        {
+            "batch_candidate_ids": ["c003", "c004"],
+            "planning_summary": summary_state_1,
+        },
+        {
+            "batch_candidate_ids": ["c005"],
+            "planning_summary": summary_state_2,
+        },
+    ]
+    assert planning_summary_calls == [
+        {
+            "candidate_ids": ["c001", "c002"],
+            "prior_summary_state": None,
+        },
+        {
+            "candidate_ids": ["c003", "c004"],
+            "prior_summary_state": summary_state_1,
+        },
+        {
+            "candidate_ids": ["c005"],
+            "prior_summary_state": summary_state_2,
+        },
     ]
 
 
@@ -634,8 +885,9 @@ def test_gen_queries_calls_assembly_and_export_with_final_post_filter_outputs(
         llm_settings,  # noqa: ANN001
         api_key: str,
         batch_candidate_ids: list[str],
+        planning_summary: PlanningSummaryState | None = None,
     ) -> list[QueryBlueprint]:
-        del spec, llm_settings, api_key
+        del spec, llm_settings, api_key, planning_summary
         return [_make_blueprint(candidate_id) for candidate_id in batch_candidate_ids]
 
     def filter_aligned_candidate_ids(
@@ -766,6 +1018,98 @@ def test_gen_queries_calls_assembly_and_export_with_final_post_filter_outputs(
     ]
 
 
+def test_gen_queries_assembles_and_exports_final_planning_summary_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Final planning-summary assembly and export run once at the end of a successful run."""
+    summary_state_1 = _make_planning_summary_state(
+        redundancy_patterns="state-1 redundancy",
+        diversification_targets="state-1 targets",
+        coverage_notes="state-1 coverage",
+    )
+    summary_state_2 = _make_planning_summary_state(
+        redundancy_patterns="state-2 redundancy",
+        diversification_targets="state-2 targets",
+        coverage_notes="state-2 coverage",
+    )
+    assembled_artifact = _make_planning_summary_artifact(
+        spec_fingerprint="final-spec-fingerprint",
+        source_run_id="planning-summary-export-check",
+        state=summary_state_2,
+    )
+
+    monkeypatch.setattr(querygen_api, "build_candidate_ids", lambda n_queries: ["c001", "c002", "c003"])
+    monkeypatch.setattr(querygen_api, "iter_batch_sizes", lambda n_queries, batch_size: iter([2, 1]))
+    monkeypatch.setattr(querygen_api, "read_planning_summary_artifact", lambda **kwargs: None)
+
+    returned_states = iter([summary_state_1, summary_state_2])
+
+    def run_planning_summary(
+        *,
+        spec,  # noqa: ANN001
+        candidates: list[QueryBlueprint],
+        llm_settings,  # noqa: ANN001
+        api_key: str,
+        prior_summary_state: PlanningSummaryState | None = None,
+    ) -> PlanningSummaryState:
+        del spec, candidates, llm_settings, api_key, prior_summary_state
+        return next(returned_states)
+
+    assemble_calls: list[dict[str, object]] = []
+    export_calls: list[dict[str, object]] = []
+
+    def assemble_planning_summary(
+        *,
+        spec,  # noqa: ANN001
+        run_id: str,
+        state: PlanningSummaryState,
+    ) -> PlanningSummaryArtifact:
+        assemble_calls.append(
+            {
+                "spec": spec,
+                "run_id": run_id,
+                "state": state,
+            }
+        )
+        return assembled_artifact
+
+    def export_planning_summary(
+        *,
+        artifact: PlanningSummaryArtifact,
+        artifact_path: Path,
+    ) -> None:
+        export_calls.append(
+            {
+                "artifact": artifact,
+                "artifact_path": artifact_path,
+            }
+        )
+
+    monkeypatch.setattr(querygen_api, "run_planning_summary", run_planning_summary)
+    monkeypatch.setattr(querygen_api, "assemble_planning_summary", assemble_planning_summary)
+    monkeypatch.setattr(querygen_api, "export_planning_summary", export_planning_summary)
+
+    result = querygen_api.gen_queries(
+        **_required_querygen_kwargs(tmp_path),
+        n_queries=3,
+        batch_size=2,
+        run_id="planning-summary-export-check",
+    )
+
+    assert len(assemble_calls) == 1
+    assert assemble_calls[0]["run_id"] == "planning-summary-export-check"
+    assert assemble_calls[0]["state"] == summary_state_2
+    assert assemble_calls[0]["spec"] == result.settings.spec
+
+    assert export_calls == [
+        {
+            "artifact": assembled_artifact,
+            "artifact_path": result.paths.planning_summary_artifact_json,
+        }
+    ]
+
+
 def test_gen_queries_raises_when_provider_secret_resolution_fails(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -814,6 +1158,11 @@ def test_gen_queries_propagates_planning_failure_and_stops_downstream_work(
         "export_queries",
         lambda **kwargs: pytest.fail("export_queries must not run after planning failure"),
     )
+    monkeypatch.setattr(
+        querygen_api,
+        "export_planning_summary",
+        lambda **kwargs: pytest.fail("export_planning_summary must not run after planning failure"),
+    )
 
     with pytest.raises(RuntimeError, match="planning failed"):
         querygen_api.gen_queries(
@@ -841,6 +1190,11 @@ def test_gen_queries_propagates_realization_failure_and_stops_downstream_work(
         querygen_api,
         "export_queries",
         lambda **kwargs: pytest.fail("export_queries must not run after realization failure"),
+    )
+    monkeypatch.setattr(
+        querygen_api,
+        "export_planning_summary",
+        lambda **kwargs: pytest.fail("export_planning_summary must not run after realization failure"),
     )
 
     with pytest.raises(RuntimeError, match="realization failed"):
