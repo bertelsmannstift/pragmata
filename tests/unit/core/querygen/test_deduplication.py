@@ -88,7 +88,7 @@ def test_blueprint_content_key_is_deterministic_and_ignores_candidate_id(
 
 
 @pytest.mark.parametrize(
-    ("similarities", "threshold", "expected"),
+    ("similarities", "near_duplicate_tolerance", "expected"),
     [
         (
             np.array(
@@ -124,17 +124,40 @@ def test_blueprint_content_key_is_deterministic_and_ignores_candidate_id(
 )
 def test_select_non_duplicate_indices_returns_first_occurrence_ordered_selection(
     similarities: np.ndarray,
-    threshold: float,
+    near_duplicate_tolerance: float,
     expected: list[int],
 ) -> None:
-    assert _select_non_duplicate_indices(similarities, threshold=threshold) == expected
+    assert _select_non_duplicate_indices(similarities, near_duplicate_tolerance=near_duplicate_tolerance) == expected
 
 
 def test_select_non_duplicate_indices_rejects_non_square_matrices() -> None:
     similarities = np.array([[1.0, 0.9, 0.8]], dtype=np.float32)
 
     with pytest.raises(ValueError, match="similarities must be a square 2D matrix"):
-        _select_non_duplicate_indices(similarities)
+        _select_non_duplicate_indices(similarities, near_duplicate_tolerance=0.95)
+
+
+def test_select_non_duplicate_indices_respects_near_duplicate_tolerance() -> None:
+    similarities = np.array(
+        [
+            [1.00, 0.94, 0.20],
+            [0.94, 1.00, 0.20],
+            [0.20, 0.20, 1.00],
+        ],
+        dtype=np.float32,
+    )
+
+    stricter = _select_non_duplicate_indices(
+        similarities,
+        near_duplicate_tolerance=0.90,
+    )
+    looser = _select_non_duplicate_indices(
+        similarities,
+        near_duplicate_tolerance=0.95,
+    )
+
+    assert stricter == [0, 2]
+    assert looser == [0, 1, 2]
 
 
 def test_embed_blueprints_serializes_in_fixed_order_and_uses_one_normalized_batch(
@@ -261,7 +284,7 @@ def test_deduplicate_blueprints_removes_exact_duplicates_and_preserves_order(
         lambda checkpoint="all-MiniLM-L6-v2": _FakeModel(),
     )
 
-    deduplicated = deduplicate_blueprints(candidates)
+    deduplicated = deduplicate_blueprints(candidates, near_duplicate_tolerance=0.95,)
 
     assert [blueprint.candidate_id for blueprint in deduplicated] == ["c001", "c003"]
 
@@ -309,13 +332,13 @@ def test_deduplicate_blueprints_applies_near_duplicate_selection_in_original_ord
         lambda checkpoint="all-MiniLM-L6-v2": _FakeModel(),
     )
 
-    deduplicated = deduplicate_blueprints(candidates)
+    deduplicated = deduplicate_blueprints(candidates, near_duplicate_tolerance=0.95,)
 
     assert [blueprint.candidate_id for blueprint in deduplicated] == ["c001", "c003", "c004"]
 
 
 def test_deduplicate_blueprints_returns_empty_list_for_empty_input() -> None:
-    assert deduplicate_blueprints([]) == []
+    assert deduplicate_blueprints([], near_duplicate_tolerance=0.95) == []
 
 
 def test_deduplicate_blueprints_short_circuits_when_exact_dedup_leaves_one(
@@ -348,8 +371,53 @@ def test_deduplicate_blueprints_short_circuits_when_exact_dedup_leaves_one(
         _fake_load_embedding_model,
     )
 
-    result = deduplicate_blueprints([first, duplicate])
+    result = deduplicate_blueprints([first, duplicate], near_duplicate_tolerance=0.95,)
 
     assert result == [first]
     assert embed_called is False
     assert load_called is False
+
+
+def test_deduplicate_blueprints_respects_near_duplicate_tolerance(
+    make_blueprint: Callable[..., QueryBlueprint],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    candidates = [
+        make_blueprint(candidate_id="c001", topic="teacher shortages"),
+        make_blueprint(candidate_id="c002", topic="school meals"),
+        make_blueprint(candidate_id="c003", topic="digital learning"),
+    ]
+
+    monkeypatch.setattr(
+        "pragmata.core.querygen.deduplication._embed_blueprints",
+        lambda blueprints: np.array(
+            [
+                [1.0, 0.0],
+                [0.0, 1.0],
+                [0.5, 0.5],
+            ],
+            dtype=np.float32,
+        ),
+    )
+
+    class _FakeModel:
+        def similarity(self, left: np.ndarray, right: np.ndarray) -> np.ndarray:
+            return np.array(
+                [
+                    [1.00, 0.94, 0.20],
+                    [0.94, 1.00, 0.20],
+                    [0.20, 0.20, 1.00],
+                ],
+                dtype=np.float32,
+            )
+
+    monkeypatch.setattr(
+        "pragmata.core.querygen.deduplication._load_embedding_model",
+        lambda checkpoint="all-MiniLM-L6-v2": _FakeModel(),
+    )
+
+    stricter = deduplicate_blueprints(candidates, near_duplicate_tolerance=0.90)
+    looser = deduplicate_blueprints(candidates, near_duplicate_tolerance=0.95)
+
+    assert [blueprint.candidate_id for blueprint in stricter] == ["c001", "c003"]
+    assert [blueprint.candidate_id for blueprint in looser] == ["c001", "c002", "c003"]
