@@ -104,9 +104,10 @@ def gen_queries(
             values use fewer, bigger calls; smaller values split
             generation into more repeated calls. Defaults to 25.
         near_duplicate_tolerance: Similarity tolerance used for semantic
-            near-duplicate blueprint removal. Lower values deduplicate more
-            aggressively; higher values allow more similar blueprints, including
-            close paraphrases, to remain. Defaults to 0.95.
+            near-duplicate blueprint removal. Must be in the range (0, 1],
+            where lower values deduplicate more aggressively and higher values
+            allow more similar blueprints, including close paraphrases, to remain.
+            Defaults to 0.95.
         enable_planning_memory: Whether to enable planning memory for the run.
             Defaults to True. When enabled, an additional LLM updates and persists a
             compact summary of prior blueprint generation across batches and compatible
