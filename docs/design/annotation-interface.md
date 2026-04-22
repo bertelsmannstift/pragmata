@@ -157,7 +157,7 @@ Each task dataset includes one optional free-text field per annotated unit:
 
 ### Record discard
 
-Annotators can discard a record outright when it is unsuitable for annotation (low-quality query, duplicate, unclear, or beyond their domain knowledge). The discard panel is visually distinct from the annotation label questions — a collapsible `<details>` element styled with a red border, rendered via `rg.CustomField`. Argilla's native Discard button is hidden via CSS so the panel is the only discard path and a reason is always captured.
+Annotators can discard a record outright when it is unsuitable for annotation (invalid or unrealistic, not reliably evaluable, or outside the reviewer's expertise). The discard panel is visually distinct from the annotation label questions — a collapsible `<details>` element styled with a red border, rendered via `rg.CustomField`. Argilla's native Discard button is hidden via CSS so the panel is the only discard path and a reason is always captured.
 
 **Discard flow:**
 
@@ -174,7 +174,7 @@ Annotators can discard a record outright when it is unsuitable for annotation (l
 
 Hidden questions persist discard data on the discarded response so it is available at export time.
 
-**Discard reasons** (`DiscardReason` enum): `low_quality_query`, `duplicate`, `unclear`, `beyond_domain_knowledge`.
+**Discard reasons** (`DiscardReason` enum): `invalid_or_unrealistic`, `not_evaluable`, `outside_reviewer_expertise`.
 
 **Implementation note:** The CustomField uses `srcdoc`-rendered iframe with same-origin parent DOM access (`window.parent.document`). DOM selectors (`[data-question-name="..."]`, `.button--discard`) may need re-verification on Argilla upgrades.
 

@@ -36,16 +36,15 @@
   <summary>&#9888; Discard this record</summary>
   <p style="margin-top:8px;font-size:13px;color:#555">
     Use this if the record is unsuitable for annotation
-    (e.g. low quality, duplicate, unclear, or beyond your knowledge).
+    (e.g. invalid, not reliably evaluable, or outside your expertise).
   </p>
 
   <label>Reason:
     <select id="reason">
       <option value="">&#8212; select &#8212;</option>
-      <option value="low_quality_query">Low quality / unrealistic query</option>
-      <option value="duplicate">Duplicate</option>
-      <option value="unclear">Unclear query or answer</option>
-      <option value="beyond_domain_knowledge">Beyond my domain knowledge</option>
+      <option value="invalid_or_unrealistic">Invalid or unrealistic record</option>
+      <option value="not_evaluable">Cannot be reliably evaluated</option>
+      <option value="outside_reviewer_expertise">Outside my domain expertise</option>
     </select>
   </label>
 
@@ -164,7 +163,12 @@
 
     setTimeout(function() {
       hideStaleQuestions();
-      var discardBtn = pdoc.querySelector(NATIVE_DISCARD_SEL);
+      // Scope lookup to the record form containing the hidden reason card,
+      // so we don't grab a stale button from a neighbouring record during
+      // re-render. Fall back to global if we can't localise.
+      var recordScope = reasonCard && reasonCard.closest('form, .record, .content-area');
+      var scope = recordScope || pdoc;
+      var discardBtn = scope.querySelector(NATIVE_DISCARD_SEL);
       if (discardBtn) discardBtn.click();
     }, DISCARD_SUBMIT_DELAY_MS);
   });

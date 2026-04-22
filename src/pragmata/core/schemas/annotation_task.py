@@ -14,7 +14,6 @@ class Task(StrEnum):
 class DiscardReason(StrEnum):
     """Reasons an annotator may discard a record outright."""
 
-    LOW_QUALITY_QUERY = "low_quality_query"
-    DUPLICATE = "duplicate"
-    UNCLEAR = "unclear"
-    BEYOND_DOMAIN_KNOWLEDGE = "beyond_domain_knowledge"
+    INVALID_OR_UNREALISTIC = "invalid_or_unrealistic"
+    NOT_EVALUABLE = "not_evaluable"
+    OUTSIDE_REVIEWER_EXPERTISE = "outside_reviewer_expertise"
