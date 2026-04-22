@@ -1,6 +1,7 @@
 """Annotation export orchestration: fetch from Argilla, write CSVs, return ExportResult."""
 
 import csv
+import json
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -20,6 +21,7 @@ from pragmata.core.schemas.annotation_export import (
     RetrievalAnnotation,
     RetrievalExportRow,
 )
+from pragmata.core.schemas.annotation_export_meta import AnnotationExportMeta
 from pragmata.core.schemas.annotation_task import Task
 
 logger = logging.getLogger(__name__)
@@ -107,6 +109,49 @@ def write_export_csv(
         raise
 
 
+def assemble_export_meta(
+    export_id: str,
+    dataset_id: str | None,
+    tasks: list[Task],
+    include_discarded: bool,
+    row_counts: dict[Task, int],
+    n_annotators: dict[Task, int],
+    constraint_summary: dict[str, int],
+) -> AnnotationExportMeta:
+    """Assemble run-level provenance metadata for an annotation export.
+
+    Args:
+        export_id: Stable export identifier.
+        dataset_id: Dataset suffix scoping the Argilla datasets, if any.
+        tasks: Tasks that were exported.
+        include_discarded: Whether discarded responses were included.
+        row_counts: Rows written per task.
+        n_annotators: Distinct annotator count per task.
+        constraint_summary: Constraint violation count per rule name.
+
+    Returns:
+        Provenance sidecar with an internally stamped creation time.
+    """
+    return AnnotationExportMeta(
+        export_id=export_id,
+        created_at=datetime.now(UTC),
+        dataset_id=dataset_id,
+        tasks=tasks,
+        include_discarded=include_discarded,
+        row_counts=row_counts,
+        n_annotators=n_annotators,
+        constraint_summary=constraint_summary,
+    )
+
+
+def write_export_meta(meta: AnnotationExportMeta, path: Path) -> None:
+    """Write the export provenance sidecar to disk as JSON."""
+    path.write_text(
+        json.dumps(meta.model_dump(mode="json")),
+        encoding="utf-8",
+    )
+
+
 def run_export(
     client: rg.Argilla,
     settings: "AnnotationSettings",
@@ -115,8 +160,20 @@ def run_export(
     *,
     include_discarded: bool = False,
 ) -> ExportResult:
-    """Fetch all tasks, write CSVs atomically, return ExportResult."""
+    """Fetch all tasks, write CSVs and provenance sidecar, return ExportResult."""
+    dataset_id = settings.dataset_id or None
+
     if not tasks:
+        meta = assemble_export_meta(
+            export_id=paths.export_dir.name,
+            dataset_id=dataset_id,
+            tasks=[],
+            include_discarded=include_discarded,
+            row_counts={},
+            n_annotators={},
+            constraint_summary={},
+        )
+        write_export_meta(meta, paths.export_meta_json)
         return ExportResult(paths=paths, files={}, row_counts={}, constraint_summary={}, n_annotators={})
 
     user_lookup = build_user_lookup(client)
@@ -146,6 +203,17 @@ def run_export(
         for _, violations in task_rows[task]:
             for v in violations:
                 constraint_summary[v] = constraint_summary.get(v, 0) + 1
+
+    meta = assemble_export_meta(
+        export_id=paths.export_dir.name,
+        dataset_id=dataset_id,
+        tasks=tasks,
+        include_discarded=include_discarded,
+        row_counts=row_counts,
+        n_annotators=n_annotators,
+        constraint_summary=constraint_summary,
+    )
+    write_export_meta(meta, paths.export_meta_json)
 
     return ExportResult(
         paths=paths,

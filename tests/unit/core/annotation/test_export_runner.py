@@ -263,6 +263,7 @@ class TestExportResult:
             retrieval_annotation_csv=tmp_path / "retrieval.csv",
             grounding_annotation_csv=tmp_path / "grounding.csv",
             generation_annotation_csv=tmp_path / "generation.csv",
+            export_meta_json=tmp_path / "annotation_export.meta.json",
         )
         result = ExportResult(
             paths=paths,
@@ -282,6 +283,7 @@ class TestExportResult:
             retrieval_annotation_csv=tmp_path / "retrieval.csv",
             grounding_annotation_csv=tmp_path / "grounding.csv",
             generation_annotation_csv=tmp_path / "generation.csv",
+            export_meta_json=tmp_path / "annotation_export.meta.json",
         )
         result = ExportResult(paths=paths, files={}, row_counts={}, constraint_summary={}, n_annotators={})
         with pytest.raises((AttributeError, TypeError)):
@@ -403,3 +405,72 @@ class TestNAnnotators:
 
         result = export_annotations(base_dir=tmp_path, export_id="test-run", tasks=[])
         assert result.n_annotators == {}
+
+
+class TestExportMetaSidecar:
+    def test_sidecar_written_alongside_csvs(self, tmp_path: Path, mock_client: MagicMock) -> None:
+        import json
+
+        from pragmata.api.annotation_export import export_annotations
+
+        record = _make_record(fields=RETRIEVAL_FIELDS, metadata=BASE_METADATA, responses=_retrieval_responses(_UID1))
+        dataset = MagicMock()
+        dataset.records.return_value = iter([record])
+        mock_client.datasets.return_value = dataset
+
+        result = export_annotations(base_dir=tmp_path, export_id="test-run", tasks=[Task.RETRIEVAL])
+
+        meta_path = result.paths.export_meta_json
+        assert meta_path.exists()
+
+        payload = json.loads(meta_path.read_text())
+        assert payload["export_id"] == "test-run"
+        assert payload["tasks"] == ["retrieval"]
+        assert payload["include_discarded"] is False
+        assert payload["row_counts"] == {"retrieval": 1}
+        assert payload["n_annotators"] == {"retrieval": 1}
+
+    def test_sidecar_captures_include_discarded(self, tmp_path: Path, mock_client: MagicMock) -> None:
+        import json
+
+        from pragmata.api.annotation_export import export_annotations
+
+        dataset = MagicMock()
+        dataset.records.return_value = iter([])
+        mock_client.datasets.return_value = dataset
+
+        result = export_annotations(
+            base_dir=tmp_path,
+            export_id="test-run",
+            tasks=[Task.RETRIEVAL],
+            include_discarded=True,
+        )
+
+        payload = json.loads(result.paths.export_meta_json.read_text())
+        assert payload["include_discarded"] is True
+
+    def test_sidecar_written_when_no_tasks(self, tmp_path: Path, mock_client: MagicMock) -> None:
+        import json
+
+        from pragmata.api.annotation_export import export_annotations
+
+        result = export_annotations(base_dir=tmp_path, export_id="test-run", tasks=[])
+
+        payload = json.loads(result.paths.export_meta_json.read_text())
+        assert payload["tasks"] == []
+        assert payload["row_counts"] == {}
+        assert payload["n_annotators"] == {}
+
+    def test_sidecar_dataset_id_null_when_unset(self, tmp_path: Path, mock_client: MagicMock) -> None:
+        import json
+
+        from pragmata.api.annotation_export import export_annotations
+
+        dataset = MagicMock()
+        dataset.records.return_value = iter([])
+        mock_client.datasets.return_value = dataset
+
+        result = export_annotations(base_dir=tmp_path, export_id="test-run", tasks=[Task.RETRIEVAL])
+
+        payload = json.loads(result.paths.export_meta_json.read_text())
+        assert payload["dataset_id"] is None

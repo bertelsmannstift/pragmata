@@ -117,6 +117,7 @@ def export_dir(tmp_path: Path) -> AnnotationExportPaths:
         retrieval_annotation_csv=export / "retrieval.csv",
         grounding_annotation_csv=export / "grounding.csv",
         generation_annotation_csv=export / "generation.csv",
+        export_meta_json=export / "annotation_export.meta.json",
     )
 
 
