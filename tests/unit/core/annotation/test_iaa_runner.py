@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from pragmata.core.annotation.export_runner import TASK_EXPORT_ROW, write_export_csv
+from pragmata.core.annotation.export_runner import TASK_ANNOTATION_SCHEMA, write_export_csv
 from pragmata.core.annotation.iaa_runner import run_iaa
 from pragmata.core.paths.annotation_paths import (
     AnnotationExportPaths,
@@ -58,7 +58,7 @@ def _make_annotation(
         extra = _GENERATION_DEFAULTS
     else:
         extra = _GROUNDING_DEFAULTS
-    schema_cls = TASK_EXPORT_ROW[task].__bases__[0]  # annotation (not export-row) class
+    schema_cls = TASK_ANNOTATION_SCHEMA[task]
     return schema_cls.model_validate(
         {
             **_BASE_FIELDS,
@@ -92,7 +92,7 @@ _RETRIEVAL_LABELS = ("topically_relevant", "evidence_sufficient", "misleading")
 
 
 def _make_discarded_retrieval_row(record_uuid: str, annotator_id: str) -> tuple:
-    schema_cls = TASK_EXPORT_ROW[Task.RETRIEVAL].__bases__[0]
+    schema_cls = TASK_ANNOTATION_SCHEMA[Task.RETRIEVAL]
     annotation = schema_cls.model_validate(
         {
             **_BASE_FIELDS,

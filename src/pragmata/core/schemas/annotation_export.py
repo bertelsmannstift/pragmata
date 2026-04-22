@@ -29,7 +29,7 @@ class AnnotationBase(BaseModel):
     record_status: str
     response_status: ResponseStatus
     discard_reason: DiscardReason | None = None
-    discard_notes: str = ""
+    discard_notes: str | None = None
 
     @model_validator(mode="after")
     def _submitted_has_all_labels(self) -> "AnnotationBase":

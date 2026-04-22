@@ -14,7 +14,6 @@ import importlib
 from typing import TYPE_CHECKING
 
 __all__ = [
-    "DiscardReason",
     "ExportResult",
     "IaaReport",
     "ImportResult",
@@ -29,7 +28,6 @@ __all__ = [
 ]
 
 _LAZY: dict[str, tuple[str, str]] = {
-    "DiscardReason": ("pragmata.core.schemas.annotation_task", "DiscardReason"),
     "ExportResult": ("pragmata.core.annotation.export_runner", "ExportResult"),
     "IaaReport": ("pragmata.core.schemas.iaa_report", "IaaReport"),
     "ImportResult": ("pragmata.api.annotation_import", "ImportResult"),
@@ -67,7 +65,6 @@ if TYPE_CHECKING:
     from pragmata.api.annotation_setup import teardown as teardown
     from pragmata.core.annotation.export_runner import ExportResult as ExportResult
     from pragmata.core.annotation.setup import SetupResult as SetupResult
-    from pragmata.core.schemas.annotation_task import DiscardReason as DiscardReason
     from pragmata.core.schemas.annotation_task import Task as Task
     from pragmata.core.schemas.iaa_report import IaaReport as IaaReport
     from pragmata.core.settings.annotation_settings import UserSpec as UserSpec

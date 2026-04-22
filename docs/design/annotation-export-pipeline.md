@@ -73,7 +73,7 @@ Export schemas define what downstream pipelines need. They are not a mirror of w
 | `record_status` | string | Argilla record status: `pending` or `completed` (whether the record met its `TaskDistribution` overlap target) |
 | `response_status` | string | Annotator response status: `submitted` or `discarded` |
 | `discard_reason` | string\|null | Discard reason selected by annotator; null for submitted responses |
-| `discard_notes` | string | Optional free-text notes from the discard panel; empty string if absent |
+| `discard_notes` | string\|null | Optional free-text notes from the discard panel; null if absent |
 
 **Not exported:**
 - `_server_id` — Argilla-internal UUID; `record_uuid` already serves as the cross-dataset identifier
