@@ -110,6 +110,8 @@ def run_export(
     settings: "AnnotationSettings",
     paths: AnnotationExportPaths,
     tasks: list[Task],
+    *,
+    include_discarded: bool = False,
 ) -> ExportResult:
     """Fetch all tasks, write CSVs atomically, return ExportResult."""
     if not tasks:
@@ -119,7 +121,7 @@ def run_export(
 
     task_rows: dict[Task, list[tuple[AnnotationModel, list[str]]]] = {}
     for task in tasks:
-        task_rows[task] = fetch_task(client, settings, task, user_lookup)
+        task_rows[task] = fetch_task(client, settings, task, user_lookup, include_discarded=include_discarded)
 
     task_paths = {task: getattr(paths, TASK_CSV_ATTR[task]) for task in tasks}
 

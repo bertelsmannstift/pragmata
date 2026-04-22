@@ -25,11 +25,14 @@ def export_annotations(
     tasks: list[Task] | None = None,
     dataset_id: str | Unset = UNSET,
     config_path: str | Path | Unset = UNSET,
+    include_discarded: bool = False,
 ) -> ExportResult:
-    """Fetch submitted annotations from Argilla and write flat CSVs per task.
+    """Fetch annotations from Argilla and write flat CSVs per task.
 
-    Queries each task dataset for submitted-only responses, groups by annotator,
-    applies constraint validation, and writes atomic CSVs.
+    By default, queries each task dataset for submitted-only responses. Set
+    ``include_discarded=True`` to also include responses the annotator
+    discarded; their label columns are null and constraint validation is
+    skipped, but the row carries ``discard_reason`` and ``discard_notes``.
 
     Credential resolution:
     - ``api_url``: kwarg > ``ARGILLA_API_URL`` env > config (``argilla.api_url``)
@@ -44,6 +47,9 @@ def export_annotations(
         tasks: Tasks to export. Defaults to all three tasks.
         dataset_id: Suffix identifying which datasets to export from.
         config_path: Path to YAML config file for settings resolution.
+        include_discarded: If True, include discarded responses alongside
+            submitted ones. Defaults to False to avoid polluting downstream
+            evaluation pipelines.
 
     Returns:
         ExportResult with file paths, row counts, and constraint summary.
@@ -65,7 +71,7 @@ def export_annotations(
     resolved_tasks = tasks if tasks is not None else list(Task)
 
     with error_log(export_paths.tool_root):
-        result = run_export(client, settings, export_paths, resolved_tasks)
+        result = run_export(client, settings, export_paths, resolved_tasks, include_discarded=include_discarded)
 
     logger.info(
         "Export complete: %d task(s), %d total rows",

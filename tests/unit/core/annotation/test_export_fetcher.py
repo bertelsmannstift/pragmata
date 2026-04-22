@@ -298,7 +298,7 @@ class TestFetchTask:
         ]
         record = _make_record(fields=_RETRIEVAL_FIELDS, metadata=_BASE_METADATA, responses=responses)
         client = _mock_client_with_records([record])
-        rows = fetch_task(client, _SETTINGS, Task.RETRIEVAL, {_UID1: "alice"})
+        rows = fetch_task(client, _SETTINGS, Task.RETRIEVAL, {_UID1: "alice"}, include_discarded=True)
 
         assert len(rows) == 1
         model, violations = rows[0]
@@ -312,7 +312,7 @@ class TestFetchTask:
         ]
         record = _make_record(fields=_RETRIEVAL_FIELDS, metadata=_BASE_METADATA, responses=responses)
         client = _mock_client_with_records([record])
-        rows = fetch_task(client, _SETTINGS, Task.RETRIEVAL, {_UID1: "alice"})
+        rows = fetch_task(client, _SETTINGS, Task.RETRIEVAL, {_UID1: "alice"}, include_discarded=True)
 
         assert rows[0][0].discard_reason == "duplicate"
 
@@ -323,7 +323,7 @@ class TestFetchTask:
         ]
         record = _make_record(fields=_RETRIEVAL_FIELDS, metadata=_BASE_METADATA, responses=responses)
         client = _mock_client_with_records([record])
-        rows = fetch_task(client, _SETTINGS, Task.RETRIEVAL, {_UID1: "alice"})
+        rows = fetch_task(client, _SETTINGS, Task.RETRIEVAL, {_UID1: "alice"}, include_discarded=True)
 
         assert rows[0][0].discard_notes == "query is ambiguous"
 
@@ -340,3 +340,17 @@ class TestFetchTask:
         assert model.response_status == "submitted"
         assert model.discard_reason is None
         assert model.discard_notes is None
+
+    def test_default_query_excludes_discarded(self) -> None:
+        client = _mock_client_with_records([])
+        fetch_task(client, _SETTINGS, Task.RETRIEVAL, {_UID1: "alice"})
+
+        query = client.datasets.return_value.records.call_args.args[0]
+        assert query.filter.conditions == [("response.status", "in", ["submitted"])]
+
+    def test_include_discarded_query_covers_both_statuses(self) -> None:
+        client = _mock_client_with_records([])
+        fetch_task(client, _SETTINGS, Task.RETRIEVAL, {_UID1: "alice"}, include_discarded=True)
+
+        query = client.datasets.return_value.records.call_args.args[0]
+        assert query.filter.conditions == [("response.status", "in", ["submitted", "discarded"])]
