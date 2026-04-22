@@ -9,3 +9,12 @@ class Task(StrEnum):
     RETRIEVAL = "retrieval"
     GROUNDING = "grounding"
     GENERATION = "generation"
+
+
+class DiscardReason(StrEnum):
+    """Reasons an annotator may discard a record outright."""
+
+    LOW_QUALITY_QUERY = "low_quality_query"
+    DUPLICATE = "duplicate"
+    UNCLEAR = "unclear"
+    BEYOND_DOMAIN_KNOWLEDGE = "beyond_domain_knowledge"

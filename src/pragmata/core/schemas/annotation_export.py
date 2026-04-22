@@ -3,13 +3,20 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 
-from pragmata.core.schemas.annotation_task import Task
+from pragmata.core.schemas.annotation_task import DiscardReason, Task
+
+ResponseStatus = Literal["submitted", "discarded"]
 
 
 class AnnotationBase(BaseModel):
-    """Base fields shared across annotation exports."""
+    """Base fields shared across annotation exports.
+
+    Subclasses declare task-specific label fields as ``bool | None``; a submitted
+    response must carry non-None values for all of them (Argilla enforces this
+    at the UI level). Discarded responses are allowed to leave labels unset.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -20,6 +27,22 @@ class AnnotationBase(BaseModel):
     inserted_at: datetime
     created_at: datetime
     record_status: str
+    response_status: ResponseStatus
+    discard_reason: DiscardReason | None = None
+    discard_notes: str | None = None
+
+    @model_validator(mode="after")
+    def _submitted_has_all_labels(self) -> "AnnotationBase":
+        if self.response_status != "submitted":
+            return self
+        missing = [
+            name
+            for name, info in type(self).model_fields.items()
+            if info.annotation == bool | None and getattr(self, name) is None
+        ]
+        if missing:
+            raise ValueError(f"submitted {self.task.value} annotation missing required label(s): {missing}")
+        return self
 
 
 class RetrievalAnnotation(AnnotationBase):
@@ -31,9 +54,9 @@ class RetrievalAnnotation(AnnotationBase):
     chunk_id: str
     doc_id: str
     chunk_rank: int
-    topically_relevant: bool
-    evidence_sufficient: bool
-    misleading: bool
+    topically_relevant: bool | None = None
+    evidence_sufficient: bool | None = None
+    misleading: bool | None = None
     notes: str = ""
 
 
@@ -43,11 +66,11 @@ class GroundingAnnotation(AnnotationBase):
     task: Literal[Task.GROUNDING] = Task.GROUNDING
     answer: str
     context_set: str
-    support_present: bool
-    unsupported_claim_present: bool
-    contradicted_claim_present: bool
-    source_cited: bool
-    fabricated_source: bool
+    support_present: bool | None = None
+    unsupported_claim_present: bool | None = None
+    contradicted_claim_present: bool | None = None
+    source_cited: bool | None = None
+    fabricated_source: bool | None = None
     notes: str = ""
 
 
@@ -57,11 +80,11 @@ class GenerationAnnotation(AnnotationBase):
     task: Literal[Task.GENERATION] = Task.GENERATION
     query: str
     answer: str
-    proper_action: bool
-    response_on_topic: bool
-    helpful: bool
-    incomplete: bool
-    unsafe_content: bool
+    proper_action: bool | None = None
+    response_on_topic: bool | None = None
+    helpful: bool | None = None
+    incomplete: bool | None = None
+    unsafe_content: bool | None = None
     notes: str = ""
 
 

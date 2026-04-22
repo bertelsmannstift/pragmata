@@ -37,7 +37,7 @@ Argilla PostgreSQL
 
 ## Inputs
 
-Three Argilla datasets, accessed via Argilla SDK. Filter: `status == "submitted"` only (exclude draft, discarded). 
+Three Argilla datasets, accessed via Argilla SDK. Filter: `status in ["submitted", "discarded"]` — both submitted and annotator-discarded responses are exported; draft records are excluded.
 
 
 | Dataset | Records |
@@ -71,10 +71,14 @@ Export schemas define what downstream pipelines need. They are not a mirror of w
 | `inserted_at` | datetime | When the record was loaded into Argilla, tracks batch provenance |
 | `created_at` | datetime | Response submission timestamp |
 | `record_status` | string | Argilla record status: `pending` or `completed` (whether the record met its `TaskDistribution` overlap target) |
+| `response_status` | string | Annotator response status: `submitted` or `discarded` |
+| `discard_reason` | string\|null | Discard reason selected by annotator; null for submitted responses |
+| `discard_notes` | string\|null | Optional free-text notes from the discard panel; null if absent |
 
 **Not exported:**
-- `response_status` — we filter to `submitted` only; column would be constant
 - `_server_id` — Argilla-internal UUID; `record_uuid` already serves as the cross-dataset identifier
+
+**Discarded rows:** label columns are null; constraint validation is skipped.
 
 ### Task 1: Retrieval — `retrieval.csv`
 

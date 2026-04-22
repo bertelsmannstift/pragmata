@@ -29,7 +29,10 @@ from pragmata.core.schemas.iaa_report import (
 logger = logging.getLogger(__name__)
 
 TASK_LABELS: dict[Task, list[str]] = {
-    task: [name for name, info in schema.model_fields.items() if info.annotation is bool]
+    # bool | None is the only shape task-label fields take — discarded rows may leave them unset,
+    # submitted rows must fill them (enforced by AnnotationBase validator). Use == (structural
+    # equality on the union) rather than `is`, which fails on separately-constructed union objects.
+    task: [name for name, info in schema.model_fields.items() if info.annotation == bool | None]
     for task, schema in TASK_ANNOTATION_SCHEMA.items()
 }
 
@@ -105,10 +108,16 @@ def _filter_rows(
     after: datetime | None = None,
     before: datetime | None = None,
 ) -> list[AnnotationBase]:
-    """Filter annotation rows by annotator and/or time window."""
+    """Filter annotation rows to submitted responses, by annotator, and/or time window.
+
+    Discarded rows are always excluded: IAA measures agreement over labels, and
+    discarded responses have no labels to agree on.
+    """
     excluded = set(exclude_annotators) if exclude_annotators else set()
     filtered = []
     for row in rows:
+        if row.response_status != "submitted":
+            continue
         if row.annotator_id in excluded:
             continue
         if after and row.created_at < after:

@@ -26,11 +26,12 @@ _UID2 = UUID("00000000-0000-0000-0000-000000000002")
 _SETTINGS = AnnotationSettings()
 
 
-def _make_response(question_name: str, value: Any, user_id: UUID) -> MagicMock:
+def _make_response(question_name: str, value: Any, user_id: UUID, status: str = "submitted") -> MagicMock:
     resp = MagicMock()
     resp.question_name = question_name
     resp.value = value
     resp.user_id = user_id
+    resp.status = status
     return resp
 
 
@@ -289,3 +290,53 @@ class TestFetchTask:
         rows = fetch_task(client, _SETTINGS, Task.RETRIEVAL, {_UID1: "alice"})
 
         assert rows[0][0].notes == ""
+
+    def test_discarded_response_included(self) -> None:
+        responses = [
+            _make_response("discard_reason", "duplicate", _UID1, status="discarded"),
+            _make_response("discard_notes", "same as Q42", _UID1, status="discarded"),
+        ]
+        record = _make_record(fields=_RETRIEVAL_FIELDS, metadata=_BASE_METADATA, responses=responses)
+        client = _mock_client_with_records([record])
+        rows = fetch_task(client, _SETTINGS, Task.RETRIEVAL, {_UID1: "alice"})
+
+        assert len(rows) == 1
+        model, violations = rows[0]
+        assert model.response_status == "discarded"
+        assert model.topically_relevant is None
+        assert violations == []
+
+    def test_discard_reason_propagated(self) -> None:
+        responses = [
+            _make_response("discard_reason", "duplicate", _UID1, status="discarded"),
+        ]
+        record = _make_record(fields=_RETRIEVAL_FIELDS, metadata=_BASE_METADATA, responses=responses)
+        client = _mock_client_with_records([record])
+        rows = fetch_task(client, _SETTINGS, Task.RETRIEVAL, {_UID1: "alice"})
+
+        assert rows[0][0].discard_reason == "duplicate"
+
+    def test_discard_notes_propagated(self) -> None:
+        responses = [
+            _make_response("discard_reason", "unclear", _UID1, status="discarded"),
+            _make_response("discard_notes", "query is ambiguous", _UID1, status="discarded"),
+        ]
+        record = _make_record(fields=_RETRIEVAL_FIELDS, metadata=_BASE_METADATA, responses=responses)
+        client = _mock_client_with_records([record])
+        rows = fetch_task(client, _SETTINGS, Task.RETRIEVAL, {_UID1: "alice"})
+
+        assert rows[0][0].discard_notes == "query is ambiguous"
+
+    def test_discard_fields_default_when_absent(self) -> None:
+        record = _make_record(
+            fields=_RETRIEVAL_FIELDS,
+            metadata=_BASE_METADATA,
+            responses=_retrieval_responses(_UID1),
+        )
+        client = _mock_client_with_records([record])
+        rows = fetch_task(client, _SETTINGS, Task.RETRIEVAL, {_UID1: "alice"})
+
+        model, _ = rows[0]
+        assert model.response_status == "submitted"
+        assert model.discard_reason is None
+        assert model.discard_notes is None
