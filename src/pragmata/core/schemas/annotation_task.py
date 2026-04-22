@@ -15,5 +15,5 @@ class DiscardReason(StrEnum):
     """Reasons an annotator may discard a record outright."""
 
     INVALID_OR_UNREALISTIC = "invalid_or_unrealistic"
-    NOT_EVALUABLE = "not_evaluable"
+    UNCLEAR = "unclear"
     OUTSIDE_REVIEWER_EXPERTISE = "outside_reviewer_expertise"

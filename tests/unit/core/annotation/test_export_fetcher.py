@@ -318,7 +318,7 @@ class TestFetchTask:
 
     def test_discard_notes_propagated(self) -> None:
         responses = [
-            _make_response("discard_reason", "not_evaluable", _UID1, status="discarded"),
+            _make_response("discard_reason", "unclear", _UID1, status="discarded"),
             _make_response("discard_notes", "query is ambiguous", _UID1, status="discarded"),
         ]
         record = _make_record(fields=_RETRIEVAL_FIELDS, metadata=_BASE_METADATA, responses=responses)
