@@ -339,4 +339,4 @@ class TestFetchTask:
         model, _ = rows[0]
         assert model.response_status == "submitted"
         assert model.discard_reason is None
-        assert model.discard_notes == ""
+        assert model.discard_notes is None

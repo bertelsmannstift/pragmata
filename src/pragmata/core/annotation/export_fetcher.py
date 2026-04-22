@@ -135,7 +135,7 @@ def fetch_task(
                 "record_status": record_status,
                 "response_status": response_status,
                 "discard_reason": answers.get("discard_reason"),
-                "discard_notes": answers.get("discard_notes") or "",
+                "discard_notes": answers.get("discard_notes"),
                 "notes": answers.get("notes") or "",
             }
 

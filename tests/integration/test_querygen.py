@@ -8,12 +8,14 @@ import pytest
 
 import pragmata.core.querygen.deduplication as deduplication
 import pragmata.core.querygen.planning as planning
+import pragmata.core.querygen.planning_summary as planning_summary_stage
 import pragmata.core.querygen.realization as realization
 from pragmata import querygen
 from pragmata.core.csv_io import read_csv
-from pragmata.core.schemas.querygen_output import SyntheticQueriesMeta, SyntheticQueryRow
+from pragmata.core.schemas.querygen_output import PlanningSummaryArtifact, SyntheticQueriesMeta, SyntheticQueryRow
 from pragmata.core.schemas.querygen_plan import QueryBlueprint, QueryBlueprintList
 from pragmata.core.schemas.querygen_realize import RealizedQuery, RealizedQueryList
+from pragmata.core.schemas.querygen_summary import PlanningSummaryState
 from pragmata.core.settings.settings_base import MissingSecretError
 
 pytestmark = [pytest.mark.integration, pytest.mark.querygen]
@@ -77,8 +79,8 @@ def _parse_candidate_ids_block(block: str) -> list[str]:
     return [line.strip().removeprefix("- ").strip() for line in block.splitlines() if line.strip()]
 
 
-def _parse_realization_candidate_ids(block: str) -> list[str]:
-    """Parse candidate IDs from the realization blueprint block."""
+def _parse_blueprint_candidate_ids(block: str) -> list[str]:
+    """Parse candidate IDs from a formatted blueprint block."""
     candidate_ids: list[str] = []
 
     for line in block.splitlines():
@@ -105,8 +107,13 @@ class _SimilarityModelStub:
 class _PlanningRunnableStub:
     """Planning runnable stub keyed by candidate-id batches."""
 
-    def __init__(self, planning_calls: list[list[str]]) -> None:
+    def __init__(
+        self,
+        planning_calls: list[list[str]],
+        planning_summary_contexts: list[str],
+    ) -> None:
         self._planning_calls = planning_calls
+        self._planning_summary_contexts = planning_summary_contexts
         self._duplicate_blueprint_kwargs = {
             "topic": "coverage appeals",
             "user_scenario": ("My insurer denied a request and I need help understanding the appeal process."),
@@ -117,6 +124,7 @@ class _PlanningRunnableStub:
         """Return structured planning output for the requested batch."""
         batch_candidate_ids = _parse_candidate_ids_block(str(prompt_vars["candidate_ids"]))
         self._planning_calls.append(batch_candidate_ids)
+        self._planning_summary_contexts.append(str(prompt_vars["planning_summary"]))
 
         if batch_candidate_ids == ["c001", "c002"]:
             return QueryBlueprintList(
@@ -144,6 +152,48 @@ class _PlanningRunnableStub:
         pytest.fail(f"Unexpected planning batch: {batch_candidate_ids}")
 
 
+class _PlanningSummaryRunnableStub:
+    """Planning-summary runnable stub keyed by blueprint batches."""
+
+    def __init__(self, planning_summary_calls: list[dict[str, object]]) -> None:
+        self._planning_summary_calls = planning_summary_calls
+
+    def invoke(self, prompt_vars: dict[str, object]) -> PlanningSummaryState:
+        """Return structured planning-summary output for the requested batch."""
+        batch_candidate_ids = _parse_blueprint_candidate_ids(str(prompt_vars["query_blueprints"]))
+        prior_planning_summary = str(prompt_vars["prior_planning_summary"])
+
+        self._planning_summary_calls.append(
+            {
+                "candidate_ids": batch_candidate_ids,
+                "prior_planning_summary": prior_planning_summary,
+            }
+        )
+
+        if batch_candidate_ids == ["c001", "c002"]:
+            return PlanningSummaryState(
+                redundancy_patterns="Repeated coverage checks for standard patient scenarios.",
+                diversification_targets="Broaden toward caregiver and comparison scenarios.",
+                coverage_notes="Basic coverage lookup questions are well covered.",
+            )
+
+        if batch_candidate_ids == ["c003", "wrong-c004"]:
+            return PlanningSummaryState(
+                redundancy_patterns="Appeal-process questions are already well represented.",
+                diversification_targets="Broaden toward exclusions, deductibles, and out-of-network cases.",
+                coverage_notes="Coverage appeals and denial scenarios are now covered.",
+            )
+
+        if batch_candidate_ids == ["c005"]:
+            return PlanningSummaryState(
+                redundancy_patterns="Appeal instructions should not be revisited too closely again.",
+                diversification_targets="Broaden toward cost estimates and preauthorization requirements.",
+                coverage_notes="Appeal and denial workflows are strongly covered.",
+            )
+
+        pytest.fail(f"Unexpected planning-summary batch: {batch_candidate_ids}")
+
+
 class _RealizationRunnableStub:
     """Realization runnable stub keyed by blueprint batches."""
 
@@ -152,7 +202,7 @@ class _RealizationRunnableStub:
 
     def invoke(self, prompt_vars: dict[str, object]) -> RealizedQueryList:
         """Return structured realization output for the requested batch."""
-        batch_candidate_ids = _parse_realization_candidate_ids(str(prompt_vars["query_blueprints"]))
+        batch_candidate_ids = _parse_blueprint_candidate_ids(str(prompt_vars["query_blueprints"]))
         self._realization_calls.append(batch_candidate_ids)
 
         if batch_candidate_ids == ["c001", "c002"]:
@@ -197,20 +247,31 @@ class _TimeoutRunnableStub:
 @pytest.fixture
 def happy_path_workflow_stubs(
     monkeypatch: pytest.MonkeyPatch,
-) -> dict[str, list[list[str]]]:
+) -> dict[str, list[object]]:
     """Install happy-path LLM and deduplication stubs for end-to-end API tests."""
     planning_calls: list[list[str]] = []
+    planning_summary_contexts: list[str] = []
+    planning_summary_calls: list[dict[str, object]] = []
     realization_calls: list[list[str]] = []
 
     def fake_planning_build_llm_runnable(**kwargs: object) -> _PlanningRunnableStub:
         del kwargs
-        return _PlanningRunnableStub(planning_calls)
+        return _PlanningRunnableStub(planning_calls, planning_summary_contexts)
+
+    def fake_planning_summary_build_llm_runnable(**kwargs: object) -> _PlanningSummaryRunnableStub:
+        del kwargs
+        return _PlanningSummaryRunnableStub(planning_summary_calls)
 
     def fake_realization_build_llm_runnable(**kwargs: object) -> _RealizationRunnableStub:
         del kwargs
         return _RealizationRunnableStub(realization_calls)
 
     monkeypatch.setattr(planning, "build_llm_runnable", fake_planning_build_llm_runnable)
+    monkeypatch.setattr(
+        planning_summary_stage,
+        "build_llm_runnable",
+        fake_planning_summary_build_llm_runnable,
+    )
     monkeypatch.setattr(realization, "build_llm_runnable", fake_realization_build_llm_runnable)
     monkeypatch.setattr(
         deduplication,
@@ -225,12 +286,14 @@ def happy_path_workflow_stubs(
 
     return {
         "planning_calls": planning_calls,
+        "planning_summary_contexts": planning_summary_contexts,
+        "planning_summary_calls": planning_summary_calls,
         "realization_calls": realization_calls,
     }
 
 
-def test_gen_queries_executes_staged_workflow_and_writes_expected_artifacts(
-    happy_path_workflow_stubs: dict[str, list[list[str]]],
+def test_gen_queries_executes_staged_workflow_with_recursive_planning_summary_and_writes_expected_artifacts(
+    happy_path_workflow_stubs: dict[str, list[object]],
     tmp_path: Path,
 ) -> None:
     base_dir = tmp_path / "workspace"
@@ -260,9 +323,47 @@ def test_gen_queries_executes_staged_workflow_and_writes_expected_artifacts(
         ["c003"],
     ]
 
+    planning_summary_calls = happy_path_workflow_stubs["planning_summary_calls"]
+    assert planning_summary_calls == [
+        {
+            "candidate_ids": ["c001", "c002"],
+            "prior_planning_summary": "No prior planning summary available yet.",
+        },
+        {
+            "candidate_ids": ["c003", "wrong-c004"],
+            "prior_planning_summary": (
+                "- redundancy_patterns:\n"
+                "  Repeated coverage checks for standard patient scenarios.\n"
+                "- diversification_targets:\n"
+                "  Broaden toward caregiver and comparison scenarios.\n"
+                "- coverage_notes:\n"
+                "  Basic coverage lookup questions are well covered."
+            ),
+        },
+        {
+            "candidate_ids": ["c005"],
+            "prior_planning_summary": (
+                "- redundancy_patterns:\n"
+                "  Appeal-process questions are already well represented.\n"
+                "- diversification_targets:\n"
+                "  Broaden toward exclusions, deductibles, and out-of-network cases.\n"
+                "- coverage_notes:\n"
+                "  Coverage appeals and denial scenarios are now covered."
+            ),
+        },
+    ]
+
+    planning_summary_contexts = happy_path_workflow_stubs["planning_summary_contexts"]
+    assert planning_summary_contexts[0] == ""
+    assert "Repeated coverage checks for standard patient scenarios." in planning_summary_contexts[1]
+    assert "Broaden toward caregiver and comparison scenarios." in planning_summary_contexts[1]
+    assert "Appeal-process questions are already well represented." in planning_summary_contexts[2]
+    assert "Broaden toward exclusions, deductibles, and out-of-network cases." in planning_summary_contexts[2]
+
     assert result.paths.run_dir.exists()
     assert result.paths.synthetic_queries_csv.exists()
     assert result.paths.synthetic_queries_meta_json.exists()
+    assert result.paths.planning_summary_artifact_json.exists()
 
     rows = read_csv(result.paths.synthetic_queries_csv, SyntheticQueryRow)
     assert rows == [
@@ -301,6 +402,17 @@ def test_gen_queries_executes_staged_workflow_and_writes_expected_artifacts(
     assert meta.model_provider == "mistralai"
     assert meta.planning_model == "magistral-medium-latest"
     assert meta.realization_model == "mistral-medium-latest"
+
+    planning_summary_artifact = PlanningSummaryArtifact.model_validate(
+        json.loads(result.paths.planning_summary_artifact_json.read_text(encoding="utf-8"))
+    )
+    assert planning_summary_artifact.spec_fingerprint == result.paths.planning_summary_artifact_json.stem
+    assert planning_summary_artifact.source_run_id == run_id
+    assert planning_summary_artifact.state == PlanningSummaryState(
+        redundancy_patterns="Appeal instructions should not be revisited too closely again.",
+        diversification_targets="Broaden toward cost estimates and preauthorization requirements.",
+        coverage_notes="Appeal and denial workflows are strongly covered.",
+    )
 
 
 def test_gen_queries_raises_when_provider_api_key_missing(
