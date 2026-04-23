@@ -52,6 +52,7 @@ def test_querygen_run_settings_construction_with_defaults() -> None:
     assert settings.run_id
     assert settings.n_queries == 50
     assert settings.batch_size == 25
+    assert settings.near_duplicate_tolerance == 0.95
     assert settings.enable_planning_memory is True
 
 
@@ -163,6 +164,49 @@ def test_querygen_run_settings_resolve_batch_size_override_precedence() -> None:
     )
 
     assert resolved.batch_size == 7
+
+
+def test_querygen_run_settings_accepts_near_duplicate_tolerance_override() -> None:
+    settings = QueryGenRunSettings.model_validate(
+        {
+            "spec": _valid_spec_payload(),
+            "near_duplicate_tolerance": 0.98,
+        }
+    )
+
+    assert settings.near_duplicate_tolerance == 0.98
+
+
+def test_querygen_run_settings_resolve_near_duplicate_tolerance_override_precedence() -> None:
+    """Resolve applies explicit near_duplicate_tolerance overrides over config values."""
+    resolved = QueryGenRunSettings.resolve(
+        config={
+            "spec": _valid_spec_payload(),
+            "near_duplicate_tolerance": 0.92,
+        },
+        overrides={
+            "near_duplicate_tolerance": 0.99,
+        },
+    )
+
+    assert resolved.near_duplicate_tolerance == 0.99
+
+
+def test_querygen_run_settings_rejects_invalid_near_duplicate_tolerance_values() -> None:
+    """QueryGenRunSettings rejects invalid near_duplicate_tolerance values."""
+    invalid_payloads = [
+        {"spec": _valid_spec_payload(), "near_duplicate_tolerance": 0},
+        {"spec": _valid_spec_payload(), "near_duplicate_tolerance": -0.1},
+        {"spec": _valid_spec_payload(), "near_duplicate_tolerance": 1.1},
+    ]
+
+    for payload in invalid_payloads:
+        try:
+            QueryGenRunSettings.model_validate(payload)
+        except ValidationError:
+            pass
+        else:
+            raise AssertionError(f"Expected ValidationError for payload: {payload}")
 
 
 def test_querygen_run_settings_resolve_enable_planning_memory_override() -> None:
