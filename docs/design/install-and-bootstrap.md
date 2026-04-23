@@ -166,9 +166,9 @@ Users can pin per-repo settings in either:
 
 Resolution walks up from cwd until it finds one of these (or hits the filesystem root). First match wins; the two sources are not merged with each other. Project-level values override user-level `~/.config/pragmata/config.yaml`; everything above in the precedence chain (CLI flags, env vars, credentials file) still wins over project-level.
 
-**Why both formats.** `pragmata.yaml` mirrors the user-level file shape so snippets copy 1:1 between device and repo. `pyproject.toml` is the PEP 518 standard home for Python tool config - repos that already centralise config there (ruff, mypy, pytest) can keep pragmata in the same file rather than adding another dotfile.
+**TODO: open question - both formats?** `pragmata.yaml` mirrors user-level file shape so snippets copy 1:1 between device and repo. `pyproject.toml` is the PEP 518 standard home for Python tool config - repos that already centralise config there (ruff, mypy, pytest) can keep pragmata in the same file rather than adding another dotfile.
 
-**Why not merge the two.** Merging a `pragmata.yaml` with a `pyproject.toml` in the same repo ->two sources of truth, ambiguous precedence. First match wins is the same rule `ruff` uses.
+**Why not merge the two.** Merging a `pragmata.yaml` with a `pyproject.toml` in the same repo -> two sources of truth, ambiguous precedence. First match wins is the same rule `ruff` uses.
 
 **Secrets still excluded.** Same rule as `config.yaml` - project-level files are commit-safe; secrets only live in env vars or `~/.config/pragmata/credentials` (§1.1.5).
 
@@ -233,12 +233,11 @@ No `--force` flag. No `--reset` for v0.1.0. Re-running setup is always safe.
 
 The Python API entrypoints and the CLI commands share one contract: kwargs/flags + env + config, resolved identically.
 
-Ideal shape:
+shape:
 > For `annotation_setup`, `annotation_import`, `annotation_export`: Argilla URL / API key / workspace / dataset settings / other client options, injected via args, env, and config (secrets only via args and env).
 
-This is already what's implemented.
 
-Settings resolution pattern (from issue #39, already implemented):
+from issue #39, already implemented:
 
 - Public API signatures accept tool-specific settings as kwargs with `UNSET` defaults
 - `config_path` kwarg for config file override
@@ -302,6 +301,8 @@ Caveat from research: `gh`'s implementation has a known gap - partial flags + no
 
 All runtime commands (`import`, `export`, `gen-queries/generate`, `run`, etc.) validate preconditions before doing work and fail clearly if any are missing. No raw tracebacks.
 
+NB this mostly covers `annotation` tool as this has most complex failure mode chain. Other tools just check extra-installed.
+
 ```
 $ pragmata annotation import foo.json      # bare pip install pragmata
 Error: pragmata.annotation requires the 'annotation' extra.
@@ -323,7 +324,7 @@ Error: annotation is not configured.
   Run: pragmata annotation setup
 ```
 
-Each failure mode is checked in order: **extra-installed -> Docker-running -> stack-up.** Each check is a strict prerequisite for the next - stack-up can't succeed without Docker-running. We fail at the first missing prerequisite with the corresponding fix.
+Failure mode is checked in order: **extra-installed -> Docker-running -> stack-up.** Each check is a strict prerequisite for the next - stack-up can't succeed without Docker-running. We fail at the first missing prerequisite with the corresponding fix.
 
 > TODO: if we do decide we need initial configure, slot `configured` between `extra-installed` and `Docker-running` -> extra-installed -> configured -> Docker-running -> stack-up. Pure-Python check (does the config resolve?), so it's cheaper to fail fast there before spinning up a Docker subprocess.
 
@@ -333,10 +334,10 @@ Extended error taxonomy for `annotation up` specifically: see §2.5.
 
 # §2 Infra UX
 
-Covers `pragmata annotation` only - the other tools have no infra. Stack composition, compose file distribution, first-run, upgrade, uninstall, prod bootstrap, cross-platform runtime, error taxonomy.
+Covers `pragmata annotation` only: stack composition, compose file distribution, first-run, upgrade, uninstall, prod bootstrap, cross-platform runtime, error taxonomy.
 
 Infra UX scope:
-> Starting or wiring: Argilla server, Postgres, Elasticsearch, Redis, Docker Compose profiles, external backing service URLs. Default is bundled and automatic, customised is configured via env/config and executed via bash script helpers.
+> Docker Compose profiles, external backing service URLs. Default is bundled and automatic, customised is configured via env/config and executed via bash script helpers.
 
 The `Makefile` targets (`docker-up`, `docker-down`, `test-stack`) are **dev-only** - they bind to `deploy/annotation/docker-compose.dev.yml` and assume a cloned repo + `make` (= non-starter for Windows, PyPI installs, and unattended/prod environments). The CLI command `pragmata annotation up` is the single end-user entry point and must work identically across all three.
 
@@ -346,15 +347,11 @@ SOTA for PyPI-distributed CLIs that wrap Docker stacks (Supabase CLI, Airbyte `a
 
 What services pragmata bundles and which are opt-out-able.
 
-Candidate bundle: Argilla server, Postgres, Elasticsearch, Redis, Docker Compose profiles.
-
-**TODO confirm:** Argilla v2 reference stack composition - specifically whether Redis is required. If required → add to bundled compose. If not → drop it and move on. See Open question §Q-stack-redis.
-
-Current proposed bundled stack (subject to §Q-stack-redis):
+Bundled stack:
 - **argilla-server** (the service users actually talk to)
 - **postgres** (argilla's primary DB)
 - **elastic** (argilla's search backend)
-- **redis** (TBC pending §Q-stack-redis)
+- **redis** (argilla's task queue / cache - required by Argilla v2)
 
 All bundled by default (zero-config principle). Each backing service (postgres/elastic/redis) is opt-out-able via a Compose profile - see §2.2 for the user surface.
 
@@ -532,10 +529,6 @@ Context: Argilla's own client already writes to [`~/.cache/argilla/credentials`]
 - *Delegate model:* if user has already run `argilla login`, `pragmata annotation setup` detects that and skips the API key prompt. Keeps one source of truth and composes cleanly with the existing `ARGILLA_API_KEY` env var resolution. Downside: couples us to Argilla's file format + location; breaks if they rename/relocate it; harder to reason about precedence when two stores exist.
 - *Maintain our own model:* `~/.config/pragmata/credentials` holds Argilla + LLM provider keys in one place. Consistent resolution pattern across every secret pragmata needs. Downside: duplicates Argilla's store if the user has also run `argilla login`; pragmata has to write/chmod/own the file; users need to update it in two places if they rotate keys.
 - *Recommendation:* delegate for Argilla specifically (it's the only provider with its own persistent credential store); maintain our own for LLM providers (no equivalent exists). Resolution order for Argilla becomes: `kwarg > ARGILLA_API_KEY env > ~/.cache/argilla/credentials > ~/.config/pragmata/credentials > MissingSecretError`.
-
-### §Q-stack-redis: is Redis part of the Argilla v2 stack?
-
-Redis is listed in the candidate bundle (§2.1). Need to verify whether Argilla v2 actually requires Redis or whether the candidate list is a superset. If required → bundle in compose. If not → drop.
 
 ### §Q-profile-flags: minimal external-service flags vs full `--profile` passthrough?
 
