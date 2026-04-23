@@ -25,30 +25,15 @@ Related:
 6. **Tool-scoped complexity.** Per-tool setup commands (`pragmata annotation setup`, `pragmata querygen setup`, `pragmata eval setup`). No global `pragmata setup`. Setup is diff per tool (annotation needs Docker + Argilla creds; querygen needs LLM provider creds; eval tbc).
 7. **Dev tooling ≠ production tooling.** `Makefile` is dev-only, prod install path needs proper shell scripts, documented separately.
 
-## Current codebase baseline
-
-| Area | Implemented today | Proposed in this doc |
-|---|---|---|
-| **Config resolution** | `ResolveSettings.resolve(overrides, env, config, defaults)`, `load_config_file()`, `resolve_api_key()` (env-only), `API_KEY_ENV_VARS`, `MissingSecretError` - all in [`core/settings/`](../../src/pragmata/core/settings/) | Add auto-discovery (project-level `./pragmata.yaml` / `pyproject.toml [tool.pragmata]` → user-level `~/.config/pragmata/config.yaml`), credentials-file fallback, `PRAGMATA_<TOOL>_<KEY>` env prefix |
-| **Config file path** | Explicit `--config` flag only; no XDG, no `platformdirs` | `platformdirs.user_config_dir("pragmata")` + `PRAGMATA_CONFIG_DIR` override |
-| **Docker stack lifecycle (`up`/`down`)** | Not implemented - only Makefile targets (`docker-up`, `docker-down`, etc.) that read [`deploy/annotation/docker-compose.dev.yml`](../../deploy/annotation/docker-compose.dev.yml) | Add `pragmata annotation up` / `down` CLI commands |
-| **`annotation setup` / `teardown`** | Exist - but manage **Argilla workspaces, users, datasets** (not Docker). See [`api/annotation_setup.py`](../../src/pragmata/api/annotation_setup.py) | Semantics unchanged; `up`/`down` is an *additional* pair of verbs  (alternative: keep it infra-tied, e.g. infra up/down, or something similar) |
-| **Compose file distribution** | Dev-only file in `deploy/`; **not shipped** in the installed wheel | Ship `src/pragmata/annotation/docker-compose.yml` as package data (single file, prod-first, dev override via separate file - see §2.2)* |
-| **Package data** | `importlib.resources` already used for [`core/annotation/collapsible_field.html`](../../src/pragmata/core/annotation/collapsible_field.html). | Same mechanism for the compose file |
-| **`questionary` / wizards** | No wizard today - `setup` is headless-flag-driven only | Add `questionary` under `[annotation]` (or other tools as needed)|
-
->*TODO: consider moving (currently parallel) `deploy/` into `annotation/` to keep infra bundled with tool that uses it. Research is ambivalent - my current recommendation: keep unbundled for separation of concerns. Once decided update across this doc.
-
 ## Install model
 
 ### Optional extras, one per tool
 
 ```
 pip install pragmata                     # bare install - CLI skeleton only
-pip install pragmata[annotation]         # + argilla (already exists); + platformdirs, questionary (proposed)
-pip install pragmata[querygen]           # + langchain, sentence-transformers (already exists)
-pip install pragmata[eval]               # + eval deps (proposed - eval tool not yet implemented)
-pip install pragmata[all]                # convenience: everything (proposed - does not exist yet)
+pip install pragmata[annotation]         
+pip install pragmata[querygen]           
+pip install pragmata[eval]               
 ```
 
 ### Lazy imports at the package boundary
@@ -57,7 +42,7 @@ pip install pragmata[all]                # convenience: everything (proposed - d
 - each tool's public API entry point wraps its optional dep in a `try/except ImportError` and re-raises with the exact `pip install` command. Pattern borrowed from [`transformers` error handling](https://github.com/huggingface/transformers/issues/24147):
 
 > `ImportError: pragmata.annotation requires the 'annotation' extra. Install with: pip install 'pragmata[annotation]'`
-> this is the fail loudly and point to fix principle
+> ^^^ this is the "fail loudly and point to fix" principle
 
 Failure modes must be distinguished:
 
@@ -77,7 +62,13 @@ Failure modes must be distinguished:
 >
 > **`platformdirs`** - resolves config/cache/data dirs correctly across Linux/macOS/Windows from a single call, so we don't hardcode `~/.config/` (Linux-only). Full rationale and precedent in §1.1.1.
 >
-> **`questionary`** - renders interactive `setup` wizard prompts (text, select, confirm, password) on top of `prompt_toolkit`. Chosen for `gh`/`supabase`-grade wizard ergonomics (arrow-key selects, masked secrets, validators, skip-on-flag) w/o us reimplementing TTY handling. Alternatives considered: [`rich.prompt`](https://rich.readthedocs.io/en/stable/prompt.html) (no arrow-key select, no masked input UX - too bare for a multi-field wizard); [`prompt_toolkit`](https://python-prompt-toolkit.readthedocs.io/) directly (what Questionary wraps - more power, much more boilerplate); [`InquirerPy`](https://inquirerpy.readthedocs.io/) (feature-equivalent fork of PyInquirer, also `prompt_toolkit`-based - viable swap-in if Questionary stalls); [`click.prompt`](https://click.palletsprojects.com/en/stable/prompts/) (Typer's built-in - line-by-line only, no select widget).
+> **`questionary`** - renders interactive `setup` wizard prompts (text, select, confirm, password) on top of `prompt_toolkit`. 
+>  - Chosen for `gh`/`supabase`-grade wizard ergonomics (arrow-key selects, masked secrets, validators, skip-on-flag) w/o us reimplementing TTY handling. 
+> - Alternatives considered: 
+>     - [`rich.prompt`](https://rich.readthedocs.io/en/stable/prompt.html) (no arrow-key select, no masked input UX - too bare for a multi-field wizard) 
+>     - [`prompt_toolkit`](https://python-prompt-toolkit.readthedocs.io/) directly (what Questionary wraps - more power, much more boilerplate)
+>     - [`InquirerPy`](https://inquirerpy.readthedocs.io/) (feature-equivalent fork of PyInquirer, also `prompt_toolkit`-based - viable swap-in if Questionary stalls)
+>     -  [`click.prompt`](https://click.palletsprojects.com/en/stable/prompts/) (Typer's built-in - line-by-line only, no select widget)
 
 ---
 
@@ -229,7 +220,12 @@ Slot a `~/.config/pragmata/credentials` file (`chmod 600`) *between* env and `Mi
 Effective chain after addition (same order; addition in *italics*):
 `kwarg > canonical env var > `*`~/.config/pragmata/credentials`*` > MissingSecretError`
 
-See Open question §Q-argilla-creds for the Argilla-specific sub-question (delegate to Argilla's own credential store vs maintain our own).
+> TODO: Open question: **argilla-creds: delegate to argilla's own credential store or maintain our own?**
+>
+>Context: Argilla's own client already writes to [`~/.cache/argilla/credentials`](https://docs.argilla.io/) on `argilla login`.
+>- *Delegate model:* if user has already run `argilla login`, `pragmata annotation setup` detects that and skips the API key prompt. Keeps one source of truth and composes cleanly with the existing `ARGILLA_API_KEY` env var resolution. BUT couples us to Argilla's file format + location; breaks if they rename/relocate it; harder to reason about precedence when two stores exist.
+>- *Maintain our own model:* `~/.config/pragmata/credentials` holds Argilla + LLM provider keys in one place. Consistent resolution pattern across every secret pragmata needs. BUT duplicates Argilla's store if the user has also run `argilla login`; pragmata has to write/chmod/own the file; users need to update it in two places if they rotate keys (could setup a copy/symlink system, but brittle).
+>- *Recommendation:* delegate for Argilla specifically (it's the only provider with its own persistent credential store); maintain our own for LLM providers (no equivalent exists). Resolution order for Argilla becomes: `kwarg > ARGILLA_API_KEY env > ~/.cache/argilla/credentials > ~/.config/pragmata/credentials > MissingSecretError`.
 
 ### 1.1.6 Idempotent re-setup
 
@@ -242,7 +238,7 @@ See Open question §Q-argilla-creds for the Argilla-specific sub-question (deleg
 
 No `--force` flag. No `--reset` for v0.1.0. Re-running setup is always safe.
 
-**Deferred:** named profiles (`--profile staging`) - this is AWS pattern, but overkill / we use `make` targets for dev.
+**Deferred:** named profiles (`--profile staging`) - this is AWS pattern, but overkill / we use `make` targets for dev, prod is scripted w/ bootstraps.
 
 ## 1.2 Entrypoint signatures
 
@@ -268,12 +264,12 @@ from issue #39, already implemented:
 - Each tool has its own config wizard verb
 - `annotation` also has stack lifecycle verbs (`up`/`down`) because it orchestrates Docker - other tools don't
 
-**Terminology conflict to resolve.** The existing `pragmata annotation setup` command already exists and provisions **Argilla workspaces/users/datasets** against a running server (see [`api/annotation_setup.py`](../../src/pragmata/api/annotation_setup.py)) - it is *not* a config wizard. The proposed config-wizard semantics in this doc therefore cannot reuse `setup` without breaking. Two resolutions, see §Q-setup-verb:
+>**Terminology conflict to resolve.** existing `pragmata annotation setup` command provisions **Argilla workspaces/users/datasets** against a running server - it is *not* a config wizard -> proposed config-wizard semantics in this doc cannot reuse `setup` without breaking. Two resolutions, see §Q-setup-verb:
 
-- *Option A (recommended):* rename existing `annotation setup` → `annotation provision` (or `init-workspace`), free up `setup` for the config wizard.
-- *Option B:* call the config wizard `configure` instead. Existing `setup` keeps its workspace-provisioning meaning.
+- *A (rec):* rename existing `annotation setup` → `annotation provision` (or `init-workspace`), free up `setup` for the config wizard.
+- * B:* call config wizard `configure` instead. 
 
-Proposed full surface (assuming Option A):
+Proposed full surface (assuming A):
 
 ```
 pragmata annotation setup       # OPTIONAL config wizard -> overrides defaults, writes config (NEW)
@@ -281,15 +277,15 @@ pragmata annotation up          # starts local Docker stack (works without setup
 pragmata annotation down        # stops local Docker stack (NEW)
 pragmata annotation provision   # CURRENT `setup` renamed: Argilla workspace/user/dataset provisioning
 pragmata annotation teardown
-pragmata annotation import      # runtime - needs stack up (EXISTS)
-pragmata annotation export      # runtime - needs stack up (EXISTS)
-pragmata annotation iaa         # runtime - needs stack up (EXISTS)
+pragmata annotation import      
+pragmata annotation export     
+pragmata annotation iaa         
 
 pragmata querygen setup         # OPTIONAL config wizard (NEW)
 pragmata querygen gen-queries    # runtime - works OOTB if provider env var present
 
 pragmata eval setup             # OPTIONAL config wizard 
-pragmata eval run               # runtime 
+pragmata eval run (tbc)              
 ```
 
 > *Current implementation state* 
@@ -349,48 +345,57 @@ Error: annotation is not configured.
   Run: pragmata annotation setup
 ```
 
-Failure mode is checked in order: **extra-installed -> Docker-running -> stack-up.** Each check is a strict prerequisite for the next - stack-up can't succeed without Docker-running. We fail at the first missing prerequisite with the corresponding fix.
+Failure mode is checked in order: *extra-installed -> Docker-running -> stack-up.* Each check is a strict prerequisite for the next - stack-up can't succeed without Docker-running. We fail at the first missing prerequisite with the corresponding fix.
 
-> TODO: if we do decide we need initial configure, slot `configured` between `extra-installed` and `Docker-running` -> extra-installed -> configured -> Docker-running -> stack-up. Pure-Python check (does the config resolve?), so it's cheaper to fail fast there before spinning up a Docker subprocess.
-
-Extended error taxonomy for `annotation up` specifically: see §2.5.
+> TODO: if we do decide we need initial configure (not recommended), slot `configured` between `extra-installed` and `Docker-running` -> extra-installed -> configured -> Docker-running -> stack-up. Pure-Python check (does the config resolve?), so it's cheaper to fail fast there before spinning up a Docker subprocess.
 
 ---
 
 # §2 Infra UX
 
-Covers `pragmata annotation` only: stack composition, compose file distribution, first-run, upgrade, uninstall, prod bootstrap, cross-platform runtime, error taxonomy.
+Covers `pragmata annotation` only (other tools don't require same infra):
+- stack composition (incl Docker Compose profiles & file distribution)
+- default is bundled and automatic, customised is configured via env/config and executed via bash script helpers
+- first-run, upgrade, uninstall, 
+- prod bootstrap,
 
-Infra UX scope:
-> Docker Compose profiles, external backing service URLs. Default is bundled and automatic, customised is configured via env/config and executed via bash script helpers.
 
-The `Makefile` targets (`docker-up`, `docker-down`, `test-stack`) are **dev-only** - they bind to `deploy/annotation/docker-compose.dev.yml` and assume a cloned repo + `make` (= non-starter for Windows, PyPI installs, and unattended/prod environments). The CLI command `pragmata annotation up` is the single end-user entry point and must work identically across all three.
+> NB: The `Makefile` targets (`docker-up`, `docker-down`, `test-stack`) are **dev-only** - they bind to `deploy/annotation/docker-compose.dev.yml` and assume a cloned repo + `make` (= non-starter for Windows, PyPI installs, and unattended/prod environments). The CLI command `pragmata annotation up` is the single end-user entry point and must work identically across all three.
 
-SOTA for PyPI-distributed CLIs that wrap Docker stacks (Supabase CLI, Airbyte `abctl`, Dagster, Prefect, MLflow, Argilla itself) converges on a few points: install is side-effect free, first-run bootstrap is an idempotent single command, upgrade is the #1 pain point, and dev ≠ prod.
+SOTA for PyPI-distributed CLIs that wrap Docker stacks (Supabase CLI, Airbyte `abctl`, Dagster, Prefect, MLflow, Argilla itself) converges on a few points: 
+- install is side-effect free, 
+- first-run bootstrap is an idempotent single command, 
+- upgrade is the #1 pain point (we mostly skip this), 
+- dev ≠ prod.
 
 ## 2.1 Stack composition
 
+>TODO: need to decide where Docker Compose should live.
+> - Current is in `deploy/` separate from `annotation/` -> clean separation, but we might want to rethink this (see this 2.1 + 2.2.1)
+
 Bundled stack (mirrors the existing [`deploy/annotation/docker-compose.dev.yml`](../../deploy/annotation/docker-compose.dev.yml)):
 
->TODO: decide whether to keep `deploy/` separate from `annotation/` 
-
-All bundled by default (zero-config principle). Each backing service (postgres/elasticsearch/redis) is opt-out-able via a Compose profile - see §2.2 for the user surface.
+All bundled by default (zero-config principle). Each backing service (postgres/elasticsearch/redis) is opt-out-able via a Compose profile
 
 **Single shipped compose file, not a dev/prod pair.** Surveyed PyPI-distributed Docker-wrapping tools (Supabase, Airbyte `abctl`, Airflow, Dagster, Prefect, MLflow) all converge on **one shipped compose artefact** - either a single file or a programmatic equivalent. Nobody ships parallel `docker-compose.prod.yml` + `docker-compose.dev.yml` files side by side because it forces users to answer "which one do I run?" before they've done anything. Instead:
 
-- The **shipped** compose (`src/pragmata/annotation/docker-compose.yml`, see §2.2) is **production-first**: pinned tags, env-driven credentials (no hardcoded defaults), sensible resource defaults, localhost-only port bindings.
-- **Dev-only conveniences** live in a companion [`deploy/annotation/docker-compose.dev.override.yml`](../../deploy/annotation/docker-compose.dev.override.yml) (proposed - does not exist yet) that Makefile targets apply on top via `docker compose -f ... -f ...`. Typical contents: well-known default creds (`argilla`/`1234`), stdout logging, looser health-check timing, exposed debugging ports.
+- The shipped compose (perhaps in dedicated config fir (see 2.2.1, or keep in `deploy/`))) is production-first: pinned tags, env-driven credentials (no hardcoded defaults), sensible resource defaults, localhost-only port bindings.
+- Dev-only conveniences live in a companion [`deploy/annotation/docker-compose.dev.override.yml`](../../deploy/annotation/docker-compose.dev.override.yml) (proposed - does not exist yet) that Makefile targets apply on top via `docker compose -f ... -f ...`. Typical contents: well-known default creds (`argilla`/`1234`), stdout logging, looser health-check timing, exposed debugging ports.
 - End users (`pragmata annotation up`) only ever touch the shipped file. The override is for contributors working in a cloned repo.
 
 This matches Airflow's [documented pattern](https://airflow.apache.org/docs/apache-airflow/stable/howto/docker-compose/index.html) ("compose file is a quick-start, not a production config" - with dev niceties layered via overrides) and keeps us from maintaining two sources of truth.
 
-Migration note: today's `docker-compose.dev.yml` serves both roles (it's the only file). The migration is (a) extract prod-safe defaults into `src/pragmata/annotation/docker-compose.yml` as package data, (b) strip the dev-only overrides into `docker-compose.dev.override.yml`, (c) update Makefile targets to stack both.
+NB: today's `docker-compose.dev.yml` serves both roles (it's the only file). Options
+  - (1) extract prod-safe defaults into `src/pragmata/annotation/docker-compose.yml` as package data (or keep in separate `deploy/`), 
+  - (2) strip the dev-only overrides into `docker-compose.dev.override.yml`, 
+  - (3) update Makefile targets to stack both
 
 ## 2.2 Compose file distribution
 
 Two axes to decide: (a) where the compose file the daemon reads actually lives, (b) how many "bundles" the shipped file supports.
 
 ### 2.2.1 Where the compose file lives (daemon-reads-from)
+>TODO: I've still got inconsistencies in file paths for the Docker Compose file. Once settled on I'll clean up and make consistent. Don't want to repeat / waste time updating until confirmed.
 
 Three options:
 
@@ -400,7 +405,7 @@ Three options:
 
 | Option | What it is | Default-path UX | Power-user UX | Upgrade drift | SOTA precedent |
 |---|---|---|---|---|---|
-| **X. User-editable (default copy, drift-flagged) - *recommended*** | First `up` copies packaged YAML → `$PRAGMATA_CONFIG_DIR/annotation/docker-compose.yml`. User may edit. *On subsequent `up`, if user's file differs from packaged, print warning listing changed keys + path to new packaged file, proceed with user's file unchanged (no auto-reset/merge tool - YAGNI)* | Zero-config: first-run user never touches YAML | Standard Docker mental model: edit the YAML, `up` uses it | Minimal: flagged, user resolves manually. Rare since we don't expect frequent compose updates. | [dbt `profiles.yml`](https://docs.getdbt.com/docs/core/connect-data-platform/profiles.yml), [VS Code `settings.json`](https://code.visualstudio.com/docs/getstarted/settings), [Ollama Modelfile](https://github.com/ollama/ollama/blob/main/docs/modelfile.md) - ship opinionated defaults as a starting point, user owns their copy |
+| **X. User-editable (default copy, drift-flagged) - *recommended*** | First `up` copies packaged YAML → `$PRAGMATA_CONFIG_DIR/annotation-or-deploy(?)/docker-compose.yml`. User may edit. *On subsequent `up`, if user's file differs from packaged, print warning listing changed keys + path to new packaged file, proceed with user's file unchanged (no auto-reset/merge tool - YAGNI)* | Zero-config: first-run user never touches YAML | Standard Docker mental model: edit the YAML, `up` uses it | Minimal: flagged, user resolves manually. Rare since we don't expect frequent compose updates. | [dbt `profiles.yml`](https://docs.getdbt.com/docs/core/connect-data-platform/profiles.yml), [VS Code `settings.json`](https://code.visualstudio.com/docs/getstarted/settings), [Ollama Modelfile](https://github.com/ollama/ollama/blob/main/docs/modelfile.md) - ship opinionated defaults as a starting point, user owns their copy |
 | **Y. Locked (compose stays inside package)** | Resolve via `importlib.resources` at runtime; user never sees the YAML. Overrides only via CLI flags / `config.yaml` entries we expose. | Zero-config | Rigid - every customisation becomes a feature request or an undocumented workaround | None - we own the file | [Supabase CLI](https://github.com/supabase/cli) (went further: constructs the project programmatically in Go, no compose file at all) |
 | **Z. Eject** | Start with Y; `pragmata annotation eject` copies compose out and pragmata then uses the ejected copy, warning the user they own it from there | Zero-config | Explicit escape hatch, clean managed-vs-owned contract | None for non-ejected users; ejected users own drift | [create-react-app `eject`](https://create-react-app.dev/docs/available-scripts#npm-run-eject), [Expo eject-to-bare-workflow](https://docs.expo.dev/archive/customizing/), [Next.js manual config extraction](https://nextjs.org/docs) |
 
@@ -413,7 +418,7 @@ Three options:
 
 ### 2.2.2 Distribution mechanism (how pkg'd YAML travels)
 
-Ships as package data inside the installed package (`pragmata/annotation/docker-compose.yml`), resolved at runtime via `importlib.resources.files(...) / "docker-compose.yml"` + `as_file()`. Copied on first `up` per §2.2.1 (option X).
+Ships as package data inside the installed package (`pragmata/annotation-or-deploy(?)/docker-compose.yml`), resolved at runtime via `importlib.resources.files(...) / "docker-compose.yml"` + `as_file()`. Copied on first `up` per §2.2.1 (option X).
 
 Image tags are pinned in the shipped compose and treated as package-owned. `pip install -U pragmata` ships a new compose with new tags. Users on the default copy pick up the new file; users who edited see the drift warning (§2.3).
 
@@ -421,7 +426,6 @@ Image tags are pinned in the shipped compose and treated as package-owned. `pip 
 
 Explicitly supports **Docker Compose profiles + external backing service URLs**. We use Compose's built-in `profiles` feature. Profile names carry forward from the current dev compose unchanged: `all-bundled`, `external-pg`, `external-es`.
 
-Shipped compose structure (names match [`deploy/annotation/docker-compose.dev.yml`](../../deploy/annotation/docker-compose.dev.yml)):
 
 ```yaml
 services:
@@ -460,34 +464,34 @@ pragmata annotation up --external-elastic <url>           # external-es profile,
 
 Internally: `--external-postgres` = select `external-pg` profile + inject `ARGILLA_DATABASE_URL`; `--external-elastic` = select `external-es` profile + inject `ARGILLA_ELASTICSEARCH`. Settings resolution (§1.1.4) applies as normal - flag > env > config > default.
 
-See Open question §Q-profile-flags for minimal-vs-full passthrough.
-
 Precedent for profiles: [Airflow's official Compose](https://airflow.apache.org/docs/apache-airflow/stable/howto/docker-compose/index.html) ships profiles (`flower`, etc.). [Dagster Helm values](https://github.com/dagster-io/dagster/tree/master/helm/dagster) mirrors the same pattern at a different abstraction level.
 
 ## 2.3 First-run UX
 
-**`pragmata annotation up` is the first-run command. No separate `init`; `setup` stays optional for overrides.**
+**`pragmata annotation up` (focused on annotation here as its only tool with infra requirements) is the first-run command. No separate `init`; `setup` stays optional for overrides.**
 
-- Pre-flight in order: extra installed → Docker daemon reachable → required ports free (§1.4 taxonomy)
-- On first `up`: copy packaged compose → `$PRAGMATA_CONFIG_DIR/annotation/docker-compose.yml` (§2.2.1)
+- Pre-flight in order: extra installed → Docker daemon reachable → required ports free 
+- On first `up`: copy packaged compose → `$PRAGMATA_CONFIG_DIR/annotation-or-deploy(?)/docker-compose.yml`
 - Pulls images on first invocation (slow; log clearly - make this prominent in docs)
 - Health-polls Argilla's health endpoint with a timeout
 - On success: prints URL, default API key, and next command
+
+^^^ most of the core parts of this are already implemented
 
 Precedent: `supabase start`, `abctl local install`, `prefect server start`. Idempotent single command, safe to re-run.
 
 ## 2.4 Upgrade
 
-**`pip install -U pragmata` is the sole upgrade primitive. Stay lean - users own their compose; we flag drift, nothing more.**
+**`pip install -U pragmata` is sole upgrade primitive. Stay lean - users own their compose; we flag drift, nothing more.**
 
 - Named Docker volumes with a deterministic prefix (`pragmata_annotation_*`) persist data across container recreation
 - On `up` after an upgrade, if the user's `$PRAGMATA_CONFIG_DIR/annotation/docker-compose.yml` diverges from the packaged one:
-  - Print a warning naming the divergent keys + the path to the new packaged file (via `importlib.resources` - printable one-liner)
-  - Proceed with the user's file unchanged
+  - Print a warning naming the divergent keys + the path to the new packaged file (via `importlib.resources` - printable one-liner) -> Proceed with the user's file unchanged?
+  - Or just leave this 100% to user?
 - No auto-reset, no `reset-compose` verb, no merge tool. Surveyed tools (dbt, Prefect, Dagster, Supabase) don't ship a "reset my config" verb either - users copy from docs or rerun `init`.
 - For destructive Argilla schema migrations between majors, document the backup step; pragmata cannot protect users from upstream-breaking changes.
 
-Precedent: Airbyte's `abctl local install` is idempotent and was specifically designed to fix Compose upgrade brittleness ([Airbyte discussion #40599](https://github.com/airbytehq/airbyte/discussions/40599)). We skip the heavier machinery - we're not shipping frequent compose changes, so engineering for rare upgrades is waste.
+>Research Airbyte's `abctl local install` -> idempotent and designed to fix Compose upgrade brittleness ([Airbyte discussion #40599](https://github.com/airbytehq/airbyte/discussions/40599)), BUT here we skip the heavier machinery as we're not shipping frequent compose changes, so would be engineering for rare upgrades
 
 ## 2.5 Uninstall
 
@@ -554,6 +558,21 @@ Beyond the generic cases in §1.4, `annotation up` must also handle:
 - compose-file missing from package (indicates broken install - `pip install --force-reinstall 'pragmata[annotation]'`)
 
 ---
+
+## Current codebase baseline
+
+| Area | Implemented today | Proposed in this doc |
+|---|---|---|
+| **Config resolution** | `ResolveSettings.resolve(overrides, env, config, defaults)`, `load_config_file()`, `resolve_api_key()` (env-only), `API_KEY_ENV_VARS`, `MissingSecretError` - all in [`core/settings/`](../../src/pragmata/core/settings/) | Add auto-discovery (project-level `./pragmata.yaml` / `pyproject.toml [tool.pragmata]` → user-level `~/.config/pragmata/config.yaml`), credentials-file fallback, `PRAGMATA_<TOOL>_<KEY>` env prefix |
+| **Config file path** | Explicit `--config` flag only; no XDG, no `platformdirs` | `platformdirs.user_config_dir("pragmata")` + `PRAGMATA_CONFIG_DIR` override |
+| **Docker stack lifecycle (`up`/`down`)** | Not implemented - only Makefile targets (`docker-up`, `docker-down`, etc.) that read [`deploy/annotation/docker-compose.dev.yml`](../../deploy/annotation/docker-compose.dev.yml) | Add `pragmata annotation up` / `down` CLI commands |
+| **`annotation setup` / `teardown`** | Exist - but manage **Argilla workspaces, users, datasets** (not Docker). See [`api/annotation_setup.py`](../../src/pragmata/api/annotation_setup.py) | Semantics unchanged; `up`/`down` is an *additional* pair of verbs  (alternative: keep it infra-tied, e.g. infra up/down, or something similar) |
+| **Compose file distribution** | Dev-only file in `deploy/`; **not shipped** in the installed wheel | Ship `src/pragmata/annotation/docker-compose.yml` as package data (single file, prod-first, dev override via separate file - see §2.2)* |
+| **Package data** | `importlib.resources` already used for [`core/annotation/collapsible_field.html`](../../src/pragmata/core/annotation/collapsible_field.html). | Same mechanism for the compose file |
+| **`questionary` / wizards** | No wizard today - `setup` is headless-flag-driven only | Add `questionary` under `[annotation]` (or other tools as needed)|
+
+>*TODO: consider moving (currently parallel) `deploy/` into `annotation/` to keep infra bundled with tool that uses it. Research is ambivalent - my current recommendation: keep unbundled for separation of concerns. Once decided update across this doc.
+
 
 ## Open questions
 
