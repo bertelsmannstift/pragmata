@@ -87,17 +87,17 @@ TODO confirm this as open question:
 
 *Proposed additions (non-breaking - same layer order, just adds fallbacks where layers are currently empty):*
 
-1. **Auto-discover `config_path`** when the caller doesn't pass one -> fall back to `platformdirs.user_config_dir("pragmata") / "config.yaml"`. Explicit `config_path` still wins, so every current caller behaves identically.
+1. **Auto-discover `config_path`** when the caller doesn't pass one -> walk up from cwd for a project-local `./pragmata.yaml` or `pyproject.toml [tool.pragmata]`; fall back to `platformdirs.user_config_dir("pragmata") / "config.yaml"`. Explicit `config_path` still wins, so every current caller behaves identically. See §1.1.3.
 2. **Add a credentials-file fallback for `resolve_api_key()`** below env vars -> if the env var is unset, read from `~/.config/pragmata/credentials` before raising `MissingSecretError`. Env still wins.
 
 > TODO review ^^^
 
 Resulting effective chain (additions in *italics*):
-`overrides > env > `*`credentials file (secrets only, new fallback)`*` > config (explicit config_path, else `*`auto-discovered ~/.config/pragmata/config.yaml`*`) > defaults`
+`overrides > env > `*`credentials file (secrets only, new fallback)`*` > `*`project config (./pragmata.yaml or pyproject.toml [tool.pragmata])`*` > user config (explicit config_path, else `*`auto-discovered ~/.config/pragmata/config.yaml`*`) > defaults`
 
 ### 1.1.1 Location
 
-Uses [`platformdirs`](https://platformdirs.readthedocs.io/) (see new-deps note at top of doc) to resolve OS-appropriate user directories:
+Uses [`platformdirs`](https://platformdirs.readthedocs.io/) to resolve OS-appropriate user directories:
 
 `platformdirs.user_config_dir("pragmata")`:
 
@@ -111,9 +111,10 @@ Then `PRAGMATA_CONFIG_DIR` env var overrides. Follows `poetry`, `wandb`, `huggin
 
 **Reasoning:**
 
-*Why user-level config dir (not cwd):*
-- pragmata is library-called-from-user-scripts + CLI - users run it from arbitrary directories, so cwd-relative config breaks reproducibility
-- Credentials (Argilla API keys, provider keys) must persist across projects - project-local config would force re-auth per repo
+*Why user-level config dir as the base layer (not cwd):*
+- pragmata is library-called-from-user-scripts + CLI - users run it from arbitrary directories, so making cwd the *only* config location breaks reproducibility
+- Credentials (Argilla API keys, provider keys) should persist across projects - device-wide config avoids re-auth per repo
+- Project-level overrides sit *above* the user-level config in the precedence chain (§1.1.3), so repos can still pin their own settings when needed - we get both persistent device-wide defaults and repo-scoped overrides.
 
 *Why `platformdirs` (not hardcoded `~/.config/pragmata/`):*
 - Hardcoding `~/.config/` is Linux-correct but wrong on macOS (`~/Library/Application Support/`) and Windows (`%APPDATA%\`). `platformdirs` resolves all three from one call.
@@ -156,27 +157,44 @@ eval:
 
 Rationale: multi-service CLIs (aws, gcloud, dbt, kubectl) use one-file-with-sections (per-tool files = anti-pattern). Modularity preserved because each tool reads only its own section.
 
-### 1.1.3 Precedence chain
+### 1.1.3 Project-level config override
 
-Universal pattern (aws/terraform/kubectl/dbt/pip):
+Users can pin per-repo settings in either:
+
+- `./pragmata.yaml` (same shape as the user-level `config.yaml` - per-tool top-level sections), or
+- `pyproject.toml` under `[tool.pragmata]` (same shape, nested under the TOML table)
+
+Resolution walks up from cwd until it finds one of these (or hits the filesystem root). First match wins; the two sources are not merged with each other. Project-level values override user-level `~/.config/pragmata/config.yaml`; everything above in the precedence chain (CLI flags, env vars, credentials file) still wins over project-level.
+
+**Why both formats.** `pragmata.yaml` mirrors the user-level file shape so snippets copy 1:1 between device and repo. `pyproject.toml` is the PEP 518 standard home for Python tool config - repos that already centralise config there (ruff, mypy, pytest) can keep pragmata in the same file rather than adding another dotfile.
+
+**Why not merge the two.** Merging a `pragmata.yaml` with a `pyproject.toml` in the same repo ->two sources of truth, ambiguous precedence. First match wins is the same rule `ruff` uses.
+
+**Secrets still excluded.** Same rule as `config.yaml` - project-level files are commit-safe; secrets only live in env vars or `~/.config/pragmata/credentials` (§1.1.5).
+
+Precedent: [ruff](https://docs.astral.sh/ruff/configuration/) (supports both `ruff.toml` and `pyproject.toml [tool.ruff]`, first match wins), [dbt](https://docs.getdbt.com/docs/core/connect-data-platform/profiles.yml) (project `dbt_project.yml` + user `~/.dbt/profiles.yml`), [black](https://black.readthedocs.io/en/stable/usage_and_configuration/the_basics.html#configuration-via-a-file) (walks up for `pyproject.toml`).
+
+### 1.1.4 Precedence chain
+
+Universal pattern (aws/terraform/kubectl/dbt/pip), extended with a project layer (§1.1.3):
 
 ```
-CLI flag  >  env var  >  credentials file (secrets)  >  config.yaml  >  built-in defaults
+CLI flag  >  env var  >  credentials file (secrets)  >  project config (./pragmata.yaml or pyproject.toml)  >  user config (~/.config/pragmata/config.yaml)  >  built-in defaults
 ```
 
 Env var prefix for **non-secret tool settings**: `PRAGMATA_<TOOL>_<KEY>`, e.g. `PRAGMATA_ANNOTATION_ARGILLA_URL`.
 - follows [gcloud's `CLOUDSDK_SECTION_PROPERTY`](https://docs.cloud.google.com/sdk/docs/properties).
 - rejected: pydantic-settings' `PRAGMATA__ANNOTATION__URL` double-underscore - less shell-friendly, harder to type.
 
-**Secrets are the exception - they use canonical provider env vars, not the `PRAGMATA_*` prefix.** See §1.1.4; this matches what's already implemented in `API_KEY_ENV_VARS` / `resolve_api_key()`.
+**Secrets are the exception - they use canonical provider env vars, not the `PRAGMATA_*` prefix.** See §1.1.5; this matches what's already implemented in `API_KEY_ENV_VARS` / `resolve_api_key()`.
 
 Small set of shared top-level vars exists outside per-tool scoping:
 - `PRAGMATA_CONFIG_DIR` - override config location
 - `PRAGMATA_WORKSPACE_DIR` - override workspace root
 - etc
-- TOD: define here
+- TODO: define here
 
-### 1.1.4 Secrets
+### 1.1.5 Secrets
 
 Aligns with the existing `resolve_api_key()` contract (`core/settings/settings_base.py`). Canonical provider env vars are the source of truth - not a `PRAGMATA_*`-prefixed name.
 
@@ -198,7 +216,7 @@ Effective chain after addition (same order; addition in *italics*):
 
 See Open question §Q-argilla-creds for the Argilla-specific sub-question (delegate to Argilla's own credential store vs maintain our own).
 
-### 1.1.5 Idempotent re-setup
+### 1.1.6 Idempotent re-setup
 
 `aws configure` pattern: detect existing values, show as defaults in brackets, empty input keeps current.
 
@@ -209,7 +227,7 @@ See Open question §Q-argilla-creds for the Argilla-specific sub-question (deleg
 
 No `--force` flag. No `--reset` for v0.1.0. Re-running setup is always safe.
 
-**Deferred:** named profiles (`--profile staging`) - this is AWS pattern, but overkill / we use make for dev
+**Deferred:** named profiles (`--profile staging`) - this is AWS pattern, but overkill / we use `make` targets for dev.
 
 ## 1.2 Entrypoint signatures
 
@@ -225,9 +243,9 @@ Settings resolution pattern (from issue #39, already implemented):
 - Public API signatures accept tool-specific settings as kwargs with `UNSET` defaults
 - `config_path` kwarg for config file override
 - Internal resolution: `ToolSettings.resolve(config=..., overrides={...})` (§1.1)
-- Secrets via args or env only; never in config files (§1.1.4)
+- Secrets via args or env only; never in config files (§1.1.5)
 
-**CLI ↔ API coupling.** CLI commands are thin wrappers over the API - flags land as kwargs with `UNSET` for un-passed. No duplicated orchestration. Consistent with [ADR-0007](../decisions/0007-packaging-invocation-surface.md).
+**CLI ↔ API coupling.** CLI commands are thin wrappers over the API - flags land as kwargs with `UNSET` for un-passed; [ADR-0007](../decisions/0007-packaging-invocation-surface.md).
 
 **What this means for external-service wiring.** Users should be able to pass anything relevant for the client, including external service URLs (e.g. an external Postgres connection string) - this is the Infra UX side of the same contract (§2.2.3: `--external-postgres <url>` etc.). The API entrypoint accepts them as kwargs; CLI surfaces them as flags; env-var and config-file fallbacks work the same way as for every other setting.
 
@@ -396,7 +414,7 @@ pragmata annotation up --external-postgres <url>          # skip bundled postgre
 pragmata annotation up --external-elastic <url>           # skip bundled elastic, wire Argilla to external
 ```
 
-Internally: `--external-postgres` = deactivate `bundled-db` profile + inject env vars into argilla service. Settings resolution (§1.1.3) applies as normal - flag > env > config > default.
+Internally: `--external-postgres` = deactivate `bundled-db` profile + inject env vars into argilla service. Settings resolution (§1.1.4) applies as normal - flag > env > config > default.
 
 See Open question §Q-profile-flags for minimal-vs-full passthrough.
 
@@ -514,16 +532,6 @@ Context: Argilla's own client already writes to [`~/.cache/argilla/credentials`]
 - *Delegate model:* if user has already run `argilla login`, `pragmata annotation setup` detects that and skips the API key prompt. Keeps one source of truth and composes cleanly with the existing `ARGILLA_API_KEY` env var resolution. Downside: couples us to Argilla's file format + location; breaks if they rename/relocate it; harder to reason about precedence when two stores exist.
 - *Maintain our own model:* `~/.config/pragmata/credentials` holds Argilla + LLM provider keys in one place. Consistent resolution pattern across every secret pragmata needs. Downside: duplicates Argilla's store if the user has also run `argilla login`; pragmata has to write/chmod/own the file; users need to update it in two places if they rotate keys.
 - *Recommendation:* delegate for Argilla specifically (it's the only provider with its own persistent credential store); maintain our own for LLM providers (no equivalent exists). Resolution order for Argilla becomes: `kwarg > ARGILLA_API_KEY env > ~/.cache/argilla/credentials > ~/.config/pragmata/credentials > MissingSecretError`.
-
-### §Q-project-config: project-level config at v0.1.0?
-
-Should we also read from `pyproject.toml [tool.pragmata]` and/or `./pragmata.yaml` at project level (dbt hybrid)? Would allow users to set repo-level configs over device-wide configs.
-
-Current proposal: `CLI flag > env var > credentials file > ~/.config/pragmata/config.yaml > defaults`
-Hybrid pattern would insert: `CLI flag > env var > credentials > ./pyproject.toml or ./pragmata.yaml > ~/.config/pragmata/config.yaml > defaults`
-
-Argument for: pragmata is library-called-from-user-scripts, so different repos could pick up different configs automatically. Argument against: over-engineering at this point.
-*Recommendation:* defer to v0.2+.
 
 ### §Q-stack-redis: is Redis part of the Argilla v2 stack?
 
