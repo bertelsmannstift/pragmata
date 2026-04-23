@@ -37,7 +37,8 @@ Related:
 | **Package data** | `importlib.resources` already used for [`core/annotation/collapsible_field.html`](../../src/pragmata/core/annotation/collapsible_field.html). | Same mechanism for the compose file |
 | **`questionary` / wizards** | No wizard today - `setup` is headless-flag-driven only | Add `questionary` under `[annotation]` (or other tools as needed)|
 
-*proposing to move from deploy/ to annotation/ to keep infra bundled with tool.
+>*TODO: consider moving (currently parallel) `deploy/` into `annotation/` to keep infra bundled with tool that uses it. Research is ambivalent - my current recommendation: keep unbundled for separation of concerns. Once decided update across this doc.
+
 ## Install model
 
 ### Optional extras, one per tool
@@ -279,19 +280,19 @@ pragmata annotation setup       # OPTIONAL config wizard -> overrides defaults, 
 pragmata annotation up          # starts local Docker stack (works without setup - defaults) (NEW)
 pragmata annotation down        # stops local Docker stack (NEW)
 pragmata annotation provision   # CURRENT `setup` renamed: Argilla workspace/user/dataset provisioning
+pragmata annotation teardown
 pragmata annotation import      # runtime - needs stack up (EXISTS)
 pragmata annotation export      # runtime - needs stack up (EXISTS)
 pragmata annotation iaa         # runtime - needs stack up (EXISTS)
 
 pragmata querygen setup         # OPTIONAL config wizard (NEW)
-pragmata querygen generate      # runtime - works OOTB if provider env var present
-                                # (currently `gen-queries` - see Open question §Q-generate-naming)
+pragmata querygen gen-queries    # runtime - works OOTB if provider env var present
 
-pragmata eval setup             # OPTIONAL config wizard (NEW - eval tool itself doesn't exist yet)
-pragmata eval run               # runtime (NEW)
+pragmata eval setup             # OPTIONAL config wizard 
+pragmata eval run               # runtime 
 ```
 
-> *Current implementation state* (see the baseline table at the top for the complete gap map)
+> *Current implementation state* 
 >
 > - `pragmata --version`, `--verbose`
 > - `pragmata querygen gen-queries`
@@ -300,7 +301,8 @@ pragmata eval run               # runtime (NEW)
 Naming rationale (see research notes):
 
 - `setup` - one-shot config wizard that resolves config and writes it. Idempotent. Rerunnable. Chosen over `init` because `init` connotes "scaffold a project in cwd" in supabase/dbt/wrangler convention, which is not what we do. Also, it should work using defaults OOTB -> not a first init, but a later configuration by experienced users.
-- `up`/`down` - Docker stack lifecycle. `docker compose up` inheritance is clear. Chosen over `start`/`stop` (supabase) because `up` preserves the Compose mental model
+- `up`/`down` - Docker stack lifecycle. `docker compose up` inheritance is clear. Chosen over `start`/`stop` (supabase) because `up` preserves the Compose mental model. 
+  - TODO: clearer to have not namespaced by annotation? As general principle we should consider how closely to couple annotation and infra here. 
 - `provision` / `teardown` - proposed names for workspace/user management (currently `setup`/`teardown`). Analogue: `aws iam create-user`, `kubectl create namespace` - provisioning operations against an already-running service. See §Q-setup-verb.
 - NB: no `pragmata init` / no global setup. Per-tool setups scale better than a mega-wizard that branches (the `dbt init` branching pattern only works when setup is structurally identical across plugins - not the case here).
 
@@ -369,6 +371,8 @@ SOTA for PyPI-distributed CLIs that wrap Docker stacks (Supabase CLI, Airbyte `a
 ## 2.1 Stack composition
 
 Bundled stack (mirrors the existing [`deploy/annotation/docker-compose.dev.yml`](../../deploy/annotation/docker-compose.dev.yml)):
+
+>TODO: decide whether to keep `deploy/` separate from `annotation/` 
 
 All bundled by default (zero-config principle). Each backing service (postgres/elasticsearch/redis) is opt-out-able via a Compose profile - see §2.2 for the user surface.
 
