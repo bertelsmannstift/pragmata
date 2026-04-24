@@ -1,6 +1,7 @@
 """Unit tests for annotation export orchestration, CSV writer, and ExportResult."""
 
 import csv
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -409,8 +410,6 @@ class TestNAnnotators:
 
 class TestExportMetaSidecar:
     def test_sidecar_written_alongside_csvs(self, tmp_path: Path, mock_client: MagicMock) -> None:
-        import json
-
         from pragmata.api.annotation_export import export_annotations
 
         record = _make_record(fields=RETRIEVAL_FIELDS, metadata=BASE_METADATA, responses=_retrieval_responses(_UID1))
@@ -431,8 +430,6 @@ class TestExportMetaSidecar:
         assert payload["n_annotators"] == {"retrieval": 1}
 
     def test_sidecar_captures_include_discarded(self, tmp_path: Path, mock_client: MagicMock) -> None:
-        import json
-
         from pragmata.api.annotation_export import export_annotations
 
         dataset = MagicMock()
@@ -450,8 +447,6 @@ class TestExportMetaSidecar:
         assert payload["include_discarded"] is True
 
     def test_sidecar_written_when_no_tasks(self, tmp_path: Path, mock_client: MagicMock) -> None:
-        import json
-
         from pragmata.api.annotation_export import export_annotations
 
         result = export_annotations(base_dir=tmp_path, export_id="test-run", tasks=[])
@@ -462,8 +457,6 @@ class TestExportMetaSidecar:
         assert payload["n_annotators"] == {}
 
     def test_sidecar_dataset_id_null_when_unset(self, tmp_path: Path, mock_client: MagicMock) -> None:
-        import json
-
         from pragmata.api.annotation_export import export_annotations
 
         dataset = MagicMock()

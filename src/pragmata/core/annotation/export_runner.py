@@ -14,6 +14,7 @@ from pragmata.core.annotation.export_fetcher import AnnotationModel, build_user_
 from pragmata.core.csv_io import _to_csv_value
 from pragmata.core.paths.annotation_paths import AnnotationExportPaths
 from pragmata.core.schemas.annotation_export import (
+    AnnotationExportMeta,
     GenerationAnnotation,
     GenerationExportRow,
     GroundingAnnotation,
@@ -21,7 +22,6 @@ from pragmata.core.schemas.annotation_export import (
     RetrievalAnnotation,
     RetrievalExportRow,
 )
-from pragmata.core.schemas.annotation_export_meta import AnnotationExportMeta
 from pragmata.core.schemas.annotation_task import Task
 
 logger = logging.getLogger(__name__)
@@ -164,6 +164,16 @@ def run_export(
     dataset_id = settings.dataset_id or None
 
     if not tasks:
+        meta = assemble_export_meta(
+            export_id=paths.export_dir.name,
+            dataset_id=dataset_id,
+            tasks=[],
+            include_discarded=include_discarded,
+            row_counts={},
+            n_annotators={},
+            constraint_summary={},
+        )
+        write_export_meta(meta, paths.export_meta_json)
         return ExportResult(paths=paths, files={}, row_counts={}, constraint_summary={}, n_annotators={})
 
     user_lookup = build_user_lookup(client)
