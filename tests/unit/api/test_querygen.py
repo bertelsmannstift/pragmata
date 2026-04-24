@@ -216,7 +216,11 @@ def _install_default_workflow_stubs(
         del expected_candidate_ids
         return items
 
-    def deduplicate_blueprints(candidates: list[QueryBlueprint]) -> list[QueryBlueprint]:
+    def deduplicate_blueprints(
+        candidates: list[QueryBlueprint],
+        near_duplicate_tolerance: float = 0.95,
+    ) -> list[QueryBlueprint]:
+        del near_duplicate_tolerance
         return candidates
 
     def chunk_blueprints(
@@ -341,6 +345,7 @@ def test_gen_queries_combines_user_args_config_and_defaults(tmp_path: Path) -> N
     assert result.paths.run_dir.name == result.settings.run_id
     assert result.settings.llm.realization_model == "mistral-medium-latest"
     assert result.settings.batch_size == 12
+    assert result.settings.near_duplicate_tolerance == 0.95
     assert result.settings.enable_planning_memory is True
 
 
@@ -724,7 +729,11 @@ def test_gen_queries_applies_stage1_filtering_before_deduplication(
         call_order.append("stage2_filter")
         return items
 
-    def deduplicate_blueprints(candidates: list[QueryBlueprint]) -> list[QueryBlueprint]:
+    def deduplicate_blueprints(
+        candidates: list[QueryBlueprint],
+        near_duplicate_tolerance: float = 0.95,
+    ) -> list[QueryBlueprint]:
+        del near_duplicate_tolerance
         call_order.append("deduplicate")
         assert [candidate.candidate_id for candidate in candidates] == ["c001", "c003"]
         return candidates
@@ -753,8 +762,11 @@ def test_gen_queries_drives_realization_batches_from_selected_blueprints(
     ]
     realization_batch_calls: list[list[str]] = []
 
-    def deduplicate_blueprints(candidates: list[QueryBlueprint]) -> list[QueryBlueprint]:
-        del candidates
+    def deduplicate_blueprints(
+        candidates: list[QueryBlueprint],
+        near_duplicate_tolerance: float = 0.95,
+    ) -> list[QueryBlueprint]:
+        del candidates, near_duplicate_tolerance
         return selected_blueprints
 
     def chunk_blueprints(
@@ -804,8 +816,11 @@ def test_gen_queries_applies_stage2_filtering_before_assembly(
     ]
     call_order: list[str] = []
 
-    def deduplicate_blueprints(candidates: list[QueryBlueprint]) -> list[QueryBlueprint]:
-        del candidates
+    def deduplicate_blueprints(
+        candidates: list[QueryBlueprint],
+        near_duplicate_tolerance: float = 0.95,
+    ) -> list[QueryBlueprint]:
+        del candidates, near_duplicate_tolerance
         return selected_blueprints
 
     def filter_aligned_candidate_ids(
@@ -899,8 +914,11 @@ def test_gen_queries_calls_assembly_and_export_with_final_post_filter_outputs(
             return items
         return filtered_realization_outputs
 
-    def deduplicate_blueprints(candidates: list[QueryBlueprint]) -> list[QueryBlueprint]:
-        del candidates
+    def deduplicate_blueprints(
+        candidates: list[QueryBlueprint],
+        near_duplicate_tolerance: float = 0.95,
+    ) -> list[QueryBlueprint]:
+        del candidates, near_duplicate_tolerance
         return selected_blueprints
 
     def chunk_blueprints(
@@ -1213,7 +1231,11 @@ def test_gen_queries_handles_empty_selected_blueprints_after_stage1(
     assemble_meta_calls: list[dict[str, object]] = []
     export_calls: list[dict[str, object]] = []
 
-    monkeypatch.setattr(querygen_api, "deduplicate_blueprints", lambda candidates: [])
+    monkeypatch.setattr(
+        querygen_api,
+        "deduplicate_blueprints",
+        lambda candidates, near_duplicate_tolerance=0.95: [],
+    )
     monkeypatch.setattr(
         querygen_api,
         "run_realization_stage",
@@ -1344,3 +1366,34 @@ def test_gen_queries_enable_planning_memory_arg_overrides_config_value(
     )
 
     assert result.settings.enable_planning_memory is False
+
+
+def test_gen_queries_passes_near_duplicate_tolerance_to_deduplication(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Explicit near_duplicate_tolerance is resolved and forwarded to deduplication."""
+    seen: dict[str, object] = {}
+
+    def deduplicate_blueprints(
+        candidates: list[QueryBlueprint],
+        near_duplicate_tolerance: float = 0.95,
+    ) -> list[QueryBlueprint]:
+        seen["candidate_ids"] = [candidate.candidate_id for candidate in candidates]
+        seen["near_duplicate_tolerance"] = near_duplicate_tolerance
+        return candidates
+
+    monkeypatch.setattr(querygen_api, "deduplicate_blueprints", deduplicate_blueprints)
+
+    result = querygen_api.gen_queries(
+        **_required_querygen_kwargs(tmp_path),
+        n_queries=3,
+        near_duplicate_tolerance=0.99,
+        run_id="near-duplicate-tolerance-check",
+    )
+
+    assert result.settings.near_duplicate_tolerance == 0.99
+    assert seen == {
+        "candidate_ids": ["c001", "c002", "c003"],
+        "near_duplicate_tolerance": 0.99,
+    }
