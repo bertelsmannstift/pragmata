@@ -113,7 +113,7 @@ def run_export(
     paths: AnnotationExportPaths,
     tasks: list[Task],
     *,
-    include_discarded: bool = False,
+    include_discarded: bool,
 ) -> ExportResult:
     """Fetch all tasks, write CSVs atomically, return ExportResult."""
     if not tasks:

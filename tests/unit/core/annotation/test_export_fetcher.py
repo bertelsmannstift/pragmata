@@ -146,7 +146,7 @@ class TestFetchTask:
             responses=_retrieval_responses(_UID1),
         )
         client = _mock_client_with_records([record])
-        rows = fetch_task(client, _SETTINGS, Task.RETRIEVAL, {_UID1: "alice"})
+        rows = fetch_task(client, _SETTINGS, Task.RETRIEVAL, {_UID1: "alice"}, include_discarded=False)
 
         assert len(rows) == 1
         model, violations = rows[0]
@@ -162,7 +162,7 @@ class TestFetchTask:
             responses=_grounding_responses(_UID1),
         )
         client = _mock_client_with_records([record])
-        rows = fetch_task(client, _SETTINGS, Task.GROUNDING, {_UID1: "alice"})
+        rows = fetch_task(client, _SETTINGS, Task.GROUNDING, {_UID1: "alice"}, include_discarded=False)
 
         assert len(rows) == 1
         model, _ = rows[0]
@@ -176,7 +176,7 @@ class TestFetchTask:
             responses=_generation_responses(_UID1),
         )
         client = _mock_client_with_records([record])
-        rows = fetch_task(client, _SETTINGS, Task.GENERATION, {_UID1: "alice"})
+        rows = fetch_task(client, _SETTINGS, Task.GENERATION, {_UID1: "alice"}, include_discarded=False)
 
         assert len(rows) == 1
         model, _ = rows[0]
@@ -190,7 +190,7 @@ class TestFetchTask:
             responses=_retrieval_responses(_UID1) + _retrieval_responses(_UID2),
         )
         client = _mock_client_with_records([record])
-        rows = fetch_task(client, _SETTINGS, Task.RETRIEVAL, {_UID1: "alice", _UID2: "bob"})
+        rows = fetch_task(client, _SETTINGS, Task.RETRIEVAL, {_UID1: "alice", _UID2: "bob"}, include_discarded=False)
 
         assert len(rows) == 2
         annotators = {r[0].annotator_id for r in rows}
@@ -203,7 +203,7 @@ class TestFetchTask:
             responses=_retrieval_responses(_UID1, topically_relevant="yes", evidence_sufficient="no"),
         )
         client = _mock_client_with_records([record])
-        rows = fetch_task(client, _SETTINGS, Task.RETRIEVAL, {_UID1: "alice"})
+        rows = fetch_task(client, _SETTINGS, Task.RETRIEVAL, {_UID1: "alice"}, include_discarded=False)
 
         model, _ = rows[0]
         assert model.topically_relevant is True
@@ -216,14 +216,14 @@ class TestFetchTask:
             responses=_retrieval_responses(_UID1, topically_relevant="no", evidence_sufficient="yes"),
         )
         client = _mock_client_with_records([record])
-        rows = fetch_task(client, _SETTINGS, Task.RETRIEVAL, {_UID1: "alice"})
+        rows = fetch_task(client, _SETTINGS, Task.RETRIEVAL, {_UID1: "alice"}, include_discarded=False)
 
         _, violations = rows[0]
         assert len(violations) >= 1
 
     def test_empty_dataset_returns_empty(self) -> None:
         client = _mock_client_with_records([])
-        rows = fetch_task(client, _SETTINGS, Task.RETRIEVAL, {_UID1: "alice"})
+        rows = fetch_task(client, _SETTINGS, Task.RETRIEVAL, {_UID1: "alice"}, include_discarded=False)
         assert rows == []
 
     def test_missing_uuid_logs_warning(self, caplog: pytest.LogCaptureFixture) -> None:
@@ -236,7 +236,7 @@ class TestFetchTask:
         client = _mock_client_with_records([record])
 
         with caplog.at_level(logging.WARNING, logger="pragmata.core.annotation.export_fetcher"):
-            rows = fetch_task(client, _SETTINGS, Task.RETRIEVAL, {_UID1: "alice"})
+            rows = fetch_task(client, _SETTINGS, Task.RETRIEVAL, {_UID1: "alice"}, include_discarded=False)
 
         assert len(rows) == 1
         assert rows[0][0].record_uuid == ""
@@ -249,7 +249,7 @@ class TestFetchTask:
             responses=_retrieval_responses(_UID1),
         )
         client = _mock_client_with_records([record])
-        rows = fetch_task(client, _SETTINGS, Task.RETRIEVAL, {})  # empty lookup
+        rows = fetch_task(client, _SETTINGS, Task.RETRIEVAL, {}, include_discarded=False)  # empty lookup
 
         assert rows[0][0].annotator_id == str(_UID1)
 
@@ -262,7 +262,7 @@ class TestFetchTask:
             updated_at=updated,
         )
         client = _mock_client_with_records([record])
-        rows = fetch_task(client, _SETTINGS, Task.RETRIEVAL, {_UID1: "alice"})
+        rows = fetch_task(client, _SETTINGS, Task.RETRIEVAL, {_UID1: "alice"}, include_discarded=False)
 
         assert rows[0][0].created_at == updated
 
@@ -276,7 +276,7 @@ class TestFetchTask:
         )
         record._model.updated_at = None
         client = _mock_client_with_records([record])
-        rows = fetch_task(client, _SETTINGS, Task.RETRIEVAL, {_UID1: "alice"})
+        rows = fetch_task(client, _SETTINGS, Task.RETRIEVAL, {_UID1: "alice"}, include_discarded=False)
 
         assert rows[0][0].created_at == inserted
 
@@ -287,13 +287,13 @@ class TestFetchTask:
             responses=_retrieval_responses(_UID1, notes=None),
         )
         client = _mock_client_with_records([record])
-        rows = fetch_task(client, _SETTINGS, Task.RETRIEVAL, {_UID1: "alice"})
+        rows = fetch_task(client, _SETTINGS, Task.RETRIEVAL, {_UID1: "alice"}, include_discarded=False)
 
         assert rows[0][0].notes == ""
 
     def test_discarded_response_included(self) -> None:
         responses = [
-            _make_response("discard_reason", "duplicate", _UID1, status="discarded"),
+            _make_response("discard_reason", "invalid_or_unrealistic", _UID1, status="discarded"),
             _make_response("discard_notes", "same as Q42", _UID1, status="discarded"),
         ]
         record = _make_record(fields=_RETRIEVAL_FIELDS, metadata=_BASE_METADATA, responses=responses)
@@ -308,13 +308,13 @@ class TestFetchTask:
 
     def test_discard_reason_propagated(self) -> None:
         responses = [
-            _make_response("discard_reason", "duplicate", _UID1, status="discarded"),
+            _make_response("discard_reason", "invalid_or_unrealistic", _UID1, status="discarded"),
         ]
         record = _make_record(fields=_RETRIEVAL_FIELDS, metadata=_BASE_METADATA, responses=responses)
         client = _mock_client_with_records([record])
         rows = fetch_task(client, _SETTINGS, Task.RETRIEVAL, {_UID1: "alice"}, include_discarded=True)
 
-        assert rows[0][0].discard_reason == "duplicate"
+        assert rows[0][0].discard_reason == "invalid_or_unrealistic"
 
     def test_discard_notes_propagated(self) -> None:
         responses = [
@@ -334,16 +334,16 @@ class TestFetchTask:
             responses=_retrieval_responses(_UID1),
         )
         client = _mock_client_with_records([record])
-        rows = fetch_task(client, _SETTINGS, Task.RETRIEVAL, {_UID1: "alice"})
+        rows = fetch_task(client, _SETTINGS, Task.RETRIEVAL, {_UID1: "alice"}, include_discarded=False)
 
         model, _ = rows[0]
         assert model.response_status == "submitted"
         assert model.discard_reason is None
         assert model.discard_notes is None
 
-    def test_default_query_excludes_discarded(self) -> None:
+    def test_submitted_only_query_when_include_discarded_false(self) -> None:
         client = _mock_client_with_records([])
-        fetch_task(client, _SETTINGS, Task.RETRIEVAL, {_UID1: "alice"})
+        fetch_task(client, _SETTINGS, Task.RETRIEVAL, {_UID1: "alice"}, include_discarded=False)
 
         query = client.datasets.return_value.records.call_args.args[0]
         assert query.filter.conditions == [("response.status", "in", ["submitted"])]
