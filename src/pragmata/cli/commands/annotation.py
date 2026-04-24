@@ -140,7 +140,7 @@ def export_command(
         tasks=parse_tasks(tasks),
         dataset_id=UNSET if dataset_id is None else dataset_id,
         config_path=UNSET if config is None else config,
-        include_discarded=include_discarded,
+        include_discarded=UNSET if not include_discarded else True,
     )
     for task_name, count in result.row_counts.items():
         typer.echo(f"{task_name}: {count} rows")

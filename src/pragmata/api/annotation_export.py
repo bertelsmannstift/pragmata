@@ -25,7 +25,7 @@ def export_annotations(
     tasks: list[Task] | None = None,
     dataset_id: str | Unset = UNSET,
     config_path: str | Path | Unset = UNSET,
-    include_discarded: bool = False,
+    include_discarded: bool | Unset = UNSET,
 ) -> ExportResult:
     """Fetch annotations from Argilla and write flat CSVs per task.
 
@@ -61,6 +61,7 @@ def export_annotations(
             "argilla": {"api_url": api_url},
             "dataset_id": dataset_id,
             "base_dir": base_dir,
+            "include_discarded": include_discarded,
         },
     )
     api_key = api_key if isinstance(api_key, str) else resolve_api_key("argilla")
@@ -71,7 +72,9 @@ def export_annotations(
     resolved_tasks = tasks if tasks is not None else list(Task)
 
     with error_log(export_paths.tool_root):
-        result = run_export(client, settings, export_paths, resolved_tasks, include_discarded=include_discarded)
+        result = run_export(
+            client, settings, export_paths, resolved_tasks, include_discarded=settings.include_discarded
+        )
 
     logger.info(
         "Export complete: %d task(s), %d total rows",

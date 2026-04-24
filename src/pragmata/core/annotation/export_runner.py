@@ -158,22 +158,12 @@ def run_export(
     paths: AnnotationExportPaths,
     tasks: list[Task],
     *,
-    include_discarded: bool = False,
+    include_discarded: bool,
 ) -> ExportResult:
     """Fetch all tasks, write CSVs and provenance sidecar, return ExportResult."""
     dataset_id = settings.dataset_id or None
 
     if not tasks:
-        meta = assemble_export_meta(
-            export_id=paths.export_dir.name,
-            dataset_id=dataset_id,
-            tasks=[],
-            include_discarded=include_discarded,
-            row_counts={},
-            n_annotators={},
-            constraint_summary={},
-        )
-        write_export_meta(meta, paths.export_meta_json)
         return ExportResult(paths=paths, files={}, row_counts={}, constraint_summary={}, n_annotators={})
 
     user_lookup = build_user_lookup(client)

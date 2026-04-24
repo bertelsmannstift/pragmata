@@ -101,7 +101,7 @@ def _make_discarded_retrieval_row(record_uuid: str, annotator_id: str) -> tuple:
             "annotator_id": annotator_id,
             "created_at": datetime(2026, 4, 1, tzinfo=timezone.utc),
             "response_status": "discarded",
-            "discard_reason": "duplicate",
+            "discard_reason": "invalid_or_unrealistic",
             **{label: None for label in _RETRIEVAL_LABELS},
         }
     )

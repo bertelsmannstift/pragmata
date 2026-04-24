@@ -48,9 +48,20 @@ def _blueprint_content_key(candidate: QueryBlueprint) -> str:
 
 def _select_non_duplicate_indices(
     similarities: NDArray[np.float32],
-    threshold: float = 0.95,
+    near_duplicate_tolerance: float,
 ) -> list[int]:
-    """Select non-duplicate indices deterministically from a similarity matrix."""
+    """Select non-duplicate indices deterministically from a similarity matrix.
+
+    Args:
+        similarities: Square pairwise similarity matrix.
+        near_duplicate_tolerance: Maximum allowed semantic similarity before a
+            later blueprint is treated as a near-duplicate and removed. Lower
+            values deduplicate more aggressively; higher values allow more
+            similar blueprints to remain.
+
+    Returns:
+        Deterministically retained indices in original order.
+    """
     matrix = similarities
 
     if matrix.ndim != 2 or matrix.shape[0] != matrix.shape[1]:
@@ -66,7 +77,7 @@ def _select_non_duplicate_indices(
         retained_indices.append(index)
 
         for later_index in range(index + 1, matrix.shape[0]):
-            if matrix[index, later_index] >= threshold:
+            if matrix[index, later_index] >= near_duplicate_tolerance:
                 removed_indices.add(later_index)
 
     return retained_indices
@@ -98,8 +109,22 @@ def _embed_blueprints(candidates: list[QueryBlueprint]) -> NDArray[np.float32]:
     return np.asarray(embeddings, dtype=np.float32)
 
 
-def deduplicate_blueprints(candidates: list[QueryBlueprint]) -> list[QueryBlueprint]:
-    """Remove exact and semantic near-duplicate blueprints deterministically."""
+def deduplicate_blueprints(
+    candidates: list[QueryBlueprint],
+    near_duplicate_tolerance: float,
+) -> list[QueryBlueprint]:
+    """Remove exact and semantic near-duplicate blueprints deterministically.
+
+    Args:
+        candidates: Candidate blueprints to deduplicate.
+        near_duplicate_tolerance: Maximum allowed semantic similarity before a
+            later blueprint is treated as a near-duplicate and removed. Lower
+            values deduplicate more aggressively; higher values allow more
+            similar blueprints to remain.
+
+    Returns:
+        Deduplicated candidate blueprints in deterministic original order.
+    """
     if not candidates:
         return []
 
@@ -123,6 +148,9 @@ def deduplicate_blueprints(candidates: list[QueryBlueprint]) -> list[QueryBluepr
         model.similarity(embeddings, embeddings),
         dtype=np.float32,
     )
-    retained_indices = _select_non_duplicate_indices(similarities)
+    retained_indices = _select_non_duplicate_indices(
+        similarities,
+        near_duplicate_tolerance=near_duplicate_tolerance,
+    )
 
     return [exact_deduplicated[index] for index in retained_indices]
