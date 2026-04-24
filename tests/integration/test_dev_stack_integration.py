@@ -1,7 +1,11 @@
-"""Integration tests for the Docker Compose dev stack (requires Docker)."""
+"""Integration tests for the Argilla dev stack.
+
+Requires the stack to be running (make docker-up). The annotation-stack
+preflight in tests/conftest.py gates collection, so these tests skip
+cleanly when the stack is unavailable.
+"""
 
 import json
-import subprocess
 import urllib.request
 
 import pytest
@@ -9,42 +13,14 @@ import pytest
 pytestmark = [pytest.mark.integration, pytest.mark.annotation]
 
 
-def test_stack_boots_healthy() -> None:
-    """Make setup brings all services to healthy state."""
-    subprocess.run(["make", "setup"], check=True, capture_output=True, timeout=120)
-    try:
-        resp = urllib.request.urlopen("http://localhost:6900/api/docs", timeout=10)
-        assert resp.status == 200, f"Argilla docs returned {resp.status}"
-    finally:
-        subprocess.run(["make", "teardown"], check=True, capture_output=True, timeout=60)
-
-
-def test_argilla_api_authenticated() -> None:
-    """Argilla API responds to authenticated requests."""
-    subprocess.run(["make", "setup"], check=True, capture_output=True, timeout=120)
-    try:
-        req = urllib.request.Request(
-            "http://localhost:6900/api/v1/me",
-            headers={"X-Argilla-Api-Key": "argilla.apikey"},
-        )
-        resp = urllib.request.urlopen(req, timeout=10)
+def test_argilla_api_authenticated_as_owner() -> None:
+    """Argilla API accepts the configured API key and returns the owner account."""
+    req = urllib.request.Request(
+        "http://localhost:6900/api/v1/me",
+        headers={"X-Argilla-Api-Key": "argilla.apikey"},
+    )
+    with urllib.request.urlopen(req, timeout=10) as resp:
         assert resp.status == 200
         data = json.loads(resp.read())
-        assert data["username"] == "argilla"
-        assert data["role"] == "owner"
-    finally:
-        subprocess.run(["make", "teardown"], check=True, capture_output=True, timeout=60)
-
-
-def test_teardown_removes_volumes() -> None:
-    """Make teardown removes containers and volumes for clean slate."""
-    subprocess.run(["make", "setup"], check=True, capture_output=True, timeout=120)
-    subprocess.run(["make", "teardown"], check=True, capture_output=True, timeout=60)
-
-    result = subprocess.run(
-        ["docker", "compose", "-f", "deploy/annotation/docker-compose.dev.yml", "ps", "-q"],
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
-    assert result.stdout.strip() == "", "Containers still running after teardown"
+    assert data["username"] == "argilla"
+    assert data["role"] == "owner"
