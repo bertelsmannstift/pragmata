@@ -297,7 +297,7 @@ def test_discarded_allows_none_labels(cls, fields_fixture, labels, request):
     """Discarded annotations may have all task-specific labels as None."""
     fields = request.getfixturevalue(fields_fixture).copy()
     fields["response_status"] = "discarded"
-    fields["discard_reason"] = "duplicate"
+    fields["discard_reason"] = "invalid_or_unrealistic"
     for label in labels:
         fields[label] = None
     instance = cls(**fields)
