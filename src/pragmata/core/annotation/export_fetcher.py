@@ -98,7 +98,7 @@ def fetch_task(
     task: Task,
     user_lookup: dict[UUID, str],
     *,
-    include_discarded: bool = False,
+    include_discarded: bool,
 ) -> list[tuple[AnnotationModel, list[str]]]:
     """Fetch records for a task, build typed rows with constraint violations.
 
