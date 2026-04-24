@@ -571,42 +571,13 @@ Beyond the generic cases in §1.4, `annotation up` must also handle:
 | **Package data** | `importlib.resources` already used for [`core/annotation/collapsible_field.html`](../../src/pragmata/core/annotation/collapsible_field.html). | Same mechanism for the compose file |
 | **`questionary` / wizards** | No wizard today - `setup` is headless-flag-driven only | Add `questionary` under `[annotation]` (or other tools as needed)|
 
->*TODO: consider moving (currently parallel) `deploy/` into `annotation/` to keep infra bundled with tool that uses it. Research is ambivalent - my current recommendation: keep unbundled for separation of concerns. Once decided update across this doc.
-
 
 ## Open questions
 
-Consolidated from inline markers throughout. Cross-referenced from the relevant sections.
-
-### §Q-defaults-per-tool: what are the zero-config defaults per tool?
-
-Principle 4 (setup optional) commits us to zero-config happy paths for each tool. That requires deciding *what* those defaults are:
-- **annotation:** `argilla_url=http://localhost:6900`, default workspace, auto-generated API key written to Argilla on `up`. Straightforward - stack is self-contained.
-- **querygen:** needs an LLM provider. No defensible "zero-config" default - we can't pick a provider for the user, and the SDK needs a key. Options:
-  - (a) Require at least one provider env var (`OPENAI_API_KEY`, `MISTRAL_API_KEY`, etc.); auto-detect provider from which one is set. Fail fast with a clear message if none set: *"querygen needs a provider. Set one of: OPENAI_API_KEY, ... . Or run `pragmata querygen setup`."*
-  - (b) Require explicit `setup` for querygen, breaking principle 4 for this one tool.
-  - *Recommendation:* (a). Breaks no principle and is how `langchain`/`litellm` work.
-- **eval:** likely depends on querygen's provider + possibly a judge model. Same pattern as querygen.
-
-### §Q-argilla-creds: delegate to Argilla's own credential store or maintain our own?
-
-Context: Argilla's own client already writes to [`~/.cache/argilla/credentials`](https://docs.argilla.io/) on `argilla login`.
-
-- *Delegate model:* if user has already run `argilla login`, `pragmata annotation setup` detects that and skips the API key prompt. Keeps one source of truth and composes cleanly with the existing `ARGILLA_API_KEY` env var resolution. Downside: couples us to Argilla's file format + location; breaks if they rename/relocate it; harder to reason about precedence when two stores exist.
-- *Maintain our own model:* `~/.config/pragmata/credentials` holds Argilla + LLM provider keys in one place. Consistent resolution pattern across every secret pragmata needs. Downside: duplicates Argilla's store if the user has also run `argilla login`; pragmata has to write/chmod/own the file; users need to update it in two places if they rotate keys.
-- *Recommendation:* delegate for Argilla specifically (it's the only provider with its own persistent credential store); maintain our own for LLM providers (no equivalent exists). Resolution order for Argilla becomes: `kwarg > ARGILLA_API_KEY env > ~/.cache/argilla/credentials > ~/.config/pragmata/credentials > MissingSecretError`.
-
-### §Q-profile-flags: minimal external-service flags vs full `--profile` passthrough?
-
-- *Minimal (recommended):* `--external-postgres` / `--external-elastic` only. Covers the real enterprise-deployer case (corp DB), closed surface, no surprises.
-- *Full passthrough:* `--profile NAME` passes through to `docker compose`. Flexible, but users can activate profiles we don't expect. Footgun for v0.1.0.
+not comprehensive - several are inline thoughout above
 
 ### §Q-prod-script: ship a per-tool bootstrap script for `annotation`?
 
-See §2.6 for full options matrix. Short version:
-- *Position B (SOTA survey):* A (no script for v0.1.0); jump to C if demand appears
-- *Position A (prior framing):* B implied by "replaced by bash script"
-- *Likely framing mismatch* - "bash script" may mean "any non-Make unattended path" rather than specifically a shipped `.sh` file. Confirm before committing.
 
 ### §Q-wizard-lib: Questionary or minimal prompts?
 
@@ -616,18 +587,6 @@ Research strongly prefers [Questionary](https://questionary.readthedocs.io/); 2.
 
 Argilla API keys rotate independently of compose config. `gh` and `supabase` split auth from config; `aws` combines. Research leans split; current draft combines.
 
-### §Q-generate-naming: keep `gen-queries` or rename to `generate`?
-
-Current implementation: `pragmata querygen gen-queries`. Proposal in this doc: `pragmata querygen generate`. Trivial rename; non-breaking if done before v0.1.0.
-
-### §Q-setup-verb: what to call the Argilla workspace-provisioning command?
-
-The existing `pragmata annotation setup` provisions Argilla workspaces/users/datasets against a running server. The proposed config-wizard UX in this doc wants to claim `setup` for itself (matching `gh auth login`, `supabase`, `dbt` convention). They cannot coexist.
-
-- *Option A (recommended):* rename the existing command → `pragmata annotation provision` (or `init-workspace`). Frees `setup` for the config wizard. One-line breaking change before v0.1.0.
-- *Option B:* call the config wizard `configure` instead. Existing `setup` stays. Downside: `configure` is less conventional; `aws configure` is the main precedent.
-
-Trivial to execute either way; the question is naming precedence.
 
 ### §Q-wizard-placement: where and how do wizards appear?
 
