@@ -57,12 +57,14 @@ class ExportResult:
         files: Mapping of task to written CSV file path.
         row_counts: Number of rows written per task.
         constraint_summary: Violation count per rule name (namespaced by task).
+        n_annotators: Count of distinct annotators per task.
     """
 
     paths: AnnotationExportPaths
     files: dict[Task, Path]
     row_counts: dict[Task, int]
     constraint_summary: dict[str, int]
+    n_annotators: dict[Task, int]
 
 
 def write_export_csv(
@@ -115,7 +117,7 @@ def run_export(
 ) -> ExportResult:
     """Fetch all tasks, write CSVs atomically, return ExportResult."""
     if not tasks:
-        return ExportResult(paths=paths, files={}, row_counts={}, constraint_summary={})
+        return ExportResult(paths=paths, files={}, row_counts={}, constraint_summary={}, n_annotators={})
 
     user_lookup = build_user_lookup(client)
 
@@ -137,6 +139,7 @@ def run_export(
         raise
 
     row_counts = {task: len(task_rows[task]) for task in tasks}
+    n_annotators = {task: len({row.annotator_id for row, _ in task_rows[task]}) for task in tasks}
 
     constraint_summary: dict[str, int] = {}
     for task in tasks:
@@ -149,6 +152,7 @@ def run_export(
         files=task_paths,
         row_counts=row_counts,
         constraint_summary=constraint_summary,
+        n_annotators=n_annotators,
     )
 
 
