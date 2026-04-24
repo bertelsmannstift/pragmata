@@ -37,7 +37,7 @@ Argilla PostgreSQL
 
 ## Inputs
 
-Three Argilla datasets, accessed via Argilla SDK. Filter: `status in ["submitted", "discarded"]` — both submitted and annotator-discarded responses are exported; draft records are excluded.
+Three Argilla datasets, accessed via Argilla SDK. Filter: `response.status == "submitted"` by default; pass `--include-discarded` (CLI) or `include_discarded=True` (API) to also include `discarded` responses. Draft responses are always excluded. Discarded responses are off by default to keep downstream evaluation/training pipelines clean — opt in when you specifically want to analyse discard reasons.
 
 
 | Dataset | Records |

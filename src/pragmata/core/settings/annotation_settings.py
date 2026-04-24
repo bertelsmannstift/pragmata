@@ -37,6 +37,7 @@ class AnnotationSettings(ResolveSettings):
         }
     )
     min_submitted: int = 1
+    include_discarded: bool = False
 
 
 @dataclass

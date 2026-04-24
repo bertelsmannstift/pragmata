@@ -123,6 +123,11 @@ def export_command(
     tasks: str | None = typer.Option(
         None, "--tasks", help="Comma-separated tasks to export (retrieval,grounding,generation)."
     ),
+    include_discarded: bool = typer.Option(
+        False,
+        "--include-discarded",
+        help="Include responses the annotator discarded. Off by default to keep eval pipelines clean.",
+    ),
 ) -> None:
     """Fetch submitted annotations and write flat CSVs per task."""
     from pragmata import annotation
@@ -135,6 +140,7 @@ def export_command(
         tasks=parse_tasks(tasks),
         dataset_id=UNSET if dataset_id is None else dataset_id,
         config_path=UNSET if config is None else config,
+        include_discarded=UNSET if not include_discarded else True,
     )
     for task_name, count in result.row_counts.items():
         typer.echo(f"{task_name}: {count} rows")
