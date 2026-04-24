@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  html, body { margin: 0; padding: 0; }
+  .discard-panel {
+    border: 2px solid #d9534f;
+    background: #fff5f5;
+    border-radius: 6px;
+    padding: 12px;
+    font-family: system-ui, sans-serif;
+  }
+  .discard-panel summary { cursor: pointer; font-weight: 600; color: #a00; }
+  .discard-panel[open] { padding-bottom: 16px; }
+  .discard-panel label { display: block; margin-top: 12px; font-size: 13px; }
+  .discard-panel select, .discard-panel textarea {
+    width: 100%;
+    box-sizing: border-box;
+    margin-top: 4px;
+    padding: 6px;
+    font-family: inherit;
+    font-size: 14px;
+  }
+  .discard-btn {
+    margin-top: 12px; padding: 8px 16px;
+    background: #d9534f; color: white; border: none;
+    border-radius: 4px; cursor: pointer; font-weight: 600;
+  }
+  .discard-btn:hover { background: #c9302c; }
+  .discard-btn[disabled] { background: #d9a5a3; cursor: not-allowed; }
+</style>
+</head>
+<body>
+
+<details class="discard-panel" id="panel">
+  <summary>&#9888; Discard this record</summary>
+  <p style="margin-top:8px;font-size:13px;color:#555">
+    Use this if the record is unsuitable for annotation
+    (e.g. invalid, unclear, or outside your expertise).
+  </p>
+
+  <label>Reason:
+    <select id="reason">
+      <option value="">&#8212; select &#8212;</option>
+      <option value="invalid_or_unrealistic">Invalid or unrealistic record</option>
+      <option value="unclear">Unclear query/context/answer relationship</option>
+      <option value="outside_reviewer_expertise">Outside my domain expertise</option>
+    </select>
+  </label>
+
+  <label>Optional notes:
+    <textarea id="discard-notes" rows="3"
+      placeholder="Any extra context (optional)"></textarea>
+  </label>
+
+  <button class="discard-btn" id="discard-go" disabled>
+    Discard
+  </button>
+</details>
+
+<script>
+(function() {
+  var pdoc = window.parent.document;
+  // Argilla-internal selectors — will need to re-verify on Argilla upgrade.
+  var CARD_TITLE_SEL = '.title-area';
+  var CARD_SEL = '.wrapper';
+  var NATIVE_DISCARD_SEL = '.button--discard';
+  var REASON_TITLE = 'Discard reason';
+  var NOTES_TITLE = 'Discard notes (optional)';
+  var HIDDEN_TITLES = [REASON_TITLE, NOTES_TITLE];
+  // Delay after writing hidden question values before firing native discard,
+  // so Vue has a tick to register the input/change events.
+  var DISCARD_SUBMIT_DELAY_MS = 80;
+
+  if (!pdoc.getElementById('__discard_hide_style')) {
+    var s = pdoc.createElement('style');
+    s.id = '__discard_hide_style';
+    s.textContent = NATIVE_DISCARD_SEL + ' { display: none !important; }';
+    pdoc.head.appendChild(s);
+  }
+
+  function cardFor(title) {
+    var areas = pdoc.querySelectorAll(CARD_TITLE_SEL);
+    for (var i = 0; i < areas.length; i++) {
+      if ((areas[i].innerText || '').trim() === title) return areas[i].closest(CARD_SEL);
+    }
+    return null;
+  }
+
+  function hideStaleQuestions() {
+    HIDDEN_TITLES.forEach(function(title) {
+      var card = cardFor(title);
+      if (card && card.style.display !== 'none') card.style.display = 'none';
+    });
+  }
+
+  function resizeSelf() {
+    try {
+      var frame = window.frameElement;
+      if (!frame) return;
+      // scrollHeight is clamped to >=  iframe viewport, so shrink to
+      // 0 first then remeasure — otherwise the iframe grows but can't
+      // shrink back on collapse.
+      frame.style.height = '0px';
+      requestAnimationFrame(function () {
+        frame.style.height = document.documentElement.scrollHeight + 'px';
+      });
+    } catch (e) {}
+  }
+
+  // Hide siblings of our iframe — that's where Argilla renders the field title.
+  function hideFieldTitle() {
+    try {
+      var frame = window.frameElement;
+      if (!frame || !frame.parentElement) return;
+      var host = frame.parentElement;
+      for (var i = 0; i < host.children.length; i++) {
+        var child = host.children[i];
+        if (child !== frame && child.style.display !== 'none') child.style.display = 'none';
+      }
+    } catch (e) {}
+  }
+
+  var panel = document.getElementById('panel');
+  var reasonSel = document.getElementById('reason');
+  var notesTa = document.getElementById('discard-notes');
+  var btn = document.getElementById('discard-go');
+
+  panel.addEventListener('toggle', resizeSelf);
+  reasonSel.addEventListener('change', function() {
+    btn.disabled = !reasonSel.value;
+  });
+
+  btn.addEventListener('click', function() {
+    var reason = reasonSel.value;
+    var notes = notesTa.value;
+    if (!reason) return;
+
+    var reasonCard = cardFor(REASON_TITLE);
+    var notesCard = cardFor(NOTES_TITLE);
+    if (reasonCard) reasonCard.style.display = '';
+    if (notesCard) notesCard.style.display = '';
+
+    if (reasonCard) {
+      var chips = reasonCard.querySelectorAll('input[type="radio"], label, button');
+      for (var i = 0; i < chips.length; i++) {
+        var c = chips[i];
+        if (c.value === reason || (c.textContent || '').trim() === reason) {
+          c.click();
+          break;
+        }
+      }
+    }
+    if (notes && notesCard) {
+      var ta = notesCard.querySelector('textarea, input[type="text"]');
+      if (ta) {
+        ta.focus();
+        ta.value = notes;
+        ta.dispatchEvent(new Event('input', { bubbles: true }));
+        ta.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    }
+
+    setTimeout(function() {
+      hideStaleQuestions();
+      // Scope lookup to the record form containing the hidden reason card,
+      // so we don't grab a stale button from a neighbouring record during
+      // re-render. Fall back to global if we can't localise.
+      var recordScope = reasonCard && reasonCard.closest('form, .record, .content-area');
+      var scope = recordScope || pdoc;
+      var discardBtn = scope.querySelector(NATIVE_DISCARD_SEL);
+      if (discardBtn) discardBtn.click();
+    }, DISCARD_SUBMIT_DELAY_MS);
+  });
+
+  function applyHiding() { hideStaleQuestions(); hideFieldTitle(); }
+
+  // Coalesce mutation bursts to one apply per paint frame — Argilla's Vue
+  // app fires many mutations per render, and applyHiding is now idempotent.
+  var pendingApply = false;
+  function scheduleApply() {
+    if (pendingApply) return;
+    pendingApply = true;
+    requestAnimationFrame(function () { pendingApply = false; applyHiding(); });
+  }
+
+  resizeSelf();
+  applyHiding();
+  try {
+    new MutationObserver(scheduleApply).observe(pdoc.body, { childList: true, subtree: true });
+  } catch (e) {}
+  window.addEventListener('load', function () { resizeSelf(); applyHiding(); });
+})();
+</script>
+
+</body>
+</html>

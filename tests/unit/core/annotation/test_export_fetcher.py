@@ -293,7 +293,7 @@ class TestFetchTask:
 
     def test_discarded_response_included(self) -> None:
         responses = [
-            _make_response("discard_reason", "duplicate", _UID1, status="discarded"),
+            _make_response("discard_reason", "invalid_or_unrealistic", _UID1, status="discarded"),
             _make_response("discard_notes", "same as Q42", _UID1, status="discarded"),
         ]
         record = _make_record(fields=_RETRIEVAL_FIELDS, metadata=_BASE_METADATA, responses=responses)
@@ -308,13 +308,13 @@ class TestFetchTask:
 
     def test_discard_reason_propagated(self) -> None:
         responses = [
-            _make_response("discard_reason", "duplicate", _UID1, status="discarded"),
+            _make_response("discard_reason", "invalid_or_unrealistic", _UID1, status="discarded"),
         ]
         record = _make_record(fields=_RETRIEVAL_FIELDS, metadata=_BASE_METADATA, responses=responses)
         client = _mock_client_with_records([record])
         rows = fetch_task(client, _SETTINGS, Task.RETRIEVAL, {_UID1: "alice"}, include_discarded=True)
 
-        assert rows[0][0].discard_reason == "duplicate"
+        assert rows[0][0].discard_reason == "invalid_or_unrealistic"
 
     def test_discard_notes_propagated(self) -> None:
         responses = [

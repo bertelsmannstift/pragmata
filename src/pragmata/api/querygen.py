@@ -69,6 +69,7 @@ def gen_queries(
     base_url: str | Unset = UNSET,
     model_kwargs: dict[str, Any] | Unset = UNSET,
     batch_size: PositiveInt | Unset = UNSET,
+    near_duplicate_tolerance: float | Unset = UNSET,
     enable_planning_memory: bool | Unset = UNSET,
 ) -> QueryGenRunResult:
     """Generate synthetic chatbot queries from a query-generation specification.
@@ -102,6 +103,11 @@ def gen_queries(
         batch_size: Number of queries to generate per LLM call. Larger
             values use fewer, bigger calls; smaller values split
             generation into more repeated calls. Defaults to 25.
+        near_duplicate_tolerance: Similarity tolerance used for semantic
+            near-duplicate blueprint removal. Must be in the range (0, 1],
+            where lower values deduplicate more aggressively and higher values
+            allow more similar blueprints, including close paraphrases, to remain.
+            Defaults to 0.95.
         enable_planning_memory: Whether to enable planning memory for the run.
             Defaults to True. When enabled, an additional LLM updates and persists a
             compact summary of prior blueprint generation across batches and compatible
@@ -168,6 +174,7 @@ def gen_queries(
             "run_id": run_id,
             "n_queries": n_queries,
             "batch_size": batch_size,
+            "near_duplicate_tolerance": near_duplicate_tolerance,
             "enable_planning_memory": enable_planning_memory,
         },
     )
@@ -231,7 +238,10 @@ def gen_queries(
             expected_candidate_ids=candidate_ids,
         )
 
-        selected_blueprints = deduplicate_blueprints(filtered_planning_outputs)
+        selected_blueprints = deduplicate_blueprints(
+            filtered_planning_outputs,
+            near_duplicate_tolerance=settings.near_duplicate_tolerance,
+        )
 
         logger.info(
             "Stage 1 (query planning) complete for run %s (%d planned -> %d selected)",

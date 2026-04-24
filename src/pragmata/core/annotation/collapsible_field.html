@@ -29,9 +29,25 @@
   var field = record.fields["$field_name"];
   var text = (typeof field === "object" && field !== null) ? (field.text || "") : (field || "");
   document.getElementById("content").textContent = text;
-  document.getElementById("wrapper").addEventListener("toggle", function () {
-    parent.postMessage({ type: "resize" }, "*");
-  });
+
+  // Size iframe to match content height. scrollHeight is clamped
+  // to >= viewport (iframe) height, so shrink to 0 first then
+  // measure — otherwise the iframe grows but never shrink on collapse.
+  function resizeSelf() {
+    try {
+      var frame = window.frameElement;
+      if (!frame) return;
+      frame.style.height = "0px";
+      requestAnimationFrame(function () {
+        frame.style.height = document.documentElement.scrollHeight + "px";
+      });
+    } catch (e) {}
+  }
+
+  document.getElementById("wrapper").addEventListener("toggle", resizeSelf);
+  resizeSelf();
+  setTimeout(resizeSelf, 0);
+  window.addEventListener("load", resizeSelf);
 </script>
 </body>
 </html>
