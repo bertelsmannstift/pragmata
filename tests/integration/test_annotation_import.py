@@ -10,6 +10,7 @@ import pytest
 from pragmata.api.annotation_import import ImportResult, import_records
 from pragmata.core.annotation.setup import setup_workspaces, teardown_resources
 from pragmata.core.settings.annotation_settings import AnnotationSettings
+from tests.integration._argilla_cleanup import purge_workspace_datasets
 
 pytestmark = [pytest.mark.integration, pytest.mark.annotation]
 
@@ -43,12 +44,20 @@ def client(annotation_stack_status) -> rg.Argilla:
 
 @pytest.fixture(autouse=True, scope="module")
 def clean_environment(client: rg.Argilla):
-    """Tear down and re-setup environment before/after all tests."""
+    """Tear down and re-setup environment before/after all tests.
+
+    Orphan datasets from earlier runs are purged first — Argilla blocks
+    workspace deletion while any dataset is linked.
+    """
     teardown_resources(client, _SETTINGS)
+    for ws_base in AnnotationSettings().workspace_dataset_map:
+        purge_workspace_datasets(client, ws_base)
     teardown_resources(client, AnnotationSettings())
     setup_workspaces(client, _SETTINGS)
     yield
     teardown_resources(client, _SETTINGS)
+    for ws_base in AnnotationSettings().workspace_dataset_map:
+        purge_workspace_datasets(client, ws_base)
     teardown_resources(client, AnnotationSettings())
 
 
