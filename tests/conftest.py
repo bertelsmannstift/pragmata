@@ -38,10 +38,7 @@ class AnnotationStackStatus:
         if not self.argilla_tcp:
             return f"Argilla not reachable at {ARGILLA_DEFAULT_HOST}:{ARGILLA_DEFAULT_PORT} (try: make docker-up)"
         if not self.argilla_api:
-            return (
-                f"Argilla API not responding at http://{ARGILLA_DEFAULT_HOST}:{ARGILLA_DEFAULT_PORT}"
-                " (stack may still be warming up)"
-            )
+            return f"Argilla API not responding at http://{ARGILLA_DEFAULT_HOST}:{ARGILLA_DEFAULT_PORT}"
         return None
 
 
