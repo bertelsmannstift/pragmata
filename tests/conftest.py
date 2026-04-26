@@ -42,6 +42,9 @@ class AnnotationStackStatus:
         return None
 
 
+_STACK_STATUS_KEY: pytest.StashKey[AnnotationStackStatus] = pytest.StashKey()
+
+
 def _docker_cli_available() -> bool:
     return shutil.which("docker") is not None
 
@@ -93,14 +96,7 @@ def _check_annotation_stack() -> AnnotationStackStatus:
 
 def pytest_configure(config: pytest.Config) -> None:
     """Run annotation stack preflight once at session start, cache on config."""
-    config._annotation_stack_status = _check_annotation_stack()  # type: ignore[attr-defined]
-
-
-def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
-    """Count annotation-marked tests so we can report skip totals at end-of-run."""
-    config._annotation_marked_count = sum(  # type: ignore[attr-defined]
-        1 for item in items if item.get_closest_marker("annotation")
-    )
+    config.stash[_STACK_STATUS_KEY] = _check_annotation_stack()
 
 
 def _stack_layer_lines(status: AnnotationStackStatus) -> list[tuple[str, bool]]:
@@ -114,7 +110,7 @@ def _stack_layer_lines(status: AnnotationStackStatus) -> list[tuple[str, bool]]:
 
 def pytest_report_header(config: pytest.Config) -> list[str]:
     """Print annotation stack status once at session start."""
-    status: AnnotationStackStatus = config._annotation_stack_status  # type: ignore[attr-defined]
+    status = config.stash[_STACK_STATUS_KEY]
     marks = " ".join(f"{name} [{'ok' if ok else '--'}]" for name, ok in _stack_layer_lines(status))
     line = f">>> annotation stack: {marks}"
     if not status.ready:
@@ -122,36 +118,10 @@ def pytest_report_header(config: pytest.Config) -> list[str]:
     return [line]
 
 
-def pytest_terminal_summary(terminalreporter, exitstatus, config: pytest.Config) -> None:
-    """Re-surface the stack status at end-of-run when integration was skipped."""
-    status: AnnotationStackStatus = config._annotation_stack_status  # type: ignore[attr-defined]
-    if status.ready:
-        return
-    skipped = getattr(config, "_annotation_marked_count", 0)
-    if not skipped:
-        return
-    tr = terminalreporter
-    tr.write_sep("=", "ANNOTATION STACK SKIPPED", red=True, bold=True)
-    tr.write_line(f"{skipped} annotation integration tests were skipped: {status.skip_reason}")
-    tr.write_line("")
-    tr.write_line("Status:")
-    failed_marked = False
-    for name, ok in _stack_layer_lines(status):
-        marker = "[ok]" if ok else "[--]"
-        suffix = ""
-        if not ok and not failed_marked:
-            suffix = "  <- failed here"
-            failed_marked = True
-        tr.write_line(f"  {name:<12} {marker}{suffix}")
-    tr.write_line("")
-    tr.write_line("To run integration tests: open -a Docker && make docker-up && make test-all")
-    tr.write_sep("=", red=True, bold=True)
-
-
 @pytest.fixture(scope="session")
 def annotation_stack_status(pytestconfig: pytest.Config) -> AnnotationStackStatus:
     """Session-wide preflight result for the annotation stack."""
-    return pytestconfig._annotation_stack_status  # type: ignore[attr-defined]
+    return pytestconfig.stash[_STACK_STATUS_KEY]
 
 
 @pytest.fixture(autouse=True)
