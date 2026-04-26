@@ -1,9 +1,4 @@
-"""Integration tests for the Argilla dev stack.
-
-Requires the stack to be running (make docker-up). The annotation-stack
-preflight in tests/conftest.py gates collection, so these tests skip
-cleanly when the stack is unavailable.
-"""
+"""Integration tests for the Argilla dev stack."""
 
 import json
 import urllib.request
