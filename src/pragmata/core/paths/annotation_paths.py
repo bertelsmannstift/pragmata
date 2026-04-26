@@ -45,6 +45,7 @@ class AnnotationExportPaths:
         retrieval_annotation_csv: Output path for retrieval task annotations.
         grounding_annotation_csv: Output path for grounding task annotations.
         generation_annotation_csv: Output path for generation task annotations.
+        export_meta_json: Output path for the export provenance sidecar.
     """
 
     export_dir: Path
@@ -52,6 +53,7 @@ class AnnotationExportPaths:
     retrieval_annotation_csv: Path
     grounding_annotation_csv: Path
     generation_annotation_csv: Path
+    export_meta_json: Path
 
     def ensure_dirs(self) -> Self:
         """Create the export directory scaffold."""
@@ -107,4 +109,5 @@ def resolve_export_paths(*, workspace: WorkspacePaths, export_id: str) -> Annota
         retrieval_annotation_csv=export_dir / "retrieval.csv",
         grounding_annotation_csv=export_dir / "grounding.csv",
         generation_annotation_csv=export_dir / "generation.csv",
+        export_meta_json=export_dir / "annotation_export.meta.json",
     )

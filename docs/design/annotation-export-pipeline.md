@@ -180,6 +180,31 @@ The [Annotation Protocol](../methodology/annotation-protocol.md) defines logical
 - Fail with clear error including API URL
 - No partial output written (atomic: write only on success)
 
+## Sidecar Manifest
+
+Every export writes a JSON sidecar `annotation_export.meta.json` next to the CSVs, capturing run-level provenance. Mirrors the synthetic-query export pattern.
+
+```
+exports/{export_id}/
+├── retrieval.csv
+├── grounding.csv
+├── generation.csv
+└── annotation_export.meta.json
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `export_id` | string | Stable identifier for this export run |
+| `created_at` | datetime | UTC timestamp when the manifest was assembled |
+| `dataset_id` | string\|null | Argilla dataset suffix used for scoping; null if unset |
+| `tasks` | list[string] | Tasks exported in this run |
+| `include_discarded` | bool | Whether discarded responses were included in the fetch |
+| `row_counts` | object | `{task: int}` rows written per task |
+| `n_annotators` | object | `{task: int}` distinct annotators per task |
+| `constraint_summary` | object | `{rule_name: int}` violation counts |
+
+The CSVs hold per-row data only; run-level configuration and counts live in the sidecar so downstream pipelines can filter cleanly without unpacking metadata from columns.
+
 ## References
 
 - [Annotation Protocol](../methodology/annotation-protocol.md) — Label definitions, units of annotation, and logical constraints
