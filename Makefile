@@ -2,19 +2,13 @@ COMPOSE_FILE := deploy/annotation/docker-compose.dev.yml
 ENV_FILE     := deploy/annotation/.env
 ENV_EXAMPLE  := deploy/annotation/.env.dev.example
 
-.PHONY: docker-up docker-down docker-stop docker-logs docker-status ensure-env lint type-check test-stack test test-integration test-all ci
+MAKE .PHONY: docker-up docker-down docker-stop docker-logs docker-status ensure-env lint type-check test-stack test test-integration test-all ci
 
 # Compose profile options for the multi-target docker-* commands. Profiles
 # determine which backing services run as containers vs. expected externally.
 ALL_PROFILES := --profile all-bundled --profile external-pg --profile external-es
 
-# Default profile for `make docker-up`. Override on the command line:
-#   make docker-up PROFILE=external-pg
-# Valid values:
-#   all-bundled  — Argilla + Postgres + Elasticsearch + Redis all in containers (default)
-#   external-pg  — external Postgres (set ARGILLA_DATABASE_URL); ES + Redis bundled
-#   external-es  — external Elasticsearch (set ARGILLA_ELASTICSEARCH); Postgres + Redis bundled
-#   external     — all backing services external (set ARGILLA_DATABASE_URL, ARGILLA_ELASTICSEARCH, ARGILLA_REDIS_URL)
+# Default profile for `make docker-up`. 
 PROFILE ?= all-bundled
 
 # ── Docker / Argilla stack ───────────────────────────────────────────
@@ -26,6 +20,13 @@ ensure-env:
 	fi
 
 docker-up: ensure-env ## Start Argilla stack. Override profile: make docker-up PROFILE=external-pg
+# Default = all-bundled
+# Override on the command line: e.g. make docker-up PROFILE=external-pg
+# Valid values:
+#   all-bundled  — Argilla + Postgres + Elasticsearch + Redis all in containers (default)
+#   external-pg  — external Postgres (set ARGILLA_DATABASE_URL); ES + Redis bundled
+#   external-es  — external Elasticsearch (set ARGILLA_ELASTICSEARCH); Postgres + Redis bundled
+#   external     — all backing services external (set ARGILLA_DATABASE_URL, ARGILLA_ELASTICSEARCH, ARGILLA_REDIS_URL)
 	@case "$(PROFILE)" in \
 		all-bundled) PROFILE_FLAG="--profile all-bundled" ;; \
 		external-pg) PROFILE_FLAG="--profile external-pg"; \
