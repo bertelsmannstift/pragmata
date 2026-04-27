@@ -29,7 +29,8 @@ Related:
 
 ## Install model
 
-### Optional extras, one per tool
+<!-- TODO: review change -->
+### Optional extras
 
 ```
 pip install pragmata                     # bare install - CLI skeleton only
@@ -38,12 +39,16 @@ pip install pragmata[querygen]
 pip install pragmata[eval]               
 ```
 
+Extras capture **heavy, optional, provider-specific, or runtime-sensitive** dependencies (e.g. `argilla` SDK, `langchain`, provider clients). Tool ownership alone does not justify an extra: lightweight shared dependencies that support a first-class capability across tools can stay regular core deps. Each extra is audited dependency-by-dependency, not by blanket "if querygen-only → extra."
+
+<!-- TODO: review change -->
 ### Lazy imports at the package boundary
 
-- optional-extra packages (`argilla`, `langchain`, etc.) must not be imported at module scope on the root import path. 
-- each tool's public API entry point wraps its optional dep in a `try/except ImportError` and re-raises with the exact `pip install` command. Pattern borrowed from [`transformers` error handling](https://github.com/huggingface/transformers/issues/24147):
+- optional-extra packages (`argilla`, `langchain`, etc.) must not be imported at module scope on the root import path
+- guard the import **narrowly at the actual import site** (typically inside `core/` modules where the dep is used), not by blanket-wrapping entrypoints. Blanket wrappers mask unrelated import errors inside the optional dep itself
+- the `ImportError` handler names the missing **package** and points to the **extra** that provides it. Pattern borrowed from [`transformers` error handling](https://github.com/huggingface/transformers/issues/24147):
 
-> `ImportError: pragmata.annotation requires the 'annotation' extra. Install with: pip install 'pragmata[annotation]'`
+> `ImportError: 'argilla' is required for pragmata.annotation. Install with: pip install 'pragmata[annotation]'`
 > ^^^ this is the "fail loudly and point to fix" principle
 
 Failure modes must be distinguished:
