@@ -222,10 +222,11 @@ Secrets follow a separate chain (env-only by design); see §1.1.5.
 
 **Secrets are the exception - they use canonical provider env vars, not the `PRAGMATA_*` prefix.** See §1.1.5; already implemented in `API_KEY_ENV_VARS` / `resolve_api_key()`.
 
-Small set of shared top-level vars (outside per-tool scoping, all proposed):
-- `PRAGMATA_CONFIG_DIR` - override config location
-- `PRAGMATA_WORKSPACE_DIR` - override workspace root
-- TODO: define here
+<!-- TODO: review change -->
+Small set of shared top-level vars (outside per-tool scoping):
+- `PRAGMATA_CONFIG_DIR` - escape hatch overriding the `platformdirs` config location (CI, containers, multi-user machines, testing)
+
+> Rejected: `PRAGMATA_WORKSPACE_DIR`. Workspace/base dir is already an explicit kwarg/flag with cwd default; a global env override would create hidden state without clear benefit, and is structurally inconsistent with the per-tool `PRAGMATA_<TOOL>_<KEY>` scheme.
 
 ### 1.1.5 Secrets
 
