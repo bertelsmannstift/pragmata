@@ -154,15 +154,17 @@ Then `PRAGMATA_CONFIG_DIR` env var overrides. Follows `poetry`, `wandb`, `huggin
 - standard escape hatch for CI, containers, multi-user machines, testing - every mature CLI exposes one
 - Cheap, zero downside, unblocks unpredictable use cases
 
+<!-- TODO: review change -->
 ### 1.1.2 Files
 
-Two files, roles separated (here borrowing from AWS pattern - [`~/.aws/config`](https://docs.aws.amazon.com/cli/v1/userguide/cli-configure-files.html) + `~/.aws/credentials`):
+Single non-secret config file under the resolved user config dir:
 
 ```
 ~/.config/pragmata/
-├── config.yaml         # Non-secret settings, per-tool sections. Safe to share.
-└── credentials         # Secrets only (API keys). chmod 600. Never shared.
+└── config.yaml         # Non-secret settings, per-tool sections. Safe to share.
 ```
+
+Secrets are not stored in any pragmata-owned file (§1.1.5). LLM provider keys go through env vars; Argilla delegates to its own credential store.
 
 `config.yaml` shape - single file, per-tool top-level sections (gcloud/kubectl/dbt pattern):
 
@@ -194,7 +196,8 @@ Resolution walks up from cwd until it finds one of these (or hits the filesystem
 
 **Why not merge the two.** Merging a `pragmata.yaml` with a `pyproject.toml` in the same repo -> two sources of truth, ambiguous precedence. First match wins is the same rule `ruff` uses.
 
-**Secrets still excluded.** Same rule as `config.yaml` - project-level files are commit-safe; secrets only live in env vars or `~/.config/pragmata/credentials` (§1.1.5).
+<!-- TODO: review change -->
+**Secrets still excluded.** Same rule as `config.yaml` - project-level files are commit-safe; secrets only flow via kwargs/flags or env vars (§1.1.5).
 
 Precedent: [ruff](https://docs.astral.sh/ruff/configuration/) (supports both `ruff.toml` and `pyproject.toml [tool.ruff]`, first match wins), [dbt](https://docs.getdbt.com/docs/core/connect-data-platform/profiles.yml) (project `dbt_project.yml` + user `~/.dbt/profiles.yml`), [black](https://black.readthedocs.io/en/stable/usage_and_configuration/the_basics.html#configuration-via-a-file) (walks up for `pyproject.toml`).
 
@@ -212,7 +215,7 @@ CLI flag / kwarg
   >  built-in defaults
 ```
 
-Secrets follow a separate chain (env-only by design); see §1.1.5.
+Secrets follow a separate, narrower chain (env-only for LLM providers; Argilla delegates to `~/.cache/argilla/credentials` after env). No pragmata-owned credential store for v0.1. See §1.1.5.
 
 **Proposed** env var prefix for non-secret tool settings: `PRAGMATA_<TOOL>_<KEY>`, e.g. `PRAGMATA_ANNOTATION_ARGILLA_URL`.
 - follows [gcloud's `CLOUDSDK_SECTION_PROPERTY`](https://docs.cloud.google.com/sdk/docs/properties).
@@ -228,32 +231,28 @@ Small set of shared top-level vars (outside per-tool scoping):
 
 > Rejected: `PRAGMATA_WORKSPACE_DIR`. Workspace/base dir is already an explicit kwarg/flag with cwd default; a global env override would create hidden state without clear benefit, and is structurally inconsistent with the per-tool `PRAGMATA_<TOOL>_<KEY>` scheme.
 
+<!-- TODO: review change -->
 ### 1.1.5 Secrets
 
-Aligns with the existing `resolve_api_key()` contract (`core/settings/settings_base.py`). Canonical provider env vars are the source of truth - not a `PRAGMATA_*`-prefixed name.
+Aligns with the existing `resolve_api_key()` contract (`core/settings/settings_base.py`). Canonical provider env vars are the source of truth - not a `PRAGMATA_*`-prefixed name. **No pragmata-owned credential store for v0.1**: a persistent local secret store is a much larger product/security surface (perms, redaction, rotation, cross-platform handling) than non-secret config discovery, and is deferred until concrete demand exists.
 
-*Existing (implemented):*
+**Resolution chain for LLM providers** (OpenAI, Anthropic, Mistral, Cohere, DeepSeek, Google):
 
-1. CLI flag / kwarg (`--api-key ...` lands as `api_key` kwarg on the API layer)
-2. Canonical provider env var from `API_KEY_ENV_VARS`:
-   - `ARGILLA_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `MISTRAL_API_KEY`, `COHERE_API_KEY`, `DEEPSEEK_API_KEY`, `GOOGLE_API_KEY`
-3. Missing env var → `MissingSecretError` raised by `resolve_api_key()`
+```
+kwarg  >  canonical env var (OPENAI_API_KEY, ANTHROPIC_API_KEY, ...)  >  MissingSecretError
+```
 
-Secrets are **never read from `config.yaml`**: enforced by shape (e.g. `ArgillaSettings` holds `api_url` only; no `api_key` field exists on settings models).
+**Resolution chain for Argilla** (delegates to Argilla's own credential store after env, no pragmata-owned fallback):
 
-*Proposed addition (non-breaking):*
+```
+kwarg  >  ARGILLA_API_KEY env  >  ~/.cache/argilla/credentials (Argilla's own store)  >  MissingSecretError
+```
 
-Slot a `~/.config/pragmata/credentials` file (`chmod 600`) *between* env and `MissingSecretError`. Extends `resolve_api_key()` to read the file if the env var is unset, before raising. Env still wins. Current env-only callers would behave same.
+Argilla's client already writes to `~/.cache/argilla/credentials` on `argilla login`. We delegate to it rather than maintaining a parallel store, which would create rotation and precedence confusion for the same service.
 
-Effective chain after addition (same order; addition in *italics*):
-`kwarg > canonical env var > `*`~/.config/pragmata/credentials`*` > MissingSecretError`
+Secrets are **never read from `config.yaml`** or any project/user pragmata config file: enforced by shape (e.g. `ArgillaSettings` holds `api_url` only; no `api_key` field exists on settings models).
 
-> TODO: Open question: **argilla-creds: delegate to argilla's own credential store or maintain our own?**
->
->Context: Argilla's own client already writes to [`~/.cache/argilla/credentials`](https://docs.argilla.io/) on `argilla login`.
->- *Delegate model:* if user has already run `argilla login`, `pragmata annotation setup` detects that and skips the API key prompt. Keeps one source of truth and composes cleanly with the existing `ARGILLA_API_KEY` env var resolution. BUT couples us to Argilla's file format + location; breaks if they rename/relocate it; harder to reason about precedence when two stores exist.
->- *Maintain our own model:* `~/.config/pragmata/credentials` holds Argilla + LLM provider keys in one place. Consistent resolution pattern across every secret pragmata needs. BUT duplicates Argilla's store if the user has also run `argilla login`; pragmata has to write/chmod/own the file; users need to update it in two places if they rotate keys (could setup a copy/symlink system, but brittle).
->- *Recommendation:* delegate for Argilla specifically (it's the only provider with its own persistent credential store); maintain our own for LLM providers (no equivalent exists). Resolution order for Argilla becomes: `kwarg > ARGILLA_API_KEY env > ~/.cache/argilla/credentials > ~/.config/pragmata/credentials > MissingSecretError`.
+> Deferred (not v0.1): a pragmata-owned `~/.config/pragmata/credentials` file. If demand materialises, it would need explicit decisions on permissions, redaction, rotation/update behaviour, cross-platform handling, and precedence relative to provider-native stores.
 
 ### 1.1.6 Idempotent re-setup
 
