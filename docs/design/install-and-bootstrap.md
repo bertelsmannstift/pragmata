@@ -97,15 +97,27 @@ TODO confirm this as open question:
 - `defaults`: pydantic model defaults
 - Secrets resolved separately via `resolve_api_key()` (env-only, never read from `config`)
 
-*Proposed additions (non-breaking - same layer order, just adds fallbacks where layers are currently empty):*
+<!-- TODO: review change -->
+*Proposed addition (non-breaking - same layer order, adds auto-discovery where the layer is currently empty):*
 
-1. **Auto-discover `config_path`** when the caller doesn't pass one -> walk up from cwd for a project-local `./pragmata.yaml` or `pyproject.toml [tool.pragmata]`; fall back to `platformdirs.user_config_dir("pragmata") / "config.yaml"`. Explicit `config_path` still wins, so every current caller behaves identically. See §1.1.3.
-2. **Add a credentials-file fallback for `resolve_api_key()`** below env vars -> if the env var is unset, read from `~/.config/pragmata/credentials` before raising `MissingSecretError`. Env still wins.
+**Auto-discover `config_path`** when the caller doesn't pass one. Resolution becomes:
 
-> TODO review ^^^
+1. If the caller passes an explicit `config_path` → use that, skip auto-discovery entirely
+2. Otherwise → walk up from cwd for a project-local `./pragmata.yaml` or `pyproject.toml [tool.pragmata]` (first match wins)
+3. Otherwise → fall back to `platformdirs.user_config_dir("pragmata") / "config.yaml"`
+
+**Explicit beats implicit:** an explicit `config_path` overrides *all* auto-discovered config (project + user). Project-only auto-discovery only fires when no explicit path is passed. See §1.1.3, §1.1.4.
 
 Resulting effective chain (additions in *italics*):
-`overrides > env > `*`credentials file (secrets only, new fallback)`*` > `*`project config (./pragmata.yaml or pyproject.toml [tool.pragmata])`*` > user config (explicit config_path, else `*`auto-discovered ~/.config/pragmata/config.yaml`*`) > defaults`
+
+```
+overrides
+  > env
+  > explicit config_path (if provided)
+  > auto-discovered project config (./pragmata.yaml or pyproject.toml [tool.pragmata])
+  > auto-discovered user config (~/.config/pragmata/config.yaml)
+  > defaults
+```
 
 ### 1.1.1 Location
 
@@ -186,13 +198,21 @@ Resolution walks up from cwd until it finds one of these (or hits the filesystem
 
 Precedent: [ruff](https://docs.astral.sh/ruff/configuration/) (supports both `ruff.toml` and `pyproject.toml [tool.ruff]`, first match wins), [dbt](https://docs.getdbt.com/docs/core/connect-data-platform/profiles.yml) (project `dbt_project.yml` + user `~/.dbt/profiles.yml`), [black](https://black.readthedocs.io/en/stable/usage_and_configuration/the_basics.html#configuration-via-a-file) (walks up for `pyproject.toml`).
 
+<!-- TODO: review change -->
 ### 1.1.4 Precedence chain
 
-Universal pattern (aws/terraform/kubectl/dbt/pip), extended with a project layer (§1.1.3):
+Universal pattern (aws/terraform/kubectl/dbt/pip), extended with a project layer (§1.1.3). **Explicit beats implicit at every step**, including the explicit-config-path slot:
 
 ```
-CLI flag  >  env var  >  credentials file (secrets)  >  project config (./pragmata.yaml or pyproject.toml)  >  user config (~/.config/pragmata/config.yaml)  >  built-in defaults
+CLI flag / kwarg
+  >  env var
+  >  explicit config_path (if passed)
+  >  auto-discovered project config (./pragmata.yaml or pyproject.toml [tool.pragmata])
+  >  auto-discovered user config (~/.config/pragmata/config.yaml)
+  >  built-in defaults
 ```
+
+Secrets follow a separate chain (env-only by design); see §1.1.5.
 
 **Proposed** env var prefix for non-secret tool settings: `PRAGMATA_<TOOL>_<KEY>`, e.g. `PRAGMATA_ANNOTATION_ARGILLA_URL`.
 - follows [gcloud's `CLOUDSDK_SECTION_PROPERTY`](https://docs.cloud.google.com/sdk/docs/properties).
