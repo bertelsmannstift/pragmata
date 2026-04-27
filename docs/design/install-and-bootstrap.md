@@ -1,6 +1,7 @@
+<!-- TODO: review change -->
 # Install, Bootstrap & Config UX
 
-Status: Draft (very much in discussion!)
+Status: Draft (PR #162 review applied; one open item remaining - see Open questions)
 Related: 
 - ADR-0007 (packaging & invocation surface), 
 - ADR-0012 (install & bootstrap UX) [draft]
@@ -502,41 +503,27 @@ Precedent: `supabase start`, `abctl local install`, `prefect server start`. Idem
 
 Precedent: `abctl local uninstall [--persisted]` - explicit data-wipe flag is the industry norm.
 
+<!-- TODO: review change -->
 ## 2.6 Prod bootstrap / unattended install
+
+**Decision for v0.1: no shipped script. Document the two-line install (`pipx install 'pragmata[annotation]' && pragmata annotation up`) in the README.** If demand materialises later (>2 deployers asking for unattended install support), add option C below - skip a static shell script.
 
 ### 2.6.1 Scope
 
-pragmata ships three tools. Only `annotation` has bootstrap beyond `pip install`:
-- `querygen`: `pipx install 'pragmata[querygen]' && export OPENAI_API_KEY=...` - not script-worthy, two-line README
+pragmata ships three tools. Only `annotation` has any bootstrap beyond `pip install`:
+- `querygen`: `pipx install 'pragmata[querygen]' && export OPENAI_API_KEY=...` - two-line README
 - `eval`: same shape as `querygen`
-- `annotation`: real sequence (install → wait for Docker → pull images → start stack → poll health → print creds) - script-worthy *if* we ship one
+- `annotation`: real sequence (install → wait for Docker → pull images → start stack → poll health → print creds)
 
-So "should pragmata ship a bootstrap script" is really "should `annotation` ship one." The other tools don't need it.
+The question is whether `annotation` needs a separate install artefact. For v0.1, no.
 
-### 2.6.2 Two positions to reconcile
+### 2.6.2 Options surveyed
 
-These two sources diverge on whether to ship a bash script. Laying out both.
-
-| Source | What they suggest | Implied implementation | Rationale |
-|---|---|---|---|
-| **Position A** (prior framing) | "for prod it'll be replaced likely by bash script" + "customised is configured via env/config and executed via bash script helpers" | Some form of shell script replaces Makefile in prod; shell helpers wire env/config into Compose | Makefile is dev-only and needs a prod equivalent; keeps env/config-driven UX while leveraging bash for wiring |
-| **Position B** (SOTA survey) | No script for v0.1.0; CLI-only is sufficient | `pipx install` + `pragmata annotation up` documented in README | Every Tier-1 PyPI-distributed Docker-wrapping tool surveyed ([Supabase](https://supabase.com/docs/guides/local-development/cli/getting-started), [Airbyte abctl](https://docs.airbyte.com/using-airbyte/getting-started/oss-quickstart), [Prefect](https://docs.prefect.io/3.0/get-started/install), [Dagster](https://docs.dagster.io/getting-started/install), [MLflow](https://mlflow.org/docs/latest/tracking.html)) is CLI-only for prod bootstrap |
-
-**Reading the divergence.** The two positions may be a framing mismatch rather than a real disagreement. Position A's "bash script" phrasing is less specific than it sounds - "*replaced likely by bash script*" reads as an aside; "*bash script helpers*" describes the wiring layer between user config and Compose, not a user-facing install script. If "bash script" means "whatever replaces the Makefile for unattended/prod installs" - that's satisfied by any of options A/B/C below. If it specifically means a shipped `scripts/bootstrap.sh` - that's option B. Worth confirming; the design doesn't hinge on the answer, but option A and option B have different maintenance implications.
-
-### 2.6.3 Options for the user-facing install surface
-
-| Option | What it is | SOTA precedent | Our cost | Who benefits |
+| Option | What it is | SOTA precedent | Our cost | Verdict |
 |---|---|---|---|---|
-| **A. No script (docs only) - *research agent recommended v0.1.0*** | Docs snippet: `pipx install 'pragmata[annotation]' && pragmata annotation up`. Maybe `curl`-able from docs site directly (Docusaurus renders shell). | Every Tier-1 tool surveyed | None | No separate artefact, but IT admins copy-paste two lines from docs |
-| **B. `scripts/bootstrap-annotation.sh` in repo** | Static shell file checked into git, linked from docs | [Docker convenience script](https://github.com/docker/docker-install), [rustup](https://rustup.rs/), [nvm](https://github.com/nvm-sh/nvm#installing-and-updating) | Maintenance drift - every CLI flag change invalidates it. Docker's own convenience installer is [famously not recommended for production](https://docs.docker.com/engine/install/ubuntu/#install-using-the-convenience-script) for exactly this reason. | `curl \| bash` users who want one artefact; the most literal interpretation of Position A's "bash script" instinct |
-| **C. `pragmata annotation print-install-script`** | CLI prints a shell transcript pinned to the installed CLI version; user redirects to file and executes | Novel - no surveyed tool does this | Trivial: a string template the CLI owns. Always version-matched. | Admins who want an auditable file before running anything, plus automatic version-pinning |
-
-**Recommendations diverge:**
-- *Position B (SOTA survey):* A for v0.1.0; if demand materialises (>2 deployers asking the same "how do I do this unattended" question), jump directly to C. Skip B.
-- *Position A (prior framing):* B implied by the "replaced by bash script" phrasing.
-
-**My read:** A is the leanest start. B's maintenance drift is a real cost we'd rather not take on. C is the clever future escape hatch if we ever need one. The divergence above is probably a framing mismatch - "some unattended path" vs strictly a "user-facing install script" - needs confirmation. See Open question §Q-prod-script.
+| **A. No script (docs only) - *chosen for v0.1*** | Docs snippet: `pipx install 'pragmata[annotation]' && pragmata annotation up` | Every Tier-1 PyPI-distributed Docker-wrapping tool surveyed ([Supabase](https://supabase.com/docs/guides/local-development/cli/getting-started), [Airbyte abctl](https://docs.airbyte.com/using-airbyte/getting-started/oss-quickstart), [Prefect](https://docs.prefect.io/3.0/get-started/install), [Dagster](https://docs.dagster.io/getting-started/install), [MLflow](https://mlflow.org/docs/latest/tracking.html)) | None | **Adopt** |
+| **B. `scripts/bootstrap-annotation.sh` in repo** | Static shell file checked into git, linked from docs | [Docker convenience script](https://github.com/docker/docker-install), [rustup](https://rustup.rs/), [nvm](https://github.com/nvm-sh/nvm#installing-and-updating) | Maintenance drift - every CLI flag change invalidates it. Docker's own convenience installer is [famously not recommended for production](https://docs.docker.com/engine/install/ubuntu/#install-using-the-convenience-script) for exactly this reason | **Skip** |
+| **C. `pragmata annotation print-install-script`** | CLI prints a shell transcript pinned to the installed CLI version; user redirects to file and executes | Novel - no surveyed tool does this | Trivial: a string template the CLI owns. Always version-matched | **Defer** - reach for if/when demand appears, jump straight here from A (don't pass through B) |
 
 If later we do need explicit unattended recipes for cloud-init / systemd / Kubernetes: document in `docs/deploy/` per-environment, don't package. Helm charts exist for [Dagster](https://artifacthub.io/packages/helm/dagster/dagster) and [Prefect](https://artifacthub.io/packages/helm/prefecthq/prefect-server) as separate artefacts - same pattern if we ever need one.
 
@@ -573,29 +560,24 @@ Beyond the generic cases in §1.4, `annotation up` must also handle:
 | **Interactive prompts** | None - `setup` is headless-flag-driven only | **No change.** No `questionary`, no wizard for v0.1 (§1.3.1) |
 
 
+<!-- TODO: review change -->
 ## Open questions
 
-not comprehensive - several are inline thoughout above
+Most of the previously-open questions are resolved by the v0.1 framing in this doc. Recap:
 
-### §Q-prod-script: ship a per-tool bootstrap script for `annotation`?
+| ID | Question | Resolution |
+|---|---|---|
+| §Q-prod-script | Ship a per-tool bootstrap script for `annotation`? | **No for v0.1** (§2.6). Document the two-line install. Add option C if demand materialises. |
+| §Q-wizard-lib | Questionary or minimal prompts? | **Neither for v0.1** (§1.3.1). No interactive wizard - all commands are headless. Revisit only if a concrete interactive flow appears. |
+| §Q-auth-split | Separate `auth` / `login` command, or part of `setup`? | **Neither for v0.1** (§1.1.5). No pragmata-managed auth/login. Argilla delegates to its own credential store after env; LLM providers stay env-only. |
+| §Q-argilla-creds | Delegate to Argilla's credential store or maintain our own? | **Delegate** (§1.1.5). One source of truth per service. |
+| §Q-setup-verb | Rename `annotation setup` to free up `setup` for a config wizard? | **No** (§1.3). Existing `annotation setup` semantics retained (Argilla provisioning); no config wizard needed. |
+| §Q-wizard-placement | Where and how do wizards appear? | **They don't, for v0.1** (§1.3.1). Reopen only with a concrete interactive flow. |
+| §Q-configured-check | Include a "configured" pre-flight check? | **No** (§1.4). Under zero-config, "installed but unconfigured" is not a failure mode. |
 
+Remaining open items:
 
-### §Q-wizard-lib: Questionary or minimal prompts?
-
-Research strongly prefers [Questionary](https://questionary.readthedocs.io/); 2.1 addresses the older prompt_toolkit clash. Alternative: a lighter library for the handful of prompts we actually need.
-
-### §Q-auth-split: `pragmata annotation auth` / `login` separate command, or part of `setup`?
-
-Argilla API keys rotate independently of compose config. `gh` and `supabase` split auth from config; `aws` combines. Research leans split; current draft combines.
-
-
-### §Q-wizard-placement: where and how do wizards appear?
-
-Still open - noted in guiding principles but not resolved.
-
-### §Q-configured-check: include a "configured" pre-flight check?
-
-If we keep zero-config OOTB, we never need an "installed but unconfigured" error. If we add one, slot it between `extra-installed` and `Docker-running` in §1.4.
+- **Two project-config formats?** §1.1.3 supports both `./pragmata.yaml` and `pyproject.toml [tool.pragmata]` (first-match-wins, ruff pattern). Worth confirming we want the maintenance surface of both vs. picking one.
 
 ## References
 
