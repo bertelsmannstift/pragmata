@@ -53,29 +53,23 @@ Extras capture **heavy, optional, provider-specific, or runtime-sensitive** depe
 
 Failure modes must be distinguished:
 
+<!-- TODO: review change -->
 | Failure | Cause | Error message hint |
 |---|---|---|
-| **Extra not installed** | `pip install pragmata` (bare) -> user calls `pragmata annotation setup` | "Install with: `pip install pragmata[annotation]`" |
-| **Docker missing (annotation only)** | Has extra + config -> no Docker daemon | "Docker is required for `pragmata annotation`. Install Docker" |
-| *TODO confirm:* **"Installed but unconfigured"** would not occur happen (due to zero-config principle)| Has extra -> hasn't run setup | "Run `pragmata annotation setup` first" |
+| **Extra not installed** | `pip install pragmata` (bare) -> user calls `pragmata annotation ...` | "Install with: `pip install pragmata[annotation]`" |
+| **Docker missing (annotation only)** | Has extra -> no Docker daemon | "Docker is required for `pragmata annotation`. Install Docker" |
 
+Under the zero-config principle, "installed but unconfigured" is **not** a normal failure mode - defaults are sufficient and resolution is consistent on every run.
 
 > NB: new deps proposed in this doc
 >
 > | Package | Where it goes | Why | Notes |
 > |---|---|---|---|
 > | [`platformdirs`](https://platformdirs.readthedocs.io/) | core deps | OS-appropriate user config dir (`~/.config/pragmata/` etc.) | ~50KB, zero deps, PyPA-endorsed (vendored in `pip`) |
-> | [`questionary`](https://questionary.readthedocs.io/) | `[annotation]` extra (and/or `[querygen]`, `[eval]` if they gain wizards -> core dep?) | Interactive setup wizard prompts (`pragmata annotation setup` etc.) | See Open question §Q-wizard-lib in this doc: commit to Questionary or use a lighter prompt lib? Prompt-toolkit conflicts largely resolved in 2.x |
 >
 > **`platformdirs`** - resolves config/cache/data dirs correctly across Linux/macOS/Windows from a single call, so we don't hardcode `~/.config/` (Linux-only). Full rationale and precedent in §1.1.1.
 >
-> **`questionary`** - renders interactive `setup` wizard prompts (text, select, confirm, password) on top of `prompt_toolkit`. 
->  - Chosen for `gh`/`supabase`-grade wizard ergonomics (arrow-key selects, masked secrets, validators, skip-on-flag) w/o us reimplementing TTY handling. 
-> - Alternatives considered: 
->     - [`rich.prompt`](https://rich.readthedocs.io/en/stable/prompt.html) (no arrow-key select, no masked input UX - too bare for a multi-field wizard) 
->     - [`prompt_toolkit`](https://python-prompt-toolkit.readthedocs.io/) directly (what Questionary wraps - more power, much more boilerplate)
->     - [`InquirerPy`](https://inquirerpy.readthedocs.io/) (feature-equivalent fork of PyInquirer, also `prompt_toolkit`-based - viable swap-in if Questionary stalls)
->     -  [`click.prompt`](https://click.palletsprojects.com/en/stable/prompts/) (Typer's built-in - line-by-line only, no select widget)
+> Deferred: **`questionary`** (or any interactive prompt library). Not added for v0.1: there is no general config wizard (principle #5). Existing `pragmata annotation setup` (Argilla provisioning) is headless-flag-driven and stays that way. Revisit only if a concrete interactive flow appears (e.g. annotation provisioning that validates against a running server and benefits from masked-secret prompts), and even then scope to the `[annotation]` extra - never core, never querygen/eval.
 
 ---
 
@@ -254,18 +248,18 @@ Secrets are **never read from `config.yaml`** or any project/user pragmata confi
 
 > Deferred (not v0.1): a pragmata-owned `~/.config/pragmata/credentials` file. If demand materialises, it would need explicit decisions on permissions, redaction, rotation/update behaviour, cross-platform handling, and precedence relative to provider-native stores.
 
-### 1.1.6 Idempotent re-setup
+<!-- TODO: review change -->
+### 1.1.6 Config templates (deferred)
 
-`aws configure` pattern: detect existing values, show as defaults in brackets, empty input keeps current.
+No interactive config editor for v0.1. If users want to materialise a config file, the lean option (deferred until demand) is a non-interactive command that emits a commented template:
 
 ```
-? Argilla URL [current: http://localhost:6900]:
-? API key [current: **** (set)]:
+pragmata <tool> configure --write-template > pragmata.yaml
 ```
 
-No `--force` flag. No `--reset` for v0.1.0. Re-running setup is always safe.
+This is a string template the CLI owns - documented defaults plus comments naming each env var equivalent. No prompts, no idempotent merging, no `aws configure`-style "current value" detection. Users edit the file in their editor; the precedence chain (§1.1.4) does the rest.
 
-**Deferred:** named profiles (`--profile staging`) - this is AWS pattern, but overkill / we use `make` targets for dev, prod is scripted w/ bootstraps.
+**Deferred entirely for v0.1:** the template-writer command itself, named profiles (`--profile staging`), and any interactive config flow.
 
 ## 1.2 Entrypoint signatures
 
@@ -286,32 +280,26 @@ from issue #39, already implemented:
 
 **What this means for external-service wiring.** Users should be able to pass anything relevant for the client, including external service URLs (e.g. an external Postgres connection string) - this is the Infra UX side of the same contract (§2.2.3: `--external-postgres <url>` etc.). The API entrypoint accepts them as kwargs; CLI surfaces them as flags; env-var and config-file fallbacks work the same way as for every other setting.
 
+<!-- TODO: review change -->
 ## 1.3 CLI surface
 
-- Each tool has its own config wizard verb
-- `annotation` also has stack lifecycle verbs (`up`/`down`) because it orchestrates Docker - other tools don't
+- `annotation setup` keeps its **existing semantics**: provisioning Argilla workspaces/users/datasets against a running server. Headless-flag-driven, not a config wizard
+- `annotation` adds stack lifecycle verbs (`up`/`down`) because it orchestrates Docker - other tools don't
+- `querygen` and `eval` have no `setup` verb. Credentials and provider selection flow through args/env/config like every other setting; no per-tool setup proliferation
 
->**Terminology conflict to resolve.** existing `pragmata annotation setup` command provisions **Argilla workspaces/users/datasets** against a running server - it is *not* a config wizard -> proposed config-wizard semantics in this doc cannot reuse `setup` without breaking. Two resolutions, see §Q-setup-verb:
-
-- *A (rec):* rename existing `annotation setup` → `annotation provision` (or `init-workspace`), free up `setup` for the config wizard.
-- * B:* call config wizard `configure` instead. 
-
-Proposed full surface (assuming A):
+Full surface for v0.1:
 
 ```
-pragmata annotation setup       # OPTIONAL config wizard -> overrides defaults, writes config (NEW)
-pragmata annotation up          # starts local Docker stack (works without setup - defaults) (NEW)
+pragmata annotation up          # starts local Docker stack (zero-config defaults) (NEW)
 pragmata annotation down        # stops local Docker stack (NEW)
-pragmata annotation provision   # CURRENT `setup` renamed: Argilla workspace/user/dataset provisioning
-pragmata annotation teardown
+pragmata annotation setup       # CURRENT: Argilla workspace/user/dataset provisioning (unchanged)
+pragmata annotation teardown    # CURRENT: tear down provisioned Argilla state (unchanged)
 pragmata annotation import      
 pragmata annotation export     
 pragmata annotation iaa         
 
-pragmata querygen setup         # OPTIONAL config wizard (NEW)
 pragmata querygen gen-queries    # runtime - works OOTB if provider env var present
 
-pragmata eval setup             # OPTIONAL config wizard 
 pragmata eval run (tbc)              
 ```
 
@@ -319,31 +307,25 @@ pragmata eval run (tbc)
 >
 > - `pragmata --version`, `--verbose`
 > - `pragmata querygen gen-queries`
-> - `pragmata annotation setup/teardown/import/export/iaa`  - existing `setup`/`teardown` target Argilla workspace provisioning, not Docker or config-wizard UX
+> - `pragmata annotation setup/teardown/import/export/iaa` - `setup`/`teardown` target Argilla workspace provisioning (already as documented above)
 
-Naming rationale (see research notes):
+Naming rationale:
 
-- `setup` - one-shot config wizard that resolves config and writes it. Idempotent. Rerunnable. Chosen over `init` because `init` connotes "scaffold a project in cwd" in supabase/dbt/wrangler convention, which is not what we do. Also, it should work using defaults OOTB -> not a first init, but a later configuration by experienced users.
-- `up`/`down` - Docker stack lifecycle. `docker compose up` inheritance is clear. Chosen over `start`/`stop` (supabase) because `up` preserves the Compose mental model. 
-  - TODO: clearer to have not namespaced by annotation? As general principle we should consider how closely to couple annotation and infra here. 
-- `provision` / `teardown` - proposed names for workspace/user management (currently `setup`/`teardown`). Analogue: `aws iam create-user`, `kubectl create namespace` - provisioning operations against an already-running service. See §Q-setup-verb.
-- NB: no `pragmata init` / no global setup. Per-tool setups scale better than a mega-wizard that branches (the `dbt init` branching pattern only works when setup is structurally identical across plugins - not the case here).
+- `setup` / `teardown` - kept as-is. Provisioning/de-provisioning verbs against an already-running Argilla server. Analogue: `aws iam create-user`, `kubectl create namespace`. Headless and flag-driven; not interactive.
+- `up`/`down` - Docker stack lifecycle. `docker compose up` inheritance is clear. Chosen over `start`/`stop` (supabase) because `up` preserves the Compose mental model.
+- No `pragmata init`, no global setup, no per-tool config wizards. Settings flow: kwargs/flags + env + config (§1.1.4).
 
-### 1.3.1 Wizard trigger: flags suppress prompts
+<!-- TODO: review change -->
+### 1.3.1 Headless by default
 
-Single command does both interactive and headless. `gh auth login` pattern:
+All commands - including `annotation setup` (Argilla provisioning) - are non-interactive: required values come from flags, env vars, or config. Missing required values fail fast with a clear error that names the missing setting and the flag/env var that supplies it.
 
 ```
-pragmata annotation setup                                  # full wizard
 pragmata annotation setup --url http://... --api-key ...   # headless, no prompts
-pragmata annotation setup --url http://...                 # partial - prompt for missing fields only
+pragmata annotation setup --url http://...                 # missing api-key → fail fast with clear error
 ```
 
-No `--non-interactive` mode flag: flags themselves are the escape hatch.
-
-Caveat from research: `gh`'s implementation has a known gap - partial flags + non-TTY stdin hangs -> we need:
-- **TTY detection**: if `not sys.stdin.isatty()` and required values missing -> fail fast with headless-flags error, don't hand to Questionary (TODO come back to this)
-- **Optional `--no-prompt`** as belt-and-braces for CI - refuses to prompt regardless of TTY state.
+No prompts, no TTY-dependent branching, no `--no-prompt` mode flag (none needed - nothing prompts). Same behaviour in interactive shells, CI, and Python API callers.
 
 ## 1.4 First-use error UX
 
@@ -361,20 +343,15 @@ Error: Docker daemon not reachable.
   Start your Docker runtime and try again.
   See: https://docs.docker.com/get-docker/
 
+<!-- TODO: review change -->
 $ pragmata annotation import foo.json
 Error: Argilla stack is not running.
   Run: pragmata annotation up
-
-NB: given OOTB works with opinionated defaults principle, we would NOT have following. (TODO: confirm this):
-
-$ pragmata annotation import foo.json      
-Error: annotation is not configured.
-  Run: pragmata annotation setup
 ```
 
-Failure mode is checked in order: *extra-installed -> Docker-running -> stack-up.* Each check is a strict prerequisite for the next - stack-up can't succeed without Docker-running. We fail at the first missing prerequisite with the corresponding fix.
+Under zero-config (principle 4), "annotation is not configured" is **not** a failure mode - defaults always resolve to a working config.
 
-> TODO: if we do decide we need initial configure (not recommended), slot `configured` between `extra-installed` and `Docker-running` -> extra-installed -> configured -> Docker-running -> stack-up. Pure-Python check (does the config resolve?), so it's cheaper to fail fast there before spinning up a Docker subprocess.
+Failure mode is checked in order: *extra-installed → Docker-running → stack-up.* Each check is a strict prerequisite for the next - stack-up can't succeed without Docker-running. We fail at the first missing prerequisite with the corresponding fix.
 
 ---
 
