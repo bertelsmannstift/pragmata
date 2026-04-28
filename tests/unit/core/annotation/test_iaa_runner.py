@@ -101,7 +101,7 @@ def _make_discarded_retrieval_row(record_uuid: str, annotator_id: str) -> tuple:
             "annotator_id": annotator_id,
             "created_at": datetime(2026, 4, 1, tzinfo=timezone.utc),
             "response_status": "discarded",
-            "discard_reason": "duplicate",
+            "discard_reason": "invalid_or_unrealistic",
             **{label: None for label in _RETRIEVAL_LABELS},
         }
     )
@@ -117,6 +117,7 @@ def export_dir(tmp_path: Path) -> AnnotationExportPaths:
         retrieval_annotation_csv=export / "retrieval.csv",
         grounding_annotation_csv=export / "grounding.csv",
         generation_annotation_csv=export / "generation.csv",
+        export_meta_json=export / "annotation_export.meta.json",
     )
 
 

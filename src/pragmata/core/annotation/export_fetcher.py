@@ -97,8 +97,14 @@ def fetch_task(
     settings: AnnotationSettings,
     task: Task,
     user_lookup: dict[UUID, str],
+    *,
+    include_discarded: bool,
 ) -> list[tuple[AnnotationModel, list[str]]]:
-    """Fetch submitted records for a task, build typed rows with constraint violations."""
+    """Fetch records for a task, build typed rows with constraint violations.
+
+    By default returns only submitted responses; pass ``include_discarded=True``
+    to also include responses the annotator discarded.
+    """
     dataset_name = apply_suffix(DATASET_NAMES[task], settings.dataset_id)
 
     workspace_name: str | None = None
@@ -108,7 +114,8 @@ def fetch_task(
             break
 
     dataset = client.datasets(dataset_name, workspace=workspace_name)
-    query = rg.Query(filter=rg.Filter([("response.status", "in", ["submitted", "discarded"])]))
+    statuses = ["submitted", "discarded"] if include_discarded else ["submitted"]
+    query = rg.Query(filter=rg.Filter([("response.status", "in", statuses)]))
     check_constraints = CONSTRAINT_CHECKERS[task]
 
     rows: list[tuple[AnnotationModel, list[str]]] = []

@@ -56,6 +56,19 @@ def build_task_settings() -> dict[Task, rg.Settings]:
     (or with a mock client in tests). Cached after first call.
     """
     template_text = files("pragmata.core.annotation").joinpath("collapsible_field.html").read_text(encoding="utf-8")
+    discard_template = files("pragmata.core.annotation").joinpath("discard_flow.html").read_text(encoding="utf-8")
+
+    # Fresh CustomField per task — FieldBase carries a `_dataset` attribute that
+    # Argilla's Settings/Dataset plumbing mutates, so sharing one instance across
+    # three rg.Settings risks cross-task coupling on future SDK changes.
+    def discard_field() -> rg.CustomField:
+        return rg.CustomField(
+            name="discard_flow",
+            title="Discard this record",
+            template=discard_template,
+            advanced_mode=True,
+            required=False,
+        )
 
     return {
         Task.RETRIEVAL: rg.Settings(
@@ -63,6 +76,7 @@ def build_task_settings() -> dict[Task, rg.Settings]:
                 rg.TextField(name="query", title="Query", required=True),
                 rg.TextField(name="chunk", title="Chunk", required=True),
                 _collapsible_field("generated_answer", "Generated answer", template_text),
+                discard_field(),
             ],
             questions=[
                 rg.LabelQuestion(
@@ -100,6 +114,7 @@ def build_task_settings() -> dict[Task, rg.Settings]:
                 rg.TextField(name="answer", title="Answer", required=True),
                 rg.TextField(name="context_set", title="Context set", required=True),
                 _collapsible_field("query", "Query", template_text),
+                discard_field(),
             ],
             questions=[
                 rg.LabelQuestion(
@@ -146,6 +161,7 @@ def build_task_settings() -> dict[Task, rg.Settings]:
                 rg.TextField(name="query", title="Query", required=True),
                 rg.TextField(name="answer", title="Answer", required=True),
                 _collapsible_field("context_set", "Context set", template_text),
+                discard_field(),
             ],
             questions=[
                 rg.LabelQuestion(

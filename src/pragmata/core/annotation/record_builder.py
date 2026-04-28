@@ -21,6 +21,10 @@ from pragmata.core.settings.annotation_settings import AnnotationSettings
 
 logger = logging.getLogger(__name__)
 
+# Static placeholder — the discard_flow CustomField template reads no record
+# data, but Argilla still requires the field to be present on every record.
+_DISCARD_FLOW_FIELD = {"discard_flow": {"text": ""}}
+
 
 # ---------------------------------------------------------------------------
 # Validation
@@ -96,6 +100,7 @@ def build_retrieval_records(pair: QueryResponsePair, record_uuid: str) -> list[r
                     "query": pair.query,
                     "chunk": chunk.text,
                     "generated_answer": {"text": pair.answer},
+                    **_DISCARD_FLOW_FIELD,
                 },
                 metadata=metadata,
             )
@@ -114,6 +119,7 @@ def build_grounding_record(pair: QueryResponsePair, record_uuid: str) -> rg.Reco
             "answer": pair.answer,
             "context_set": pair.context_set,
             "query": {"text": pair.query},
+            **_DISCARD_FLOW_FIELD,
         },
         metadata=metadata,
     )
@@ -130,6 +136,7 @@ def build_generation_record(pair: QueryResponsePair, record_uuid: str) -> rg.Rec
             "query": pair.query,
             "answer": pair.answer,
             "context_set": {"text": pair.context_set},
+            **_DISCARD_FLOW_FIELD,
         },
         metadata=metadata,
     )
