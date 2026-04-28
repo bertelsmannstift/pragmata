@@ -1,6 +1,6 @@
 # Config & Settings UX
 
-Status: Draft (one open item - see Open questions)
+Status: Draft
 Related:
 - ADR-0007 (packaging & invocation surface)
 - ADR-0012 (install & bootstrap UX) [draft]
@@ -8,7 +8,7 @@ Related:
 
 ## Purpose
 
-How the Python/CLI entrypoints accept settings, resolve config, and present errors. Applies uniformly to all three tools (`annotation`, `querygen`, `eval`).
+How the Python/CLI entrypoints accept settings, resolve config, and present errors. Applies uniformly to all three packaged tools (`annotation`,§ `querygen`, `eval`).
 
 Annotation-specific stack lifecycle (Docker, compose, `up`/`down`, prod bootstrap) is in [`annotation-bootstrap.md`](annotation-bootstrap.md).
 
@@ -32,7 +32,7 @@ pip install pragmata[querygen]
 pip install pragmata[eval]               
 ```
 
-Extras capture **heavy, optional, provider-specific, or runtime-sensitive** dependencies (e.g. `argilla` SDK, `langchain`, provider clients). Tool ownership alone does not justify an extra: lightweight shared dependencies that support a first-class capability across tools can stay regular core deps. Each extra is audited dependency-by-dependency, not by blanket "if querygen-only → extra."
+Extras capture heavy, optional, provider-specific, or runtime-sensitive dependencies (e.g. `argilla` SDK, `langchain`, provider clients). Tool ownership alone does not justify an extra: lightweight shared dependencies that support a first-class capability across tools can stay regular core deps. Each extra is audited dependency-by-dependency, not by blanket "if querygen-only → extra."
 
 ### Lazy imports at the package boundary
 
