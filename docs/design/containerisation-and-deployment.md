@@ -16,14 +16,16 @@ Annotation stack composition (services, profiles, compose-file location) is in [
 
 ## Guiding principle
 
-**The primary artefact is the PyPI package. A container image is an optional convenience, not the deployment unit.**
+**Containerise services, not CLI orchestrators. Ship pragmata as a PyPI package; let the long-running Argilla stack be the containerised workload.**
+
+Containerisation is primarily intended to run **services** - long-lived processes that need isolation from the host, reproducibility across environments, declarative resource limits, and a clean lifecycle managed by an external supervisor. That fits Argilla + Postgres + Elasticsearch + Redis exactly. CLI tools are typically the opposite shape: short-lived, host-coupled (they read your filesystem, your env, your Docker socket), and benefit more from `pip install` than from container packaging. Containerising a CLI makes sense when *the tool itself is the workload* (CI runners, build agents, hermetic ops tools) or when host installation is genuinely painful - not when it is a thin orchestrator over an HTTP SDK and a `docker compose` shell-out.
 
 Pragmata's three tools split into two deployment shapes:
 
 - `querygen`, `eval` - short-lived batch jobs. Run on a developer laptop or a CI runner. No infra to manage.
 - `annotation` - orchestrates a long-running Argilla stack (Argilla server + Postgres + Elasticsearch + Redis) that must stay up for the duration of an annotation campaign (weeks).
 
-These two shapes do not benefit from the same packaging. Trying to unify them under a single "ship one Docker image and run everything from it" model creates more friction than it removes - notably, it forces the question of how a containerised CLI orchestrates sibling containers, whose only common answer (mounting `/var/run/docker.sock`) is rejected as a production anti-pattern by every Tier-1 OSS project surveyed (§3.1).
+The annotation case is what drives the design. The pragmata CLI itself is short-lived even there: `pragmata annotation up` shells out to `docker compose up -d` once per campaign, `pragmata annotation down` once at the end. Provisioning, import, and export are HTTP calls against Argilla. There is no per-request container-launching that would justify wrapping pragmata in its own container and forwarding the Docker socket (DooD; §3.1).
 
 ## 1. Artefact strategy
 
@@ -39,17 +41,26 @@ For v0.1 the PyPI package is sufficient. Adding a container image is cheap once 
 
 ### 1.2 Why not container-as-primary
 
-Surveyed Tier-1 PyPI-distributed CLIs that wrap infrastructure: **Supabase CLI, Airbyte `abctl`, Prefect, Dagster, MLflow, dbt Core**. Pattern is consistent:
+There is no single SOTA pattern for "PyPI CLI that wraps a long-running Compose stack" - the projects in this space split across three legitimate shapes:
 
-- Primary artefact is a binary or a pip-installable package.
-- Container images, where they exist, are secondary - for users who want isolation or reproducibility.
-- None of them route the *orchestrator* through a container in production - the binary/CLI runs on the host and talks to Docker (or k8s) directly.
+| Pattern | Examples | Orchestrator runs as |
+|---|---|---|
+| **No orchestrator wrapper.** Ship the compose file; user runs `docker compose up -d` directly. CLI handles only app-level concerns (provisioning, data flow). | [Argilla](https://docs.argilla.io/latest/getting_started/how-to-deploy-argilla-with-docker/) itself, [Supabase self-hosted](https://supabase.com/docs/guides/self-hosting/docker), [Prefect via Docker](https://docs.prefect.io/v3/how-to-guides/self-hosted/server-docker) | n/a - no wrapper |
+| **Host CLI wraps stack lifecycle.** A binary/pip-installed CLI shells out to `docker compose` (or `kind`). | [Supabase CLI `supabase start`](https://supabase.com/docs/guides/local-development/cli/getting-started) (local dev), [Airbyte `abctl`](https://docs.airbyte.com/platform/deploying-airbyte/abctl) (kind, not compose) | host process |
+| **Containerised orchestrator with DooD.** Daemon container mounts `/var/run/docker.sock` and launches sibling containers. | [Dagster](https://docs.dagster.io/deployment/oss/deployment-options/docker) | container, with socket mounted |
 
-Reasons this matters for pragmata:
+The projects most analogous to pragmata - and Argilla itself - sit in the first row: no wrapper at all. Supabase CLI's `supabase start` (second row) is the model `pragmata annotation up` is built on, but Supabase positions it as a dev-loop tool; their self-hosted production guidance falls back to "run `docker compose` yourself." Dagster (third row) accepts the DooD risk because its daemon must launch *per-run* containers as a core runtime feature.
 
-- **`querygen`/`eval`** are short-lived. A developer running `pragmata querygen gen-queries` from a notebook or shell does not want `docker pull` overhead per invocation.
-- **`annotation`** must spawn its own sibling stack. Containerising the orchestrator forces the DooD question (§3.1) for no real gain - the host is already a Linux box with Docker on it (that's a hard prerequisite anyway).
+Pragmata sits between rows 1 and 2: the CLI exists for a real reason (single source of truth for env/config resolution, link between provisioning and stack lifecycle, clean error UX for "Docker not running" / "stack not up"), but it does **not** have Dagster's per-run launching requirement. So the right shape is host CLI orchestrating containerised services - same as Supabase CLI - not containerised orchestrator with socket forwarding.
+
+Reasons container-as-primary does not pay off here:
+
+- **`querygen`/`eval`** are short-lived Python processes. A developer running `pragmata querygen gen-queries` from a notebook or shell does not want `docker pull` overhead per invocation.
+- **`annotation` CLI calls** are also short-lived. The host is already a Linux box with Docker on it (that is a hard prerequisite for the stack anyway), so requiring Python is a marginal additional ask.
+- **Containerising the orchestrator** forces the DooD-or-skip-the-wrapper question (§3.1) for no concrete gain.
 - **Two artefacts to maintain** = two release surfaces, two upgrade stories, two version-skew matrices. v0.1 cannot afford that.
+
+> Open upstream question (§5): should `pragmata annotation up` exist at all? Argilla's own deployment guide is `wget` the compose + `docker compose up`. We may be inventing a wrapper layer that the most-analogous project explicitly avoids. Decision deferred; for now the wrapper stays, on the strength of the env-resolution / error-UX argument above.
 
 ### 1.3 Versioning & registry
 
@@ -127,10 +138,10 @@ If at some point a deployer insists on running the pragmata CLI inside a contain
 
 DooD = mount `/var/run/docker.sock` into a container so it can spawn sibling containers on the host daemon.
 
-- **Security**: Docker socket access is root-equivalent on the host. OWASP, Docker's own docs, and every security review treat socket-mounting in production as a privilege-escalation vector. Read-only mount does not help. Rootless Docker mitigates but does not eliminate.
+- **Security**: Docker socket access is root-equivalent on the host. [OWASP](https://cheatsheetseries.owasp.org/cheatsheets/Docker_Security_Cheat_Sheet.html), [Docker's own engine-security docs](https://docs.docker.com/engine/security/), and most security reviews treat socket-mounting as a privilege-escalation vector. Read-only mount does not help. Rootless Docker mitigates but does not eliminate.
 - **Operator confusion**: makes the trust boundary between "the pragmata container" and "the host's whole container fleet" invisible. If the pragmata container is compromised, the attacker owns every container on the host.
-- **No precedent in our peer set**: Supabase, Airbyte `abctl`, Dagster, Prefect, MLflow, dbt - none ship a containerised CLI that DooDs a sibling stack as the recommended path. Earthly explicitly rejects DooD as a design principle. Where DooD shows up at all (Dagster runners, some CI patterns) it's flagged dev-only.
-- **Zero gain over running the CLI on the host**: pragmata is a Python process that takes <1s to invoke and then exits. Containerising it does not buy isolation worth the security tradeoff.
+- **Wrong tool for our shape**: DooD is the right call when the orchestrator must launch containers on a per-request / per-run basis as a core runtime feature - that's why [Dagster's daemon ships with the socket mounted](https://docs.dagster.io/deployment/oss/deployment-options/docker) as its recommended production pattern. Pragmata has no equivalent requirement: `pragmata annotation up` shells out to `docker compose` *once per campaign*, and `down` once at the end. We get the security cost with none of the capability gain.
+- **Better alternatives exist for our shape**: in the projects most analogous to pragmata (Argilla, Supabase self-hosted, Prefect Docker), the orchestrator is either a host process (Supabase CLI) or absent entirely (user runs `docker compose up`). Both avoid DooD without losing functionality.
 
 ### 3.2 Escape hatch: skip `annotation up`, run compose directly
 
@@ -208,6 +219,7 @@ For Bertelsmann Stiftung's first campaigns the single-VM compose deployment is t
 
 | Question | Status |
 |---|---|
+| **Should `pragmata annotation up` exist at all?** Upstream of every other question in this doc. The most-analogous project (Argilla itself) ships only the compose file and tells users to run `docker compose up -d` directly; Supabase's *self-hosted production* guidance does the same (their CLI's `start` is positioned as dev-loop tooling). Our wrapper buys env/config consistency, a single source of truth for profile/flag resolution, and a clean error-UX surface ("Docker not reachable", "stack not up") - but it also puts us on the hook for compose's surface area and invents a layer the SOTA explicitly avoids. Resolving this collapses or simplifies several decisions in [`annotation-bootstrap.md`](annotation-bootstrap.md) (compose distribution, locked-vs-eject, lifecycle verbs). | Open |
 | **Container image in v0.1?** Currently deferred to v0.2+ (§1.1). Worth confirming we're OK shipping PyPI-only for v0.1 - even with the dev/CI ergonomic loss for `querygen`/`eval` users who'd prefer `docker run`. | Open |
 | **Localhost-only binding default for the shipped compose?** §4.2 proposes binding Argilla to `127.0.0.1:6900` by default to avoid accidental public exposure. The current dev compose binds to `0.0.0.0:6900` (`"${ARGILLA_PORT:-6900}:6900"`). Confirm we want to flip this for the shipped (prod-first) compose. | Open |
 | **Backup verb?** §4.1 leaves backup to the operator. Worth checking whether a thin `pragmata annotation backup` / `restore` (wrapping `pg_dump` + ES snapshot) is in scope for v0.1 or v0.2+. | Open |
