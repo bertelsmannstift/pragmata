@@ -99,20 +99,27 @@ def fetch_task(
     *,
     include_discarded: bool,
 ) -> list[tuple[AnnotationModel, list[str]]]:
-    """Fetch records for a task, build typed rows with constraint violations.
+    """Fetch records for a task across calibration and production datasets.
+
+    Iterates the production dataset (always present) and the calibration
+    dataset (when topology declares one for this task). Each row is tagged
+    with ``calibration: bool`` so downstream consumers can filter.
 
     By default returns only submitted responses; pass ``include_discarded=True``
     to also include responses the annotator discarded.
     """
-    ds_name = dataset_name(task, calibration=False, dataset_id=settings.dataset_id)
-
     workspace_name: str | None = None
+    overlap = None
     for ws_base, task_overlaps in settings.workspace_dataset_map.items():
         if task in task_overlaps:
             workspace_name = ws_base
+            overlap = task_overlaps[task]
             break
 
-    dataset = client.datasets(ds_name, workspace=workspace_name)
+    purposes: list[bool] = [False]
+    if overlap is not None and overlap.calibration_min_submitted is not None:
+        purposes.append(True)
+
     statuses = ["submitted", "discarded"] if include_discarded else ["submitted"]
     query = rg.Query(filter=rg.Filter([("response.status", "in", statuses)]))
     check_constraints = CONSTRAINT_CHECKERS[task]
@@ -120,34 +127,45 @@ def fetch_task(
     rows: list[tuple[AnnotationModel, list[str]]] = []
     missing_uuid_count = 0
 
-    for record in dataset.records(query, with_responses=True):
-        record_uuid: str = record.metadata.get("record_uuid", "")
-        if not record_uuid:
-            missing_uuid_count += 1
+    for calibration in purposes:
+        ds_name = dataset_name(task, calibration=calibration, dataset_id=settings.dataset_id)
+        dataset = client.datasets(ds_name, workspace=workspace_name)
+        if dataset is None:
+            # Calibration dataset may not yet exist if no records were ever
+            # routed to it (lazy creation). Production should always exist
+            # post-import; if missing, fall through silently to match prior
+            # "skip empty CSV" behaviour.
+            continue
 
-        created_at: datetime = record._model.updated_at or record._model.inserted_at
-        inserted_at: datetime = record._model.inserted_at
-        language: str | None = record.metadata.get("language")
-        record_status: str = record.status
+        for record in dataset.records(query, with_responses=True):
+            record_uuid: str = record.metadata.get("record_uuid", "")
+            if not record_uuid:
+                missing_uuid_count += 1
 
-        grouped = _group_responses_by_user(record)
-        for user_id, (response_status, answers) in grouped.items():
-            base = {
-                "record_uuid": record_uuid,
-                "annotator_id": user_lookup.get(user_id, str(user_id)),
-                "language": language,
-                "inserted_at": inserted_at,
-                "created_at": created_at,
-                "record_status": record_status,
-                "response_status": response_status,
-                "discard_reason": answers.get("discard_reason"),
-                "discard_notes": answers.get("discard_notes"),
-                "notes": answers.get("notes") or "",
-            }
+            created_at: datetime = record._model.updated_at or record._model.inserted_at
+            inserted_at: datetime = record._model.inserted_at
+            language: str | None = record.metadata.get("language")
+            record_status: str = record.status
 
-            row = _build_row(task, base=base, answers=answers, fields=record.fields, metadata=record.metadata)
-            violations = check_constraints(row) if response_status == "submitted" else []
-            rows.append((row, violations))
+            grouped = _group_responses_by_user(record)
+            for user_id, (response_status, answers) in grouped.items():
+                base = {
+                    "record_uuid": record_uuid,
+                    "annotator_id": user_lookup.get(user_id, str(user_id)),
+                    "language": language,
+                    "calibration": calibration,
+                    "inserted_at": inserted_at,
+                    "created_at": created_at,
+                    "record_status": record_status,
+                    "response_status": response_status,
+                    "discard_reason": answers.get("discard_reason"),
+                    "discard_notes": answers.get("discard_notes"),
+                    "notes": answers.get("notes") or "",
+                }
+
+                row = _build_row(task, base=base, answers=answers, fields=record.fields, metadata=record.metadata)
+                violations = check_constraints(row) if response_status == "submitted" else []
+                rows.append((row, violations))
 
     if missing_uuid_count:
         logger.warning(
