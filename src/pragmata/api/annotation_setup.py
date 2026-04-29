@@ -31,8 +31,8 @@ def setup(
 
     Datasets are not created here — they are auto-created on import,
     scoped by dataset_id. Per-task overlap (production and calibration
-    ``min_submitted``) is configured via ``workspace_dataset_map`` in the
-    YAML config or ``AnnotationSettings``.
+    ``min_submitted``) is declared in
+    ``AnnotationSettings.workspace_dataset_map``.
 
     Settings are resolved from config file and/or keyword overrides. Omitted
     values fall through to config-file defaults, then built-in defaults.
