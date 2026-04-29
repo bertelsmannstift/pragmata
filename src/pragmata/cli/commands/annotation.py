@@ -24,9 +24,6 @@ def setup_command(
     api_key: str | None = _api_key_opt,
     base_dir: str | None = _base_dir_opt,
     config: str | None = _config_opt,
-    min_submitted: int | None = typer.Option(
-        None, "--min-submitted", help="Minimum submitted annotations required per record before it is complete."
-    ),
     users_json: str | None = typer.Option(
         None,
         "--users",
@@ -36,7 +33,9 @@ def setup_command(
 ) -> None:
     """Create Argilla workspaces and (optionally) user accounts.
 
-    Datasets are created automatically on import, not here.
+    Datasets are created automatically on import, not here. Per-task overlap
+    (production and calibration ``min_submitted``) is configured via
+    ``workspace_dataset_map`` in the YAML config or ``AnnotationSettings``.
     """
     from pragmata import annotation
 
@@ -44,7 +43,6 @@ def setup_command(
         parse_user_specs(users_json),
         api_url=UNSET if api_url is None else api_url,
         api_key=UNSET if api_key is None else api_key,
-        min_submitted=UNSET if min_submitted is None else min_submitted,
         base_dir=UNSET if base_dir is None else base_dir,
         config_path=UNSET if config is None else config,
     )
@@ -88,10 +86,18 @@ def import_command(
     format: str | None = typer.Option(
         None, "--format", help="File format override (json, jsonl, csv). Auto-detected by default."
     ),
+    calibration_fraction: float = typer.Option(
+        0.1,
+        "--calibration-fraction",
+        help="Fraction of records routed to the calibration dataset for this batch. "
+        "Set to 0.0 for production-only batches.",
+    ),
 ) -> None:
     """Validate and import records into annotation datasets.
 
-    Datasets are auto-created if they don't exist.
+    Datasets are auto-created if they don't exist. Records are partitioned
+    deterministically into calibration vs production buckets; the partition
+    is locked across re-imports via a sidecar manifest scoped to ``dataset_id``.
     """
     from pragmata import annotation
 
@@ -103,8 +109,13 @@ def import_command(
         dataset_id=UNSET if dataset_id is None else dataset_id,
         base_dir=UNSET if base_dir is None else base_dir,
         config_path=UNSET if config is None else config,
+        calibration_fraction=calibration_fraction,
     )
     typer.echo(f"Total records: {result.total_records}")
+    typer.echo(
+        f"Calibration: {result.calibration_count}, "
+        f"production: {result.production_count} (fraction={result.calibration_fraction:.3f})"
+    )
     for ds, count in result.dataset_counts.items():
         typer.echo(f"  {ds}: {count}")
     if result.errors:
