@@ -109,6 +109,18 @@ def write_export_csv(
         raise
 
 
+def _resolve_calibration_enabled(settings: "AnnotationSettings", tasks: list[Task]) -> dict[Task, bool]:
+    """Per-task calibration topology lookup from settings."""
+    flags: dict[Task, bool] = {}
+    for task_overlaps in settings.workspace_dataset_map.values():
+        for task, overlap in task_overlaps.items():
+            if task in tasks:
+                flags[task] = overlap.calibration_min_submitted is not None
+    for task in tasks:
+        flags.setdefault(task, False)
+    return flags
+
+
 def assemble_export_meta(
     export_id: str,
     dataset_id: str | None,
@@ -116,6 +128,7 @@ def assemble_export_meta(
     include_discarded: bool,
     row_counts: dict[Task, int],
     n_annotators: dict[Task, int],
+    calibration_enabled: dict[Task, bool],
     constraint_summary: dict[str, int],
 ) -> AnnotationExportMeta:
     """Assemble run-level provenance metadata for an annotation export.
@@ -127,6 +140,8 @@ def assemble_export_meta(
         include_discarded: Whether discarded responses were included.
         row_counts: Rows written per task.
         n_annotators: Distinct annotator count per task.
+        calibration_enabled: Whether the topology declared a calibration
+            dataset for each task.
         constraint_summary: Constraint violation count per rule name.
 
     Returns:
@@ -140,6 +155,7 @@ def assemble_export_meta(
         include_discarded=include_discarded,
         row_counts=row_counts,
         n_annotators=n_annotators,
+        calibration_enabled=calibration_enabled,
         constraint_summary=constraint_summary,
     )
 
@@ -171,6 +187,7 @@ def run_export(
             include_discarded=include_discarded,
             row_counts={},
             n_annotators={},
+            calibration_enabled={},
             constraint_summary={},
         )
         write_export_meta(meta, paths.export_meta_json)
@@ -197,6 +214,7 @@ def run_export(
 
     row_counts = {task: len(task_rows[task]) for task in tasks}
     n_annotators = {task: len({row.annotator_id for row, _ in task_rows[task]}) for task in tasks}
+    calibration_enabled = _resolve_calibration_enabled(settings, tasks)
 
     constraint_summary: dict[str, int] = {}
     for task in tasks:
@@ -211,6 +229,7 @@ def run_export(
         include_discarded=include_discarded,
         row_counts=row_counts,
         n_annotators=n_annotators,
+        calibration_enabled=calibration_enabled,
         constraint_summary=constraint_summary,
     )
     write_export_meta(meta, paths.export_meta_json)
