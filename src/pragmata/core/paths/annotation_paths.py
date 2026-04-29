@@ -36,6 +36,52 @@ def resolve_annotation_paths(*, workspace: WorkspacePaths) -> AnnotationPaths:
 
 
 @dataclass(frozen=True, slots=True)
+class AnnotationImportPaths:
+    """Path bundle for an annotation import scope (one per ``dataset_id``).
+
+    Imports accumulate state across calls into the same logical scope, so the
+    bundle is keyed by ``dataset_id`` (persistent topology scope) rather than
+    a per-call identifier. The partition manifest sidecar tracks calibration
+    vs production assignment for every record imported into this scope.
+
+    Attributes:
+        tool_root: Annotation tool root.
+        import_dir: Per-``dataset_id`` import directory.
+        partition_manifest: Partition manifest sidecar path.
+    """
+
+    tool_root: Path
+    import_dir: Path
+    partition_manifest: Path
+
+    def ensure_dirs(self) -> Self:
+        """Create the import directory scaffold."""
+        self.import_dir.mkdir(parents=True, exist_ok=True)
+        return self
+
+
+def resolve_import_paths(*, workspace: WorkspacePaths, dataset_id: str) -> AnnotationImportPaths:
+    """Build the path bundle for an annotation import scope.
+
+    Args:
+        workspace: Workspace path bundle.
+        dataset_id: Topology scope. Empty string maps to the ``"default"``
+            directory so the layout is uniform across scopes.
+
+    Returns:
+        Path bundle for the import scope.
+    """
+    tool_root = workspace.tool_root("annotation")
+    scope = dataset_id or "default"
+    import_dir = tool_root / "imports" / scope
+    return AnnotationImportPaths(
+        tool_root=tool_root,
+        import_dir=import_dir,
+        partition_manifest=import_dir / "partition.meta.json",
+    )
+
+
+@dataclass(frozen=True, slots=True)
 class AnnotationExportPaths:
     """Path bundle for an annotation export run.
 

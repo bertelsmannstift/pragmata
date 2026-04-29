@@ -6,7 +6,7 @@ core/settings/). They encode the annotation protocol (fields, questions, labels)
 and are hardcoded per ADR-0009.
 
 Distribution (min_submitted) is intentionally omitted — it is an operational
-setting controlled by AnnotationSettings.min_submitted and applied at
+setting controlled by AnnotationSettings.workspace_dataset_map and applied at
 dataset creation time.
 """
 
@@ -16,6 +16,7 @@ from string import Template
 
 import argilla as rg
 
+from pragmata.core.annotation.argilla_ops import apply_suffix
 from pragmata.core.schemas.annotation_task import DiscardReason, Task
 
 DATASET_NAMES: dict[Task, str] = {
@@ -23,6 +24,19 @@ DATASET_NAMES: dict[Task, str] = {
     Task.GROUNDING: "grounding",
     Task.GENERATION: "generation",
 }
+
+
+def dataset_name(task: Task, *, calibration: bool, dataset_id: str = "") -> str:
+    """Always-suffixed Argilla dataset name for a task and purpose.
+
+    Names are unconditional: production datasets are always
+    ``task_<task>_production`` and calibration datasets are always
+    ``task_<task>_calibration``. The ``dataset_id`` suffix is appended for
+    run-scoping when present.
+    """
+    base = DATASET_NAMES[task]
+    suffix = "_calibration" if calibration else "_production"
+    return apply_suffix(f"{base}{suffix}", dataset_id)
 
 
 def _collapsible_field(name: str, title: str, template_text: str) -> rg.CustomField:
