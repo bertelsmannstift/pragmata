@@ -24,6 +24,7 @@ class AnnotationBase(BaseModel):
     annotator_id: str
     task: Task
     language: str | None
+    calibration: bool
     inserted_at: datetime
     created_at: datetime
     record_status: str
@@ -121,6 +122,7 @@ class AnnotationExportMeta(BaseModel):
     include_discarded: bool
     row_counts: dict[Task, NonNegativeInt]
     n_annotators: dict[Task, NonNegativeInt]
+    calibration_enabled: dict[Task, bool]
     constraint_summary: dict[str, NonNegativeInt]
 
     @model_validator(mode="after")
@@ -131,4 +133,6 @@ class AnnotationExportMeta(BaseModel):
             raise ValueError("row_counts keys must match tasks")
         if set(self.n_annotators) != expected:
             raise ValueError("n_annotators keys must match tasks")
+        if set(self.calibration_enabled) != expected:
+            raise ValueError("calibration_enabled keys must match tasks")
         return self
