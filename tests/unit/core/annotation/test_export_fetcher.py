@@ -15,7 +15,7 @@ from pragmata.core.schemas.annotation_export import (
     RetrievalAnnotation,
 )
 from pragmata.core.schemas.annotation_task import Task
-from pragmata.core.settings.annotation_settings import AnnotationSettings
+from pragmata.core.settings.annotation_settings import AnnotationSettings, TaskOverlap
 
 # ---------------------------------------------------------------------------
 # Mock helpers
@@ -23,7 +23,17 @@ from pragmata.core.settings.annotation_settings import AnnotationSettings
 
 _UID1 = UUID("00000000-0000-0000-0000-000000000001")
 _UID2 = UUID("00000000-0000-0000-0000-000000000002")
-_SETTINGS = AnnotationSettings()
+
+# Tests below use a topology with calibration disabled so that fetch_task
+# iterates a single dataset per task. Calibration-aware fetching is
+# exercised in the integration suite.
+_SETTINGS = AnnotationSettings(
+    workspace_dataset_map={
+        "retrieval": {Task.RETRIEVAL: TaskOverlap(calibration_min_submitted=None)},
+        "grounding": {Task.GROUNDING: TaskOverlap(calibration_min_submitted=None)},
+        "generation": {Task.GENERATION: TaskOverlap(calibration_min_submitted=None)},
+    }
+)
 
 
 def _make_response(question_name: str, value: Any, user_id: UUID, status: str = "submitted") -> MagicMock:

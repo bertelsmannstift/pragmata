@@ -4,55 +4,67 @@ import pytest
 from pydantic import ValidationError
 
 from pragmata.core.schemas.annotation_task import Task
-from pragmata.core.settings.annotation_settings import AnnotationSettings, ArgillaSettings, UserSpec
+from pragmata.core.settings.annotation_settings import (
+    AnnotationSettings,
+    ArgillaSettings,
+    TaskOverlap,
+    UserSpec,
+)
 
 
 class TestAnnotationSettingsDefaults:
     def test_workspace_dataset_map_default(self):
         s = AnnotationSettings()
         assert s.workspace_dataset_map == {
-            "retrieval": [Task.RETRIEVAL],
-            "grounding": [Task.GROUNDING],
-            "generation": [Task.GENERATION],
+            "retrieval": {Task.RETRIEVAL: TaskOverlap()},
+            "grounding": {Task.GROUNDING: TaskOverlap()},
+            "generation": {Task.GENERATION: TaskOverlap()},
         }
 
     def test_dataset_id_default(self):
         s = AnnotationSettings()
         assert s.dataset_id == ""
 
-    def test_min_submitted_default(self):
+    def test_calibration_partition_seed_default(self):
         s = AnnotationSettings()
-        assert s.min_submitted == 1
+        assert s.calibration_partition_seed == 0
 
     def test_extra_fields_forbidden(self):
         with pytest.raises(ValidationError):
             AnnotationSettings(nonexistent_field="value")
 
 
+class TestTaskOverlapDefaults:
+    def test_production_default(self):
+        o = TaskOverlap()
+        assert o.production_min_submitted == 1
+
+    def test_calibration_enabled_at_three(self):
+        o = TaskOverlap()
+        assert o.calibration_min_submitted == 3
+
+    def test_calibration_can_be_disabled(self):
+        o = TaskOverlap(calibration_min_submitted=None)
+        assert o.calibration_min_submitted is None
+
+    def test_extra_fields_forbidden(self):
+        with pytest.raises(ValidationError):
+            TaskOverlap(nonexistent_field=1)  # type: ignore[call-arg]
+
+
 class TestAnnotationSettingsResolve:
     def test_resolve_with_no_args_returns_defaults(self):
         s = AnnotationSettings.resolve()
-        assert s.min_submitted == 1
+        assert s.calibration_partition_seed == 0
         assert s.dataset_id == ""
-
-    def test_resolve_overrides_min_submitted(self):
-        s = AnnotationSettings.resolve(overrides={"min_submitted": 3})
-        assert s.min_submitted == 3
 
     def test_resolve_overrides_dataset_id(self):
         s = AnnotationSettings.resolve(overrides={"dataset_id": "run1"})
         assert s.dataset_id == "run1"
 
-    def test_resolve_config_layer(self):
-        s = AnnotationSettings.resolve(config={"min_submitted": 2})
-        assert s.min_submitted == 2
-
-    def test_resolve_overrides_win_over_config(self):
-        s = AnnotationSettings.resolve(
-            config={"min_submitted": 2},
-            overrides={"min_submitted": 5},
-        )
-        assert s.min_submitted == 5
+    def test_resolve_overrides_partition_seed(self):
+        s = AnnotationSettings.resolve(overrides={"calibration_partition_seed": 42})
+        assert s.calibration_partition_seed == 42
 
 
 class TestArgillaSettings:

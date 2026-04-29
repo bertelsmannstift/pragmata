@@ -26,6 +26,7 @@ def base_fields():
         "record_uuid": "uuid-1",
         "annotator_id": "ann-1",
         "language": "en",
+        "calibration": False,
         "inserted_at": NOW,
         "created_at": NOW,
         "record_status": "submitted",
@@ -321,6 +322,7 @@ def _meta(**overrides) -> AnnotationExportMeta:
         "include_discarded": False,
         "row_counts": {Task.RETRIEVAL: 3},
         "n_annotators": {Task.RETRIEVAL: 2},
+        "calibration_enabled": {Task.RETRIEVAL: True},
         "constraint_summary": {},
     }
     return AnnotationExportMeta(**{**base, **overrides})
@@ -346,6 +348,7 @@ class TestAnnotationExportMeta:
                 include_discarded=False,
                 row_counts={},
                 n_annotators={},
+                calibration_enabled={},
                 constraint_summary={},
                 surprise="bad",  # type: ignore[call-arg]
             )
@@ -371,6 +374,7 @@ class TestAnnotationExportMeta:
             tasks=[Task.RETRIEVAL, Task.GROUNDING],
             row_counts={Task.RETRIEVAL: 3, Task.GROUNDING: 2},
             n_annotators={Task.RETRIEVAL: 2, Task.GROUNDING: 1},
+            calibration_enabled={Task.RETRIEVAL: True, Task.GROUNDING: False},
             constraint_summary={"some_rule": 1},
         )
         restored = AnnotationExportMeta.model_validate(original.model_dump(mode="json"))
