@@ -108,7 +108,12 @@ def _filter_rows(
     after: datetime | None = None,
     before: datetime | None = None,
 ) -> list[AnnotationBase]:
-    """Filter annotation rows to submitted responses, by annotator, and/or time window.
+    """Filter annotation rows to submitted, calibration responses by annotator and time.
+
+    Calibration filter is the primary purpose: IAA is only meaningful on
+    overlapped (calibration) records. Production rows are excluded by
+    default - downstream consumers wanting production-IAA can compute it
+    externally from the CSV.
 
     Discarded rows are always excluded: IAA measures agreement over labels, and
     discarded responses have no labels to agree on.
@@ -116,6 +121,8 @@ def _filter_rows(
     excluded = set(exclude_annotators) if exclude_annotators else set()
     filtered = []
     for row in rows:
+        if not row.calibration:
+            continue
         if row.response_status != "submitted":
             continue
         if row.annotator_id in excluded:
@@ -171,7 +178,10 @@ def run_iaa(
             before=before,
         )
         if not rows:
-            logger.warning("Skipping %s: CSV is empty", task.value)
+            logger.warning(
+                "Skipping %s: no calibration rows after filtering (calibration disabled or no overlap)",
+                task.value,
+            )
             continue
 
         labels = TASK_LABELS[task]
