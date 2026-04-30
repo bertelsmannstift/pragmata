@@ -295,4 +295,13 @@ class TestExportAnnotations:
 
         assert set(result.files.keys()) == {Task.RETRIEVAL, Task.GROUNDING, Task.GENERATION}
         called_names = {call.args[0] for call in mock_client.datasets.call_args_list}
-        assert called_names == {"retrieval_production", "grounding_production", "generation_production"}
+        # Default topology has calibration enabled, so each task is fetched twice
+        # (production + calibration). All three tasks must appear in both forms.
+        assert called_names == {
+            "retrieval_production",
+            "retrieval_calibration",
+            "grounding_production",
+            "grounding_calibration",
+            "generation_production",
+            "generation_calibration",
+        }
