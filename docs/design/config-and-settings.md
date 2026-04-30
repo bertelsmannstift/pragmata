@@ -204,7 +204,10 @@ Small set of shared top-level vars (outside per-tool scoping):
 
 ### 1.5 Secrets
 
-Aligns with the existing `resolve_api_key()` contract (`core/settings/settings_base.py`). Canonical provider env vars are the source of truth - not a `PRAGMATA_*`-prefixed name. **No pragmata-owned credential store for v0.1**: a persistent local secret store is a much larger product/security surface (perms, redaction, rotation, cross-platform handling) than non-secret config discovery, and is deferred until concrete demand exists.
+Aligns with the existing `resolve_api_key()` contract (`core/settings/settings_base.py`). Canonical provider env vars are the source of truth - not a `PRAGMATA_*`-prefixed name. 
+
+
+**No pragmata-owned credential store (i.e. `~/.config/pragmata/credentials`) for v0.1**: a persistent local secret store is a much larger product/security surface (perms, redaction, rotation, cross-platform handling) than non-secret config discovery, and is deferred until concrete demand exists.
 
 **Resolution chain for LLM providers** (OpenAI, Anthropic, Mistral, Cohere, DeepSeek, Google):
 
@@ -220,9 +223,7 @@ kwarg  >  ARGILLA_API_KEY env  >  ~/.cache/argilla/credentials (Argilla's own st
 
 Argilla's client already writes to `~/.cache/argilla/credentials` on `argilla login`. We delegate to it rather than maintaining a parallel store, which would create rotation and precedence confusion for the same service.
 
-Secrets are **never read from `config.yaml`** or any project/user pragmata config file: enforced by shape (e.g. `ArgillaSettings` holds `api_url` only; no `api_key` field exists on settings models).
-
-> Deferred (not v0.1): a pragmata-owned `~/.config/pragmata/credentials` file. If demand materialises, it would need explicit decisions on permissions, redaction, rotation/update behaviour, cross-platform handling, and precedence relative to provider-native stores.
+Secrets are never read from `config.yaml` or any project/user pragmata config file: enforced by shape (e.g. `ArgillaSettings` holds `api_url` only; no `api_key` field exists on settings models).
 
 ### 1.6 Config templates (deferred)
 
@@ -232,9 +233,9 @@ No interactive config editor for v0.1. If users want to materialise a config fil
 pragmata <tool> configure --write-template > pragmata.yaml
 ```
 
-This is a string template the CLI owns - documented defaults plus comments naming each env var equivalent. No prompts, no idempotent merging, no `aws configure`-style "current value" detection. Users edit the file in their editor; the precedence chain (§1.4) does the rest.
+This is a string template the CLI owns - documented defaults plus comments naming each env var equivalent. No prompts, idempotent merging, or `aws configure`-style "current value" detection. Users edit the file in their editor; the precedence chain (§1.4) does the rest.
 
-**Deferred entirely for v0.1:** the template-writer command itself, named profiles (`--profile staging`), and any interactive config flow.
+**Deferred entirely for v0.1:** both the template-writer command itself, and any interactive config flow.
 
 ## 2. Entrypoint signatures
 
@@ -249,13 +250,13 @@ From issue #39, already implemented:
 - Internal resolution: `ToolSettings.resolve(config=..., overrides={...})` (§1)
 - Secrets via args or env only; never in config files (§1.5)
 
-**CLI ↔ API coupling.** CLI commands are thin wrappers over the API - flags land as kwargs with `UNSET` for un-passed; [ADR-0007](../decisions/0007-packaging-invocation-surface.md).
+**CLI <-> API coupling.** CLI commands are thin wrappers over the API - flags land as kwargs with `UNSET` for un-passed; [ADR-0007](../decisions/0007-packaging-invocation-surface.md).
 
 **External-service wiring.** Users should be able to pass anything relevant for the client, including external service URLs (e.g. an external Postgres connection string) - the annotation infra layer surfaces these as flags too (see [`annotation-bootstrap.md`](annotation-bootstrap.md) §2.3 for `--external-postgres`, `--external-elastic`). The API entrypoint accepts them as kwargs; CLI surfaces them as flags; env-var and config-file fallbacks work the same way as for every other setting.
 
 ## 3. CLI surface
 
-- `annotation setup` keeps its **existing semantics**: provisioning Argilla workspaces/users/datasets against a running server. Headless-flag-driven, not a config wizard.
+- `annotation setup` keeps its existing semantics: provisioning Argilla workspaces/users against a running server. Headless-flag-driven, not a config wizard.
 - `annotation` adds stack lifecycle verbs (`up`/`down`) because it orchestrates Docker - other tools don't. See [`annotation-bootstrap.md`](annotation-bootstrap.md).
 - `querygen` and `eval` have no `setup` verb. Credentials and provider selection flow through args/env/config like every other setting; no per-tool setup proliferation.
 
@@ -296,7 +297,7 @@ pragmata annotation setup --url http://... --api-key ...   # headless, no prompt
 pragmata annotation setup --url http://...                 # missing api-key → fail fast with clear error
 ```
 
-No prompts, no TTY-dependent branching, no `--no-prompt` mode flag (none needed - nothing prompts). Same behaviour in interactive shells, CI, and Python API callers.
+No prompts, TTY-dependent branching, or `--no-prompt` mode flag (none needed - nothing prompts). Same behaviour in interactive shells, CI, and Python API callers.
 
 ## 4. First-use error UX
 
@@ -322,14 +323,6 @@ Annotation has additional infra-specific failure modes (Docker daemon, stack-up,
 | **Config file path** | Explicit `--config` flag only; no XDG, no `platformdirs` | `platformdirs.user_config_dir("pragmata")` + `PRAGMATA_CONFIG_DIR` override |
 | **`annotation setup` / `teardown`** | Exist - manage **Argilla workspaces, users, datasets** (not Docker). See [`api/annotation_setup.py`](../../src/pragmata/api/annotation_setup.py) | **Semantics unchanged** |
 | **Interactive prompts** | None - `setup` is headless-flag-driven only | **No change.** No `questionary`, no config wizard (§3.1) |
-
-## Open questions
-
-| Question | Status |
-|---|---|
-| **Two project-config formats?** §1.3 supports both `./pragmata.yaml` and `pyproject.toml [tool.pragmata]` (first-match-wins, ruff pattern). Worth confirming we want the maintenance surface of both vs. picking one. | Open |
-
-Annotation infra/bootstrap open questions live in [`annotation-bootstrap.md`](annotation-bootstrap.md).
 
 ## References
 
