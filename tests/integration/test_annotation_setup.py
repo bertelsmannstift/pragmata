@@ -1,7 +1,11 @@
 """Integration tests for annotation setup against a live Argilla server.
 
 Run with: pytest tests/integration/test_annotation_setup.py -m "integration and annotation" -v
-Requires: make setup (Argilla stack running on localhost:6900)
+Requires: Argilla stack running on localhost:6900 (make docker-up).
+
+Each test runs against a clean Argilla state — workspaces, datasets, and the
+test user are reset before and after every test. Tests are independently
+runnable (`pytest -k <name>`) and order-independent.
 """
 
 import argilla as rg
@@ -32,20 +36,30 @@ def client(annotation_stack_status) -> rg.Argilla:
     return rg.Argilla(api_url=_API_URL, api_key=_API_KEY)
 
 
-@pytest.fixture(autouse=True, scope="module")
-def clean_slate(client: rg.Argilla):
-    """Tear down before and after the full module so tests start and end clean.
+def _purge_test_user(client: rg.Argilla) -> None:
+    user = client.users(_TEST_USER)
+    if user is not None:
+        user.delete()
 
-    Orphan datasets from earlier runs are purged first — Argilla blocks
-    workspace deletion while any dataset is linked.
+
+@pytest.fixture(autouse=True)
+def clean_slate(client: rg.Argilla):
+    """Reset Argilla state (workspaces, datasets, test user) around every test.
+
+    Orphan datasets from earlier runs are purged before teardown — Argilla
+    blocks workspace deletion while any dataset is linked. teardown_resources
+    intentionally leaves users intact in production, so we purge the test
+    user explicitly to keep tests independent.
     """
     for ws_base in _DEFAULT_SETTINGS.workspace_dataset_map:
         purge_workspace_datasets(client, ws_base)
     teardown_resources(client, _DEFAULT_SETTINGS)
+    _purge_test_user(client)
     yield
     for ws_base in _DEFAULT_SETTINGS.workspace_dataset_map:
         purge_workspace_datasets(client, ws_base)
     teardown_resources(client, _DEFAULT_SETTINGS)
+    _purge_test_user(client)
 
 
 # ---------------------------------------------------------------------------
@@ -54,24 +68,19 @@ def clean_slate(client: rg.Argilla):
 
 
 def test_setup_creates_workspaces(client: rg.Argilla) -> None:
-    teardown_resources(client, _DEFAULT_SETTINGS)
-
     result = setup_workspaces(client, _DEFAULT_SETTINGS)
 
     assert isinstance(result, SetupResult)
-
-    # 3 workspaces (one per task)
     assert client.workspaces("retrieval") is not None
     assert client.workspaces("grounding") is not None
     assert client.workspaces("generation") is not None
-
-    # Result accounting
     assert set(result.created_workspaces) == {"retrieval", "grounding", "generation"}
     assert result.skipped_workspaces == []
 
 
 def test_idempotent_rerun(client: rg.Argilla) -> None:
-    # Workspaces already exist from prior test — re-run should skip all
+    setup_workspaces(client, _DEFAULT_SETTINGS)
+
     result = setup_workspaces(client, _DEFAULT_SETTINGS)
 
     assert result.created_workspaces == []
@@ -79,6 +88,8 @@ def test_idempotent_rerun(client: rg.Argilla) -> None:
 
 
 def test_user_provisioning(client: rg.Argilla) -> None:
+    setup_workspaces(client, _DEFAULT_SETTINGS)
+
     result = provision_users(
         client,
         [UserSpec(username=_TEST_USER, role="annotator", workspaces=["retrieval"])],
@@ -88,26 +99,24 @@ def test_user_provisioning(client: rg.Argilla) -> None:
     assert _TEST_USER in result.created_users
     assert _TEST_USER in result.generated_passwords
     assert len(result.generated_passwords[_TEST_USER]) == 16
-
-    # User exists in Argilla
-    user = client.users(_TEST_USER)
-    assert user is not None
+    assert client.users(_TEST_USER) is not None
 
 
 def test_user_workspace_reconciliation_on_rerun(client: rg.Argilla) -> None:
     """Rerunning provision_users assigns existing user to newly-requested workspace."""
-    # First run: user in retrieval only
+    setup_workspaces(client, _DEFAULT_SETTINGS)
     provision_users(
         client,
         [UserSpec(username=_TEST_USER, role="annotator", workspaces=["retrieval"])],
         _DEFAULT_SETTINGS,
     )
-    # Second run: user now also in grounding
+
     provision_users(
         client,
         [UserSpec(username=_TEST_USER, role="annotator", workspaces=["retrieval", "grounding"])],
         _DEFAULT_SETTINGS,
     )
+
     ws_grounding = client.workspaces("grounding")
     assert ws_grounding is not None
     user = client.users(_TEST_USER)
@@ -115,6 +124,7 @@ def test_user_workspace_reconciliation_on_rerun(client: rg.Argilla) -> None:
 
 
 def test_teardown_retains_user_accounts(client: rg.Argilla) -> None:
+    setup_workspaces(client, _DEFAULT_SETTINGS)
     provision_users(
         client,
         [UserSpec(username=_TEST_USER, role="annotator", workspaces=["retrieval"])],
@@ -123,16 +133,16 @@ def test_teardown_retains_user_accounts(client: rg.Argilla) -> None:
 
     teardown_resources(client, _DEFAULT_SETTINGS)
 
-    # Workspaces gone
     assert client.workspaces("retrieval") is None
     assert client.workspaces("grounding") is None
     assert client.workspaces("generation") is None
-
-    # User still exists
     assert client.users(_TEST_USER) is not None
 
 
 def test_rerun_after_teardown(client: rg.Argilla) -> None:
+    setup_workspaces(client, _DEFAULT_SETTINGS)
+    teardown_resources(client, _DEFAULT_SETTINGS)
+
     result = setup_workspaces(client, _DEFAULT_SETTINGS)
 
     assert set(result.created_workspaces) == {"retrieval", "grounding", "generation"}
@@ -141,14 +151,11 @@ def test_rerun_after_teardown(client: rg.Argilla) -> None:
 
 def test_scoped_teardown_preserves_workspaces(client: rg.Argilla) -> None:
     """Teardown with dataset_id only deletes matching datasets, not workspaces."""
-    teardown_resources(client, _DEFAULT_SETTINGS)
     setup_workspaces(client, _DEFAULT_SETTINGS)
 
-    # Scoped teardown with a dataset_id should not delete workspaces
     scoped_settings = AnnotationSettings(dataset_id="run1")
     teardown_resources(client, scoped_settings)
 
-    # Workspaces still exist
     assert client.workspaces("retrieval") is not None
     assert client.workspaces("grounding") is not None
     assert client.workspaces("generation") is not None

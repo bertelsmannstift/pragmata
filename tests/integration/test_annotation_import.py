@@ -1,7 +1,11 @@
 """Integration tests for annotation import against a live Argilla server.
 
 Run with: pytest tests/integration/test_annotation_import.py -m "integration and annotation" -v
-Requires: make setup (Argilla stack running on localhost:6900)
+Requires: Argilla stack running on localhost:6900 (make docker-up).
+
+Each test runs against a clean Argilla state — workspaces and datasets are
+reset before and after every test. Tests are independently runnable
+(`pytest -k <name>`) and order-independent.
 """
 
 import argilla as rg
@@ -42,20 +46,18 @@ def client(annotation_stack_status) -> rg.Argilla:
     return rg.Argilla(api_url=_API_URL, api_key=_API_KEY)
 
 
-@pytest.fixture(autouse=True, scope="module")
+@pytest.fixture(autouse=True)
 def clean_environment(client: rg.Argilla):
-    """Tear down and re-setup environment before/after all tests.
+    """Reset workspaces and datasets around every test for full isolation.
 
-    Orphan datasets from earlier runs are purged first — Argilla blocks
-    workspace deletion while any dataset is linked.
+    Orphan datasets from earlier runs are purged before teardown — Argilla
+    blocks workspace deletion while any dataset is linked.
     """
-    teardown_resources(client, _SETTINGS)
     for ws_base in AnnotationSettings().workspace_dataset_map:
         purge_workspace_datasets(client, ws_base)
     teardown_resources(client, AnnotationSettings())
     setup_workspaces(client, _SETTINGS)
     yield
-    teardown_resources(client, _SETTINGS)
     for ws_base in AnnotationSettings().workspace_dataset_map:
         purge_workspace_datasets(client, ws_base)
     teardown_resources(client, AnnotationSettings())
@@ -169,21 +171,11 @@ def test_invalid_records_skipped_with_errors(client: rg.Argilla) -> None:
 def test_dataset_auto_creation(client: rg.Argilla) -> None:
     """Import auto-creates datasets when they don't exist."""
     auto_id = "autotest"
-    auto_settings = AnnotationSettings(dataset_id=auto_id)
 
-    # Clean up any prior run
-    teardown_resources(client, auto_settings)
-
-    # Import without prior setup_datasets — datasets should be auto-created
     result = import_records([_make_raw(1)], dataset_id=auto_id, **_CREDS)
 
     assert result.total_records == 1
     assert result.errors == []
-
-    # Datasets exist
     assert client.datasets(f"retrieval_{auto_id}", workspace="retrieval") is not None
     assert client.datasets(f"grounding_{auto_id}", workspace="grounding") is not None
     assert client.datasets(f"generation_{auto_id}", workspace="generation") is not None
-
-    # Clean up
-    teardown_resources(client, auto_settings)
