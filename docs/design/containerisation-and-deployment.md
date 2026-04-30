@@ -4,7 +4,6 @@ Status: Draft
 Related:
 - ADR-0003 (infra: self-hosted only)
 - ADR-0007 (packaging & invocation surface)
-- ADR-0012 (install & bootstrap UX) [draft]
 - [`config-and-settings.md`](config-and-settings.md) - shared settings/config
 - [`annotation-bootstrap.md`](annotation-bootstrap.md) - annotation stack lifecycle, compose distribution
 
