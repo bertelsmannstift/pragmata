@@ -2,7 +2,7 @@ COMPOSE_FILE := deploy/annotation/docker-compose.dev.yml
 ENV_FILE     := deploy/annotation/.env
 ENV_EXAMPLE  := deploy/annotation/.env.dev.example
 
-MAKE .PHONY: docker-up docker-down docker-stop docker-logs docker-status ensure-env lint type-check test-stack test test-integration test-all ci
+.PHONY: docker-up docker-down docker-stop docker-logs docker-status ensure-env lint type-check test-stack test test-integration test-all ci
 
 # Compose profile options for the multi-target docker-* commands. Profiles
 # determine which backing services run as containers vs. expected externally.
