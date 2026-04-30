@@ -1,4 +1,4 @@
-# Annotation Bootstrap & Stack Lifecycle
+# Annotation Stack Lifecycle
 
 Status: Draft
 Related:
