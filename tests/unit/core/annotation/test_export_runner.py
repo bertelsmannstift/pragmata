@@ -28,6 +28,7 @@ _BASE = {
     "record_uuid": "abc123",
     "annotator_id": "user1",
     "language": "en",
+    "calibration": False,
     "inserted_at": _NOW,
     "created_at": _NOW,
     "record_status": "submitted",
@@ -296,16 +297,33 @@ class TestExportResult:
 # ---------------------------------------------------------------------------
 
 
+def _set_production_dataset(client: MagicMock, dataset: MagicMock) -> None:
+    """Wire ``client.datasets`` so production names resolve to ``dataset`` and calibration names to None.
+
+    fetch_task iterates production then calibration. Returning None for
+    calibration means tests focus on production behaviour; integration tests
+    cover calibration-aware fetching end-to-end.
+    """
+
+    def _datasets(name: str, workspace: str | None = None):
+        if "_calibration" in name:
+            return None
+        return dataset
+
+    client.datasets.side_effect = _datasets
+
+
 @pytest.fixture()
 def mock_client(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
+    """Mock Argilla client with production-only datasets."""
     client = MagicMock()
     user = MagicMock()
     user.id = _UID1
     user.username = "annotator1"
     client.users.list.return_value = [user]
-    dataset = MagicMock()
-    dataset.records.return_value = iter([])
-    client.datasets.return_value = dataset
+    empty_dataset = MagicMock()
+    empty_dataset.records.return_value = iter([])
+    _set_production_dataset(client, empty_dataset)
 
     import pragmata.api.annotation_export as export_module
 
@@ -326,7 +344,7 @@ class TestYesNoConversion:
         )
         dataset = MagicMock()
         dataset.records.return_value = iter([record])
-        mock_client.datasets.return_value = dataset
+        _set_production_dataset(mock_client, dataset)
 
         result = export_annotations(base_dir=tmp_path, export_id="test-run", tasks=[Task.RETRIEVAL])
         rows = list(csv.DictReader(result.files[Task.RETRIEVAL].open()))
@@ -345,7 +363,7 @@ class TestConstraintViolations:
         )
         dataset = MagicMock()
         dataset.records.return_value = iter([record])
-        mock_client.datasets.return_value = dataset
+        _set_production_dataset(mock_client, dataset)
 
         result = export_annotations(base_dir=tmp_path, export_id="test-run", tasks=[Task.RETRIEVAL])
         assert result.constraint_summary
@@ -363,7 +381,7 @@ class TestNotesCoercion:
         )
         dataset = MagicMock()
         dataset.records.return_value = iter([record])
-        mock_client.datasets.return_value = dataset
+        _set_production_dataset(mock_client, dataset)
 
         result = export_annotations(base_dir=tmp_path, export_id="test-run", tasks=[Task.RETRIEVAL])
         rows = list(csv.DictReader(result.files[Task.RETRIEVAL].open()))
@@ -386,7 +404,7 @@ class TestNAnnotators:
         )
         dataset = MagicMock()
         dataset.records.return_value = iter([record])
-        mock_client.datasets.return_value = dataset
+        _set_production_dataset(mock_client, dataset)
 
         result = export_annotations(base_dir=tmp_path, export_id="test-run", tasks=[Task.RETRIEVAL])
         assert result.n_annotators == {Task.RETRIEVAL: 2}
@@ -396,7 +414,7 @@ class TestNAnnotators:
 
         dataset = MagicMock()
         dataset.records.return_value = iter([])
-        mock_client.datasets.return_value = dataset
+        _set_production_dataset(mock_client, dataset)
 
         result = export_annotations(base_dir=tmp_path, export_id="test-run", tasks=[Task.RETRIEVAL])
         assert result.n_annotators == {Task.RETRIEVAL: 0}
@@ -415,7 +433,7 @@ class TestExportMetaSidecar:
         record = _make_record(fields=RETRIEVAL_FIELDS, metadata=BASE_METADATA, responses=_retrieval_responses(_UID1))
         dataset = MagicMock()
         dataset.records.return_value = iter([record])
-        mock_client.datasets.return_value = dataset
+        _set_production_dataset(mock_client, dataset)
 
         result = export_annotations(base_dir=tmp_path, export_id="test-run", tasks=[Task.RETRIEVAL])
 
@@ -434,7 +452,7 @@ class TestExportMetaSidecar:
 
         dataset = MagicMock()
         dataset.records.return_value = iter([])
-        mock_client.datasets.return_value = dataset
+        _set_production_dataset(mock_client, dataset)
 
         result = export_annotations(
             base_dir=tmp_path,
@@ -461,7 +479,7 @@ class TestExportMetaSidecar:
 
         dataset = MagicMock()
         dataset.records.return_value = iter([])
-        mock_client.datasets.return_value = dataset
+        _set_production_dataset(mock_client, dataset)
 
         result = export_annotations(base_dir=tmp_path, export_id="test-run", tasks=[Task.RETRIEVAL])
 
