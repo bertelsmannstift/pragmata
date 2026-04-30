@@ -20,7 +20,6 @@ def setup(
     *,
     api_url: str | Unset = UNSET,
     api_key: str | Unset = UNSET,
-    min_submitted: int | Unset = UNSET,
     base_dir: str | Path | Unset = UNSET,
     config_path: str | Path | Unset = UNSET,
 ) -> SetupResult:
@@ -31,7 +30,9 @@ def setup(
     workspaces. Existing resources are skipped.
 
     Datasets are not created here — they are auto-created on import,
-    scoped by dataset_id.
+    scoped by dataset_id. Per-task overlap (production and calibration
+    ``min_submitted``) is configured via ``workspace_dataset_map`` in the
+    YAML config or ``AnnotationSettings``.
 
     Settings are resolved from config file and/or keyword overrides. Omitted
     values fall through to config-file defaults, then built-in defaults.
@@ -44,7 +45,6 @@ def setup(
         users: User accounts to provision. Pass None to skip user setup.
         api_url: Argilla server URL.
         api_key: Argilla API key.
-        min_submitted: Minimum annotations required per record.
         base_dir: Workspace base directory. Defaults to cwd.
         config_path: Path to YAML config file for settings resolution.
 
@@ -56,7 +56,6 @@ def setup(
         env={"argilla": {"api_url": os.environ.get("ARGILLA_API_URL")}} if os.environ.get("ARGILLA_API_URL") else None,
         overrides={
             "argilla": {"api_url": api_url},
-            "min_submitted": min_submitted,
             "base_dir": base_dir,
         },
     )

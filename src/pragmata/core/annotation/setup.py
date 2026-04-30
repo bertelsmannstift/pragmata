@@ -96,13 +96,13 @@ def teardown_resources(
     Ordering: datasets first (Argilla requires workspace to be empty before deletion).
     Missing resources are silently skipped. User accounts are not touched.
     """
-    for ws_base, tasks in settings.workspace_dataset_map.items():
+    for ws_base, task_overlaps in settings.workspace_dataset_map.items():
         workspace = client.workspaces(ws_base)
         if workspace is None:
             logger.info("Workspace %r not found — skipping", ws_base)
             continue
 
-        for task in tasks:
+        for task in task_overlaps:
             ds_name = apply_suffix(DATASET_NAMES[task], settings.dataset_id)
             dataset = client.datasets(ds_name, workspace=ws_base)
             if dataset is not None:
