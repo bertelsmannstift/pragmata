@@ -4,7 +4,6 @@ Status: Draft
 Related:
 - ADR-0007 (packaging & invocation surface)
 - ADR-0003 (infra: self-hosted only)
-- ADR-0012 (install & bootstrap UX) [draft]
 - [`config-and-settings.md`](config-and-settings.md) - shared settings/config resolution that this doc builds on
 
 ## Purpose
@@ -17,7 +16,9 @@ Shared concerns (config resolution, settings precedence, secrets, generic CLI er
 
 **Dev tooling ≠ production tooling.** The `Makefile` is dev-only; the prod install path goes through the CLI (`pragmata annotation up`). They share the same shipped compose file but apply different overrides.
 
-> The `Makefile` targets (`docker-up`, `docker-down`, `test-stack`) bind to `deploy/annotation/docker-compose.dev.yml` and assume a cloned repo + `make` (= non-starter for Windows, PyPI installs, and unattended/prod environments). The CLI command `pragmata annotation up` is the single end-user entry point and must work identically across all three environments.
+> The `Makefile` targets (`docker-up`, `docker-down`, `test-stack`) bind to `deploy/annotation/docker-compose.dev.yml` and assume a cloned repo + `make` (= non-starter for Windows, PyPI installs, and unattended/prod environments).
+>
+> The CLI command `pragmata annotation up` is the single end-user entry point and must work identically across all three environments.
 
 SOTA for PyPI-distributed CLIs that wrap Docker stacks (Supabase CLI, Airbyte `abctl`, Dagster, Prefect, MLflow, Argilla itself) converges on a few points:
 - install is side-effect free
@@ -31,19 +32,17 @@ The runtime compose file ships as **package data under `src/pragmata/annotation/
 
 All services bundled by default (zero-config principle, see [`config-and-settings.md`](config-and-settings.md) principle 4). Each backing service (postgres/elasticsearch/redis) is opt-out-able via a Compose profile (§2.3).
 
-**Single shipped compose file, not a dev/prod pair.** Surveyed PyPI-distributed Docker-wrapping tools (Supabase, Airbyte `abctl`, Airflow, Dagster, Prefect, MLflow) all converge on **one shipped compose artefact**. Nobody ships parallel `docker-compose.prod.yml` + `docker-compose.dev.yml` side by side because it forces users to answer "which one do I run?" before doing anything. The split here is:
+**Single shipped compose file, not a dev/prod pair.** Surveyed PyPI-distributed Docker-wrapping tools (Supabase, Airbyte `abctl`, Airflow, Dagster, Prefect, MLflow) all converge on **one shipped compose artefact**; nobody ships parallel `docker-compose.prod.yml` + `docker-compose.dev.yml` (as forces users to answer "which one do I run?" before doing anything). The split here is:
 
 - **Shipped (package data):** `src/pragmata/annotation/docker-compose.yml` - production-first: pinned tags, env-driven credentials (no hardcoded defaults), sensible resource defaults, localhost-only port bindings. This is the file `pragmata annotation up` resolves at runtime.
 - **Contributor dev (cloned repo):** `deploy/annotation/docker-compose.dev.override.yml` (proposed - does not exist yet) - layered on top of the shipped file via Makefile targets using `docker compose -f ... -f ...`. Typical contents: well-known default creds (`argilla`/`1234`), stdout logging, looser health-check timing, exposed debug ports.
 
 End users (`pragmata annotation up`) only ever touch the shipped (package-data) file via CLI flags. The dev override is exclusively for contributors working in a cloned repo.
 
-This matches Airflow's [documented pattern](https://airflow.apache.org/docs/apache-airflow/stable/howto/docker-compose/index.html) ("compose file is a quick-start, not a production config" - with dev niceties layered via overrides) and keeps us from maintaining two sources of truth.
-
-Migration steps from today's single `deploy/annotation/docker-compose.dev.yml`:
-  1. Extract prod-safe defaults into `src/pragmata/annotation/docker-compose.yml` as package data (the new SSOT for runtime)
-  2. Strip dev-only overrides into `deploy/annotation/docker-compose.dev.override.yml`
-  3. Update Makefile targets to stack both via `docker compose -f ... -f ...`
+>Migration steps from today's single `deploy/annotation/docker-compose.dev.yml`:
+>  1. Extract prod-safe defaults into `src/pragmata/annotation/docker-compose.yml` as package data (the new SSOT for runtime)
+>  2. Strip dev-only overrides into `deploy/annotation/docker-compose.dev.override.yml`
+>  3. Update Makefile targets to stack both via `docker compose -f ... -f ...`
 
 ## 2. Compose file distribution
 
@@ -62,7 +61,7 @@ Three options were considered:
 **Recommendation: Y for v0.1.** Users should not have to understand or edit Docker Compose YAML on the supported paths. The customisation surface that matters - external Postgres/Elasticsearch URLs, port bindings, image tags - is exposed through CLI flags / env / config (§2.3). If that surface is sufficient (and for v0.1 it is), keeping the compose file package-owned avoids drift, simplifies upgrades, and prevents feature-creep where every Compose field becomes a CLI flag.
 
 - **X** creates an ownership/drift problem on day one and makes the happy path Docker-centric. Reserve user-owned compose for an explicit advanced escape hatch (i.e. option Z), not the default.
-- **Z** is a clean future escape hatch. Document the pattern, but do **not** build the `eject` verb until concrete demand materialises (>2 users blocked on something the §2.3 flag surface can't express).
+- **Z** is a clean future escape hatch. Document the pattern, but do **not** build the `eject` verb until concrete demand materialises.
 
 >Related rejected patterns: generate compose from a template at install time (two sources of truth, drifts on upgrade); remote URL fetch (breaks offline installs, trust boundary). Supabase [issue #2435](https://github.com/supabase/cli/issues/2435) documents the specific pain of user-editable compose + CLI tight version coupling - option Y avoids the problem entirely.
 
@@ -122,13 +121,14 @@ Precedent for profiles: [Airflow's official Compose](https://airflow.apache.org/
 
 **`pragmata annotation up` is the first-run command. No separate `init`. `annotation setup` stays as Argilla provisioning (see [`config-and-settings.md`](config-and-settings.md) §3), invoked after the stack is up.**
 
-- Pre-flight in order: extra installed → Docker daemon reachable → required ports free
+`up` does:
+- Pre-flight in order: extra installed? → Docker daemon reachable? → required ports free?
 - Resolve the packaged compose via `importlib.resources` (no copy to disk - option Y, §2.1)
 - Pulls images on first invocation (slow; log clearly - make this prominent in docs)
 - Health-polls Argilla's health endpoint with a timeout
-- On success: prints URL, default API key, and next command
+- On success: prints URL, default API key, print creds (once) and next command
 
-^^^ most of the core parts of this are already implemented
+Most of the core parts of this UX are already implemented.
 
 Precedent: `supabase start`, `abctl local install`, `prefect server start`. Idempotent single command, safe to re-run.
 
@@ -137,10 +137,10 @@ Precedent: `supabase start`, `abctl local install`, `prefect server start`. Idem
 **`pip install -U pragmata` is the sole upgrade primitive. The compose file is package-owned (option Y, §2.1), so upgrades pick up the new file automatically with no drift to manage.**
 
 - Named Docker volumes with a deterministic prefix (`pragmata_annotation_*`) persist data across container recreation
-- New compose ships with new image tags - `pragmata annotation up` after upgrade picks up the new file via `importlib.resources`. No drift detection, no warning, no `reset-compose` verb needed (we own the file)
-- For destructive Argilla schema migrations between majors, document the backup step; pragmata cannot protect users from upstream-breaking changes
+- New compose ships with new image tags - `pragmata annotation up` after upgrade picks up the new file via `importlib.resources`. No drift detection / warning / `reset-compose` verb needed (we own the file)
+- For destructive Argilla schema migrations between majors, document the backup step; pragmata does not protect users from upstream-breaking changes
 
->Research note: Airbyte's `abctl local install` is idempotent and designed to fix Compose upgrade brittleness ([Airbyte discussion #40599](https://github.com/airbytehq/airbyte/discussions/40599)). We don't need that machinery here - the locked compose model sidesteps the brittleness it was built to address.
+>NB: Airbyte's `abctl local install` is idempotent and designed to fix Compose upgrade brittleness ([Airbyte discussion #40599](https://github.com/airbytehq/airbyte/discussions/40599)). We don't need that machinery here - our locked compose model sidesteps the brittleness here.
 
 ### 3.3 Uninstall
 
@@ -149,19 +149,17 @@ Precedent: `supabase start`, `abctl local install`, `prefect server start`. Idem
 - `pip uninstall pragmata` removes the package
 - `~/.config/pragmata/` removal is documented but user-owned. No cleanup verb.
 
-Precedent: `abctl local uninstall [--persisted]` - explicit data-wipe flag is the industry norm.
-
 ## 4. Prod bootstrap / unattended install
 
-**Decision for v0.1: no shipped script. Document the two-line install (`pipx install 'pragmata[annotation]' && pragmata annotation up`) in the README.** If demand materialises later (>2 deployers asking for unattended install support), add option C below - skip a static shell script.
+**Decision for v0.1: no shipped script. Document the two-line install (`pip install 'pragmata[annotation]' && pragmata annotation up`) in the README.** 
 
 ### 4.1 Scope
 
 pragmata ships three tools. Only `annotation` has any bootstrap beyond `pip install`:
 
-- `querygen`: `pipx install 'pragmata[querygen]' && export OPENAI_API_KEY=...` - two-line README
-- `eval`: same shape as `querygen`
-- `annotation`: real sequence (install → wait for Docker → pull images → start stack → poll health → print creds)
+- `querygen`: `pip install 'pragmata[querygen]' && export OPENAI_API_KEY=...` - two-line README
+- `eval`: same as `querygen`
+- `annotation`: real sequence (install → wait for Docker → pull images → start stack → poll health → print creds stdout)
 
 The question is whether `annotation` needs a separate install artefact. For v0.1, no.
 
@@ -169,11 +167,18 @@ The question is whether `annotation` needs a separate install artefact. For v0.1
 
 | Option | What it is | SOTA precedent | Our cost | Verdict |
 |---|---|---|---|---|
-| **A. No script (docs only) - *chosen for v0.1*** | Docs snippet: `pipx install 'pragmata[annotation]' && pragmata annotation up` | Every Tier-1 PyPI-distributed Docker-wrapping tool surveyed ([Supabase](https://supabase.com/docs/guides/local-development/cli/getting-started), [Airbyte abctl](https://docs.airbyte.com/using-airbyte/getting-started/oss-quickstart), [Prefect](https://docs.prefect.io/3.0/get-started/install), [Dagster](https://docs.dagster.io/getting-started/install), [MLflow](https://mlflow.org/docs/latest/tracking.html)) | None | **Adopt** |
-| **B. `scripts/bootstrap-annotation.sh` in repo** | Static shell file checked into git, linked from docs | [Docker convenience script](https://github.com/docker/docker-install), [rustup](https://rustup.rs/), [nvm](https://github.com/nvm-sh/nvm#installing-and-updating) | Maintenance drift - every CLI flag change invalidates it. Docker's own convenience installer is [famously not recommended for production](https://docs.docker.com/engine/install/ubuntu/#install-using-the-convenience-script) for exactly this reason | **Skip** |
-| **C. `pragmata annotation print-install-script`** | CLI prints a shell transcript pinned to the installed CLI version; user redirects to file and executes | Novel - no surveyed tool does this | Trivial: a string template the CLI owns. Always version-matched | **Defer** - reach for if/when demand appears, jump straight here from A (don't pass through B) |
+| **A. No script (docs only) - *chosen for v0.1*** | Docs snippet: `pip install 'pragmata[annotation]' && pragmata annotation up` | Every Tier-1 PyPI-distributed Docker-wrapping tool surveyed ([Supabase](https://supabase.com/docs/guides/local-development/cli/getting-started), [Airbyte abctl](https://docs.airbyte.com/using-airbyte/getting-started/oss-quickstart), [Prefect](https://docs.prefect.io/3.0/get-started/install), [Dagster](https://docs.dagster.io/getting-started/install), [MLflow](https://mlflow.org/docs/latest/tracking.html)) | None | **Adopt** |
+| **B. `scripts/bootstrap-annotation.sh` in repo** | Static shell file checked into git, linked from docs | [Docker convenience script](https://github.com/docker/docker-install), [rustup](https://rustup.rs/), [nvm](https://github.com/nvm-sh/nvm#installing-and-updating) | Maintenance drift - every CLI flag change invalidates it. Docker's own convenience installer is [not recommended for production](https://docs.docker.com/engine/install/ubuntu/#install-using-the-convenience-script) for exactly this reason | **Skip** |
 
-If later we do need explicit unattended recipes for cloud-init / systemd / Kubernetes: document in `docs/deploy/` per-environment, don't package. Helm charts exist for [Dagster](https://artifacthub.io/packages/helm/dagster/dagster) and [Prefect](https://artifacthub.io/packages/helm/prefecthq/prefect-server) as separate artefacts - same pattern if we ever need one.
+> **Proposed `annotation up` sequence (to implement):**
+> 1. Pre-flight checks: `pragmata[annotation]` extra present → Docker daemon reachable → required ports free. Fail fast with actionable message on any failure.
+> 2. Resolve compose file via `importlib.resources` (in-memory path, no copy to disk).
+> 3. `docker compose pull` - only on first run or after `pip install -U` (detect by comparing pinned image digests vs locally cached). Log clearly; this is the slow step.
+> 4. `docker compose up -d` with resolved profile (§2.3).
+> 5. Poll `GET /api/v1/health` until 200 or timeout (default 120 s). Stream a progress indicator.
+> 6. On first-run only: generate a random `argilla` admin password, inject via env, print URL + credentials to stdout. Subsequent `up` calls skip this step - stack is already configured.
+> 7. Print next-step hint: `pragmata annotation setup --users <path>`.
+
 
 ## 5. Cross-platform runtime
 
@@ -212,19 +217,8 @@ Beyond these, `annotation up` must also handle:
 | Area | Implemented today | Proposed in this doc |
 |---|---|---|
 | **Docker stack lifecycle (`up`/`down`)** | Not implemented - only Makefile targets (`docker-up`, `docker-down`, etc.) that read [`deploy/annotation/docker-compose.dev.yml`](../../deploy/annotation/docker-compose.dev.yml) | Add `pragmata annotation up` / `down` CLI commands |
-| **Compose file distribution** | Dev-only file in `deploy/`; **not shipped** in the installed wheel | Ship `src/pragmata/annotation/docker-compose.yml` as **package data, locked** (option Y, §2.1) - resolved at runtime via `importlib.resources`, never copied to disk. Dev override stays in `deploy/` for contributors only |
+| **Compose file distribution** | Dev-only file in `deploy/`; **not shipped** in the installed wheel | Ship `src/pragmata/annotation/docker-compose.yml` as package data, locked (option Y, §2.1) - resolved at runtime via `importlib.resources`, never copied to disk. Dev override stays in `deploy/` for contributors only |
 | **Package data** | `importlib.resources` already used for [`core/annotation/collapsible_field.html`](../../src/pragmata/core/annotation/collapsible_field.html) | Same mechanism for the compose file |
-
-## Open questions
-
-None remaining for the infra layer. Resolved during PR #162 review:
-
-| ID | Question | Resolution |
-|---|---|---|
-| §Q-prod-script | Ship a per-tool bootstrap script for `annotation`? | **No for v0.1** (§4). Document the two-line install. Add option C if demand materialises. |
-| §Q-stack-redis | Whether to bundle Redis by default | Yes (§1, §2.3) - bundled in all profiles; opt-out is per-profile compose surgery, not a v0.1 flag |
-
-Shared config/settings open questions live in [`config-and-settings.md`](config-and-settings.md).
 
 ## References
 
