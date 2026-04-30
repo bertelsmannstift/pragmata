@@ -34,7 +34,7 @@ class AnnotationStackStatus:
         if not self.docker_cli:
             return "Docker CLI not on PATH"
         if not self.docker_daemon:
-            return "Docker daemon not running (try: open -a Docker)"
+            return "Docker daemon not running (start Docker, then retry)"
         if not self.argilla_tcp:
             return f"Argilla not reachable at {ARGILLA_DEFAULT_HOST}:{ARGILLA_DEFAULT_PORT} (try: make docker-up)"
         if not self.argilla_api:
