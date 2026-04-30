@@ -32,16 +32,15 @@ pip install pragmata[querygen]
 pip install pragmata[eval]               
 ```
 
-Extras capture heavy, optional, provider-specific, or runtime-sensitive dependencies (e.g. `argilla` SDK, `langchain`, provider clients). Tool ownership alone does not justify an extra: lightweight shared dependencies that support a first-class capability across tools can stay regular core deps. Each extra is audited dependency-by-dependency, not by blanket "if querygen-only → extra."
+Extras capture heavy, optional, provider-specific, or runtime-sensitive dependencies (e.g. `argilla` SDK, `langchain`, provider clients). Tool ownership alone does not justify an extra: lightweight shared dependencies that support a first-class capability across tools can stay regular core deps; each extra is audited dependency-by-dependency, not by blanket "if querygen-only → extra."
 
 ### Lazy imports at the package boundary
 
 - optional-extra packages (`argilla`, `langchain`, etc.) must not be imported at module scope on the root import path
-- guard the import **narrowly at the actual import site** (typically inside `core/` modules where the dep is used), not by blanket-wrapping entrypoints. Blanket wrappers mask unrelated import errors inside the optional dep itself
+- guard the import narrowly at the actual import site (typically inside `core/` modules where the dep is used), not by blanket-wrapping entrypoints. Blanket wrappers mask unrelated import errors inside the optional dep itself
 - the `ImportError` handler names the missing **package** and points to the **extra** that provides it. Pattern borrowed from [`transformers` error handling](https://github.com/huggingface/transformers/issues/24147):
 
-> `ImportError: 'argilla' is required for pragmata.annotation. Install with: pip install 'pragmata[annotation]'`
-> ^^^ this is the "fail loudly and point to fix" principle
+> `ImportError: 'argilla' is required for pragmata.annotation. Install with: pip install 'pragmata[annotation]'`. This is the "fail loudly and point to fix" principle.
 
 Failure modes must be distinguished:
 
@@ -52,7 +51,7 @@ Failure modes must be distinguished:
 
 Under the zero-config principle, "installed but unconfigured" is **not** a normal failure mode - defaults are sufficient and resolution is consistent on every run.
 
-> NB: new deps proposed in this doc
+> **New dependdencies proposed in this doc**
 >
 > | Package | Where it goes | Why | Notes |
 > |---|---|---|---|
@@ -60,7 +59,7 @@ Under the zero-config principle, "installed but unconfigured" is **not** a norma
 >
 > **`platformdirs`** - resolves config/cache/data dirs correctly across Linux/macOS/Windows from a single call, so we don't hardcode `~/.config/` (Linux-only). Full rationale and precedent in §1.1.
 >
-> Deferred: **`questionary`** (or any interactive prompt library). Not added for v0.1: there is no general config wizard (principle 5). Existing `pragmata annotation setup` (Argilla provisioning) is headless-flag-driven and stays that way. Revisit only if a concrete interactive flow appears (e.g. annotation provisioning that validates against a running server and benefits from masked-secret prompts), and even then scope to the `[annotation]` extra - never core, never querygen/eval.
+> Not planned: **`questionary`** (or any interactive prompt library). There is no general config wizard (principle 5) and no per-tool interactive setup flow for querygen/eval. `pragmata annotation setup` (Argilla provisioning) is headless-flag-driven and stays that way.
 
 ---
 
@@ -89,7 +88,7 @@ Build on the existing `ResolveSettings.resolve` chain (`core/settings/`). Layer 
 Resulting effective chain:
 
 ```
-overrides
+  > overrides
   > env
   > explicit config_path (if provided)
   > auto-discovered project config (./pragmata.yaml or pyproject.toml [tool.pragmata])
@@ -109,7 +108,7 @@ Uses [`platformdirs`](https://platformdirs.readthedocs.io/) to resolve OS-approp
 
 Then `PRAGMATA_CONFIG_DIR` env var overrides. Follows `poetry`, `wandb`, `huggingface_hub`.
 
->Rejected: `~/.pragmata/` (legacy single-dot convention of `dbt`, `aws`, `kubectl`). Fine, but greenfield 2026 Python tools use XDG.
+>Rejected: `~/.pragmata/` (legacy single-dot convention). Greenfield 2026 Python tools use XDG.
 
 **Reasoning:**
 
@@ -167,11 +166,9 @@ Users can pin per-repo settings in either:
 - `./pragmata.yaml` (same shape as the user-level `config.yaml` - per-tool top-level sections), or
 - `pyproject.toml` under `[tool.pragmata]` (same shape, nested under the TOML table)
 
-Resolution walks up from cwd until it finds one of these (or hits the filesystem root). First match wins; the two sources are not merged with each other. Project-level values override user-level `~/.config/pragmata/config.yaml`; everything above in the precedence chain (CLI flags, env vars) still wins over project-level.
+Resolution walks up from cwd until it finds one of these (or hits the filesystem root). **The walk stops at the first match** - only one file is ever read per run. A repo that has both `pragmata.yaml` and `pyproject.toml [tool.pragmata]` will always use whichever the walk hits first; the other is ignored. Project-level values override user-level `~/.config/pragmata/config.yaml`; everything above in the precedence chain (CLI flags, env vars) still wins over project-level.
 
-**Open question - both formats?** `pragmata.yaml` mirrors user-level file shape so snippets copy 1:1 between device and repo. `pyproject.toml` is the PEP 518 standard home for Python tool config - repos that already centralise config there (ruff, mypy, pytest) can keep pragmata in the same file rather than adding another dotfile. See Open questions.
-
-**Why not merge the two.** Merging a `pragmata.yaml` with a `pyproject.toml` in the same repo -> two sources of truth, ambiguous precedence. First match wins is the same rule `ruff` uses.
+**Both formats supported.** The two formats are alternative conventions a repo author picks between, not parallel sources that are merged. `pragmata.yaml` mirrors user-level file shape so snippets copy 1:1 between device and repo. `pyproject.toml` is the PEP 518 standard home for Python tool config - repos that already centralise config there (ruff, mypy, pytest) can keep pragmata in the same file rather than adding another dotfile. Same rule as ruff: supports both `ruff.toml` and `pyproject.toml [tool.ruff]`, walk stops at first hit, no merging.
 
 **Secrets still excluded.** Same rule as `config.yaml` - project-level files are commit-safe; secrets only flow via kwargs/flags or env vars (§1.5).
 
@@ -324,7 +321,7 @@ Annotation has additional infra-specific failure modes (Docker daemon, stack-up,
 | **Config resolution** | `ResolveSettings.resolve(overrides, env, config, defaults)`, `load_config_file()`, `resolve_api_key()` (env-only), `API_KEY_ENV_VARS`, `MissingSecretError` - all in [`core/settings/`](../../src/pragmata/core/settings/) | Add auto-discovery (project-level `./pragmata.yaml` / `pyproject.toml [tool.pragmata]` → user-level `~/.config/pragmata/config.yaml`), `PRAGMATA_<TOOL>_<KEY>` env prefix. *No pragmata-owned credentials file (deferred); Argilla delegates to `~/.cache/argilla/credentials` after env (§1.5).* |
 | **Config file path** | Explicit `--config` flag only; no XDG, no `platformdirs` | `platformdirs.user_config_dir("pragmata")` + `PRAGMATA_CONFIG_DIR` override |
 | **`annotation setup` / `teardown`** | Exist - manage **Argilla workspaces, users, datasets** (not Docker). See [`api/annotation_setup.py`](../../src/pragmata/api/annotation_setup.py) | **Semantics unchanged** |
-| **Interactive prompts** | None - `setup` is headless-flag-driven only | **No change.** No `questionary`, no wizard for v0.1 (§3.1) |
+| **Interactive prompts** | None - `setup` is headless-flag-driven only | **No change.** No `questionary`, no config wizard (§3.1) |
 
 ## Open questions
 
