@@ -1,9 +1,16 @@
 """Tests for annotation import schemas."""
 
+from datetime import datetime, timezone
+
 import pytest
 from pydantic import ValidationError
 
-from pragmata.core.schemas.annotation_import import Chunk, QueryResponsePair
+from pragmata.core.schemas.annotation_import import (
+    Chunk,
+    PartitionManifest,
+    PartitionManifestEntry,
+    QueryResponsePair,
+)
 
 
 @pytest.fixture()
@@ -116,3 +123,80 @@ def test_extra_field_on_chunk_rejected(valid_chunk):
     valid_chunk["unknown"] = "x"
     with pytest.raises(ValidationError):
         Chunk(**valid_chunk)
+
+
+# ---------------------------------------------------------------------------
+# PartitionManifestEntry / PartitionManifest
+# ---------------------------------------------------------------------------
+
+
+_ENTRY_NOW = datetime(2026, 4, 30, 12, 0, tzinfo=timezone.utc)
+
+
+@pytest.fixture()
+def valid_entry_kwargs():
+    return {
+        "calibration": True,
+        "import_id": "imp1",
+        "calibration_fraction_at_import": 0.1,
+        "assigned_at": _ENTRY_NOW,
+    }
+
+
+@pytest.fixture()
+def valid_manifest_kwargs():
+    return {
+        "dataset_id": "run1",
+        "created_at": _ENTRY_NOW,
+        "updated_at": _ENTRY_NOW,
+        "partition_seed": 0,
+    }
+
+
+class TestPartitionManifestEntry:
+    def test_constructs(self, valid_entry_kwargs):
+        entry = PartitionManifestEntry(**valid_entry_kwargs)
+        assert entry.calibration is True
+        assert entry.import_id == "imp1"
+        assert entry.calibration_fraction_at_import == 0.1
+
+    def test_fraction_above_one_rejected(self, valid_entry_kwargs):
+        valid_entry_kwargs["calibration_fraction_at_import"] = 1.5
+        with pytest.raises(ValidationError):
+            PartitionManifestEntry(**valid_entry_kwargs)
+
+    def test_fraction_negative_rejected(self, valid_entry_kwargs):
+        valid_entry_kwargs["calibration_fraction_at_import"] = -0.1
+        with pytest.raises(ValidationError):
+            PartitionManifestEntry(**valid_entry_kwargs)
+
+    def test_extra_fields_rejected(self, valid_entry_kwargs):
+        valid_entry_kwargs["unknown"] = "x"
+        with pytest.raises(ValidationError):
+            PartitionManifestEntry(**valid_entry_kwargs)
+
+    def test_frozen(self, valid_entry_kwargs):
+        entry = PartitionManifestEntry(**valid_entry_kwargs)
+        with pytest.raises(ValidationError):
+            entry.calibration = False  # type: ignore[misc]
+
+
+class TestPartitionManifest:
+    def test_empty_assignments_default(self, valid_manifest_kwargs):
+        manifest = PartitionManifest(**valid_manifest_kwargs)
+        assert manifest.assignments == {}
+
+    def test_assignments_round_trip(self, valid_manifest_kwargs, valid_entry_kwargs):
+        entry = PartitionManifestEntry(**valid_entry_kwargs)
+        manifest = PartitionManifest(**valid_manifest_kwargs, assignments={"uuid-1": entry})
+        restored = PartitionManifest.model_validate_json(manifest.model_dump_json())
+        assert restored == manifest
+
+    def test_extra_fields_rejected(self, valid_manifest_kwargs):
+        with pytest.raises(ValidationError):
+            PartitionManifest(**valid_manifest_kwargs, surprise="bad")  # type: ignore[call-arg]
+
+    def test_dataset_id_can_be_empty_string(self, valid_manifest_kwargs):
+        valid_manifest_kwargs["dataset_id"] = ""
+        manifest = PartitionManifest(**valid_manifest_kwargs)
+        assert manifest.dataset_id == ""
