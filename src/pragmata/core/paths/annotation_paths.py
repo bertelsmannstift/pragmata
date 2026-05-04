@@ -45,12 +45,10 @@ class AnnotationImportPaths:
     vs production assignment for every record imported into this scope.
 
     Attributes:
-        tool_root: Annotation tool root.
         import_dir: Per-``dataset_id`` import directory.
         partition_manifest: Partition manifest sidecar path.
     """
 
-    tool_root: Path
     import_dir: Path
     partition_manifest: Path
 
@@ -71,11 +69,9 @@ def resolve_import_paths(*, workspace: WorkspacePaths, dataset_id: str) -> Annot
     Returns:
         Path bundle for the import scope.
     """
-    tool_root = workspace.tool_root("annotation")
     scope = dataset_id or "default"
-    import_dir = tool_root / "imports" / scope
+    import_dir = workspace.tool_root("annotation") / "imports" / scope
     return AnnotationImportPaths(
-        tool_root=tool_root,
         import_dir=import_dir,
         partition_manifest=import_dir / "partition.meta.json",
     )
