@@ -485,3 +485,13 @@ class TestExportMetaSidecar:
 
         payload = json.loads(result.paths.export_meta_json.read_text())
         assert payload["dataset_id"] is None
+
+
+class TestResolveCalibrationEnabled:
+    def test_raises_when_task_missing_from_topology(self) -> None:
+        from pragmata.core.annotation.export_runner import _resolve_calibration_enabled
+        from pragmata.core.settings.annotation_settings import AnnotationSettings, TaskOverlap
+
+        settings = AnnotationSettings(workspace_dataset_map={"retrieval": {Task.RETRIEVAL: TaskOverlap()}})
+        with pytest.raises(ValueError, match="grounding"):
+            _resolve_calibration_enabled(settings, [Task.RETRIEVAL, Task.GROUNDING])

@@ -110,14 +110,23 @@ def write_export_csv(
 
 
 def _resolve_calibration_enabled(settings: "AnnotationSettings", tasks: list[Task]) -> dict[Task, bool]:
-    """Per-task calibration topology lookup from settings."""
+    """Per-task calibration topology lookup from settings.
+
+    Raises if any requested task is absent from the topology, mirroring the
+    import-side validation. Silently defaulting missing tasks to False would
+    hide a config bug.
+    """
     flags: dict[Task, bool] = {}
     for task_overlaps in settings.workspace_dataset_map.values():
         for task, overlap in task_overlaps.items():
             if task in tasks:
                 flags[task] = overlap.calibration_min_submitted is not None
-    for task in tasks:
-        flags.setdefault(task, False)
+    missing = [task.value for task in tasks if task not in flags]
+    if missing:
+        raise ValueError(
+            f"tasks {sorted(missing)} not present in workspace_dataset_map; "
+            "add the task to the topology or remove it from the export request."
+        )
     return flags
 
 
