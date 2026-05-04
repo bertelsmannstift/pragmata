@@ -71,7 +71,12 @@ def test_record_counts_per_dataset(client: rg.Argilla, sample_records: list[dict
     n_records = len(sample_records)
     n_retrieval = sum(len(r["chunks"]) for r in sample_records)  # 3 + 2 = 5
 
-    result = import_records(sample_records, dataset_id=_DATASET_ID, **_CREDS)
+    result = import_records(
+        sample_records,
+        dataset_id=_DATASET_ID,
+        calibration_fraction=0.0,
+        **_CREDS,
+    )
 
     assert result.total_records == n_records
     assert result.errors == []
@@ -87,7 +92,7 @@ def test_record_counts_per_dataset(client: rg.Argilla, sample_records: list[dict
 
 def test_records_exist_in_argilla(client: rg.Argilla, sample_records: list[dict]) -> None:
     """After import, all three datasets contain records."""
-    import_records(sample_records, dataset_id=_DATASET_ID, **_CREDS)
+    import_records(sample_records, dataset_id=_DATASET_ID, calibration_fraction=0.0, **_CREDS)
 
     ret_ds = client.datasets(f"retrieval_production_{_DATASET_ID}", workspace="retrieval")
     gnd_ds = client.datasets(f"grounding_production_{_DATASET_ID}", workspace="grounding")
@@ -105,7 +110,7 @@ def test_records_exist_in_argilla(client: rg.Argilla, sample_records: list[dict]
 
 def test_record_uuid_linkage(client: rg.Argilla, sample_records: list[dict]) -> None:
     """record_uuid metadata appears in all three datasets and intersects."""
-    import_records(sample_records, dataset_id=_DATASET_ID, **_CREDS)
+    import_records(sample_records, dataset_id=_DATASET_ID, calibration_fraction=0.0, **_CREDS)
 
     def _uuids(ds_name: str, ws_name: str) -> set[str]:
         ds = client.datasets(ds_name, workspace=ws_name)
@@ -127,8 +132,8 @@ def test_idempotent_reimport(client: rg.Argilla, sample_records: list[dict]) -> 
     (derive_record_uuid). Argilla upserts on Record.id, so identical IDs on the second
     import overwrite existing records rather than creating duplicates.
     """
-    import_records(sample_records, dataset_id=_DATASET_ID, **_CREDS)
-    import_records(sample_records, dataset_id=_DATASET_ID, **_CREDS)
+    import_records(sample_records, dataset_id=_DATASET_ID, calibration_fraction=0.0, **_CREDS)
+    import_records(sample_records, dataset_id=_DATASET_ID, calibration_fraction=0.0, **_CREDS)
 
     ret_ds = client.datasets(f"retrieval_production_{_DATASET_ID}", workspace="retrieval")
     gnd_ds = client.datasets(f"grounding_production_{_DATASET_ID}", workspace="grounding")
@@ -146,7 +151,7 @@ def test_invalid_records_skipped_with_errors(client: rg.Argilla) -> None:
     """Invalid dicts are reported as errors, not sent to Argilla."""
     raw = [{"query": "no answer or chunks"}, _make_raw(1)]
 
-    result = import_records(raw, dataset_id=_DATASET_ID, **_CREDS)
+    result = import_records(raw, dataset_id=_DATASET_ID, calibration_fraction=0.0, **_CREDS)
 
     assert result.total_records == 2
     assert len(result.errors) == 1
@@ -164,7 +169,7 @@ def test_dataset_auto_creation(client: rg.Argilla) -> None:
     teardown_resources(client, auto_settings)
 
     # Import without prior setup_datasets — datasets should be auto-created
-    result = import_records([_make_raw(1)], dataset_id=auto_id, **_CREDS)
+    result = import_records([_make_raw(1)], dataset_id=auto_id, calibration_fraction=0.0, **_CREDS)
 
     assert result.total_records == 1
     assert result.errors == []

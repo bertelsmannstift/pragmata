@@ -43,11 +43,18 @@ def _autouse_mock_client(mock_client: MagicMock) -> MagicMock:
     return mock_client
 
 
-def _make_raw() -> dict:
+@pytest.fixture(autouse=True)
+def _isolate_base_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Run every test under a tmp directory so partition manifests etc. write there."""
+    monkeypatch.chdir(tmp_path)
+    return tmp_path
+
+
+def _make_raw(i: int = 0) -> dict:
     return {
-        "query": "What is X?",
-        "answer": "X is Y.",
-        "chunks": [{"chunk_id": "c1", "doc_id": "d1", "chunk_rank": 1, "text": "Chunk text."}],
+        "query": f"What is X{i}?",
+        "answer": f"X{i} is Y.",
+        "chunks": [{"chunk_id": f"c{i}", "doc_id": "d1", "chunk_rank": 1, "text": "Chunk text."}],
         "context_set": "ctx-001",
     }
 
@@ -156,13 +163,15 @@ class TestImportRecords:
     @patch("pragmata.api.annotation_import.fan_out_records")
     def test_returns_import_result(self, mock_fan_out: MagicMock) -> None:
         mock_fan_out.return_value = {"ds1": 3, "ds2": 1}
-        raw = [_make_raw(), _make_raw()]
+        raw = [_make_raw(0), _make_raw(1)]
 
-        result = import_records(raw, dataset_id="test")
+        result = import_records(raw, dataset_id="test", calibration_fraction=0.0)
 
         assert isinstance(result, ImportResult)
         assert result.total_records == 2
         assert result.dataset_counts == {"ds1": 3, "ds2": 1}
+        assert result.calibration_count == 0
+        assert result.production_count == 2
         assert result.errors == []
 
     @patch("pragmata.api.annotation_import.fan_out_records")
@@ -278,3 +287,52 @@ class TestImportRecords:
             result = import_records(fake_df, dataset_id="test")
 
         assert result.total_records == 1
+
+
+class TestImportRecordsCalibrationValidation:
+    """Hard-error semantics for calibration_fraction vs topology mismatch."""
+
+    def test_fraction_out_of_range_raises(self) -> None:
+        with pytest.raises(ValueError, match="calibration_fraction"):
+            import_records([_make_raw()], dataset_id="t", calibration_fraction=1.5)
+
+    def test_negative_fraction_raises(self) -> None:
+        with pytest.raises(ValueError, match="calibration_fraction"):
+            import_records([_make_raw()], dataset_id="t", calibration_fraction=-0.1)
+
+    @staticmethod
+    def _no_calibration_config(tmp_path: Path) -> Path:
+        """Write a YAML config that disables calibration on every task."""
+        yaml_text = (
+            "workspace_dataset_map:\n"
+            "  retrieval:\n"
+            "    retrieval:\n"
+            "      production_min_submitted: 1\n"
+            "      calibration_min_submitted: null\n"
+            "  grounding:\n"
+            "    grounding:\n"
+            "      production_min_submitted: 1\n"
+            "      calibration_min_submitted: null\n"
+            "  generation:\n"
+            "    generation:\n"
+            "      production_min_submitted: 1\n"
+            "      calibration_min_submitted: null\n"
+        )
+        path = tmp_path / "config.yaml"
+        path.write_text(yaml_text)
+        return path
+
+    def test_fraction_zero_with_no_calibration_topology_ok(self, tmp_path: Path) -> None:
+        """`calibration_fraction=0` is fine even when topology disables calibration."""
+        config_path = self._no_calibration_config(tmp_path)
+
+        with patch("pragmata.api.annotation_import.fan_out_records") as mock_fan_out:
+            mock_fan_out.return_value = {"retrieval_production": 1}
+            result = import_records([_make_raw()], dataset_id="t", calibration_fraction=0.0, config_path=config_path)
+        assert result.calibration_count == 0
+
+    def test_fraction_positive_with_no_calibration_topology_raises(self, tmp_path: Path) -> None:
+        config_path = self._no_calibration_config(tmp_path)
+
+        with pytest.raises(ValueError, match="calibration_fraction"):
+            import_records([_make_raw()], dataset_id="t", calibration_fraction=0.1, config_path=config_path)
