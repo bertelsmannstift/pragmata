@@ -88,17 +88,6 @@ class TestSetup:
 
     @patch("pragmata.api.annotation_setup.provision_users")
     @patch("pragmata.api.annotation_setup.setup_workspaces")
-    def test_resolves_min_submitted(self, mock_ds: MagicMock, mock_users: MagicMock) -> None:
-        mock_ds.return_value = SetupResult()
-        mock_users.return_value = SetupResult()
-
-        setup(min_submitted=3)
-
-        settings: AnnotationSettings = mock_ds.call_args[0][1]
-        assert settings.min_submitted == 3
-
-    @patch("pragmata.api.annotation_setup.provision_users")
-    @patch("pragmata.api.annotation_setup.setup_workspaces")
     def test_passes_users_to_provision(self, mock_ds: MagicMock, mock_users: MagicMock) -> None:
         mock_ds.return_value = SetupResult()
         mock_users.return_value = SetupResult()

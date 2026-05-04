@@ -108,8 +108,8 @@ def fetch_task(
     dataset_name = apply_suffix(DATASET_NAMES[task], settings.dataset_id)
 
     workspace_name: str | None = None
-    for ws_base, tasks in settings.workspace_dataset_map.items():
-        if task in tasks:
+    for ws_base, task_overlaps in settings.workspace_dataset_map.items():
+        if task in task_overlaps:
             workspace_name = ws_base
             break
 

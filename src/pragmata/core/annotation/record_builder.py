@@ -17,7 +17,7 @@ from pragmata.core.annotation.argilla_ops import apply_suffix, create_dataset
 from pragmata.core.annotation.argilla_task_definitions import DATASET_NAMES, build_task_settings
 from pragmata.core.schemas.annotation_import import QueryResponsePair
 from pragmata.core.schemas.annotation_task import Task
-from pragmata.core.settings.annotation_settings import AnnotationSettings
+from pragmata.core.settings.annotation_settings import AnnotationSettings, TaskOverlap
 
 logger = logging.getLogger(__name__)
 
@@ -142,12 +142,14 @@ def build_generation_record(pair: QueryResponsePair, record_uuid: str) -> rg.Rec
     )
 
 
-def _invert_workspace_map(workspace_dataset_map: dict[str, list[Task]]) -> dict[Task, str]:
-    """Invert workspace_dataset_map to task → workspace_base lookup."""
-    task_to_ws: dict[Task, str] = {}
-    for ws_base, tasks in workspace_dataset_map.items():
-        for task in tasks:
-            task_to_ws[task] = ws_base
+def _invert_workspace_map(
+    workspace_dataset_map: dict[str, dict[Task, TaskOverlap]],
+) -> dict[Task, tuple[str, TaskOverlap]]:
+    """Invert workspace_dataset_map to task → (workspace_base, overlap)."""
+    task_to_ws: dict[Task, tuple[str, TaskOverlap]] = {}
+    for ws_base, task_overlaps in workspace_dataset_map.items():
+        for task, overlap in task_overlaps.items():
+            task_to_ws[task] = (ws_base, overlap)
     return task_to_ws
 
 
@@ -184,10 +186,11 @@ def fan_out_records(
     for task, rg_records in batches.items():
         if not rg_records:
             continue
-        ws_base = task_to_ws.get(task)
-        if ws_base is None:
+        binding = task_to_ws.get(task)
+        if binding is None:
             logger.warning("Task %r not in workspace_dataset_map — skipping", task)
             continue
+        ws_base, overlap = binding
 
         ds_name = apply_suffix(DATASET_NAMES[task], settings.dataset_id)
 
@@ -201,7 +204,7 @@ def fan_out_records(
             questions=base_settings.questions,
             metadata=base_settings.metadata,
             guidelines=base_settings.guidelines,
-            distribution=rg.TaskDistribution(min_submitted=settings.min_submitted),
+            distribution=rg.TaskDistribution(min_submitted=overlap.production_min_submitted),
         )
         dataset, ds_created = create_dataset(client, ds_name, ws_base, task_cfg)
         if ds_created:
