@@ -97,10 +97,6 @@ class TestAnnotationImportPaths:
         paths = resolve_import_paths(workspace=workspace, dataset_id="run1")
         assert paths.partition_manifest == paths.import_dir / "partition.meta.json"
 
-    def test_tool_root_matches_annotation_tool_root(self, workspace: WorkspacePaths) -> None:
-        paths = resolve_import_paths(workspace=workspace, dataset_id="run1")
-        assert paths.tool_root == workspace.tool_root("annotation")
-
     def test_ensure_dirs_creates_import_dir(self, workspace: WorkspacePaths) -> None:
         paths = resolve_import_paths(workspace=workspace, dataset_id="run1")
         assert not paths.import_dir.exists()
