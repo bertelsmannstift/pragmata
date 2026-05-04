@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, NonNegativeInt, model_validator
+from pydantic import BaseModel, ConfigDict, Field, NonNegativeInt, model_validator
 
 from pragmata.core.schemas.annotation_task import DiscardReason, Task
 
@@ -24,6 +24,7 @@ class AnnotationBase(BaseModel):
     annotator_id: str
     task: Task
     language: str | None
+    calibration: bool = False
     inserted_at: datetime
     created_at: datetime
     record_status: str
@@ -121,14 +122,21 @@ class AnnotationExportMeta(BaseModel):
     include_discarded: bool
     row_counts: dict[Task, NonNegativeInt]
     n_annotators: dict[Task, NonNegativeInt]
+    calibration_enabled: dict[Task, bool] = Field(default_factory=dict)
     constraint_summary: dict[str, NonNegativeInt]
 
     @model_validator(mode="after")
     def validate_keys_match_tasks(self) -> "AnnotationExportMeta":
-        """Enforce per-task dicts cover exactly the exported tasks."""
+        """Enforce per-task dicts cover exactly the exported tasks.
+
+        ``calibration_enabled`` is optional: when absent (empty), no check is
+        performed; when populated, its keys must match ``tasks``.
+        """
         expected = set(self.tasks)
         if set(self.row_counts) != expected:
             raise ValueError("row_counts keys must match tasks")
         if set(self.n_annotators) != expected:
             raise ValueError("n_annotators keys must match tasks")
+        if self.calibration_enabled and set(self.calibration_enabled) != expected:
+            raise ValueError("calibration_enabled keys must match tasks")
         return self
