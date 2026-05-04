@@ -146,8 +146,18 @@ class TestManifestIO:
         assert restored.partition_seed == original.partition_seed
         assert restored.assignments["uuid-1"] == original.assignments["uuid-1"]
 
-    def test_atomic_write_creates_directory(self, tmp_path: Path) -> None:
+    def test_write_requires_existing_parent(self, tmp_path: Path) -> None:
+        # Path resolution and directory creation belong in core/paths/, so
+        # write_partition_manifest does not mkdir its parent.
         path = tmp_path / "nested" / "subdir" / "partition.meta.json"
         manifest = load_partition_manifest(path, dataset_id="x", partition_seed=0)
-        write_partition_manifest(path, manifest)
-        assert path.exists()
+        with pytest.raises(FileNotFoundError):
+            write_partition_manifest(path, manifest)
+
+    def test_load_rejects_dataset_id_mismatch(self, tmp_path: Path) -> None:
+        path = tmp_path / "partition.meta.json"
+        original = load_partition_manifest(path, dataset_id="scope-a", partition_seed=0)
+        write_partition_manifest(path, original)
+
+        with pytest.raises(ValueError, match="scope-a"):
+            load_partition_manifest(path, dataset_id="scope-b", partition_seed=0)

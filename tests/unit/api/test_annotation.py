@@ -50,11 +50,11 @@ def _isolate_base_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return tmp_path
 
 
-def _make_raw() -> dict:
+def _make_raw(i: int = 0) -> dict:
     return {
-        "query": "What is X?",
-        "answer": "X is Y.",
-        "chunks": [{"chunk_id": "c1", "doc_id": "d1", "chunk_rank": 1, "text": "Chunk text."}],
+        "query": f"What is X{i}?",
+        "answer": f"X{i} is Y.",
+        "chunks": [{"chunk_id": f"c{i}", "doc_id": "d1", "chunk_rank": 1, "text": "Chunk text."}],
         "context_set": "ctx-001",
     }
 
@@ -142,7 +142,7 @@ class TestTeardown:
 class TestImportRecords:
     @patch("pragmata.api.annotation_import.fan_out_records")
     def test_delegates_to_core(self, mock_fan_out: MagicMock, mock_client: MagicMock) -> None:
-        mock_fan_out.return_value = ({"ds1": 2}, 0, 1)
+        mock_fan_out.return_value = {"ds1": 2}
         raw = [_make_raw()]
 
         import_records(raw, dataset_id="test")
@@ -153,7 +153,7 @@ class TestImportRecords:
 
     @patch("pragmata.api.annotation_import.fan_out_records")
     def test_resolves_dataset_id(self, mock_fan_out: MagicMock) -> None:
-        mock_fan_out.return_value = ({}, 0, 0)
+        mock_fan_out.return_value = {}
 
         import_records([], dataset_id="myprefix")
 
@@ -162,8 +162,8 @@ class TestImportRecords:
 
     @patch("pragmata.api.annotation_import.fan_out_records")
     def test_returns_import_result(self, mock_fan_out: MagicMock) -> None:
-        mock_fan_out.return_value = ({"ds1": 3, "ds2": 1}, 0, 2)
-        raw = [_make_raw(), _make_raw()]
+        mock_fan_out.return_value = {"ds1": 3, "ds2": 1}
+        raw = [_make_raw(0), _make_raw(1)]
 
         result = import_records(raw, dataset_id="test", calibration_fraction=0.0)
 
@@ -176,7 +176,7 @@ class TestImportRecords:
 
     @patch("pragmata.api.annotation_import.fan_out_records")
     def test_empty_records_returns_zero_totals(self, mock_fan_out: MagicMock) -> None:
-        mock_fan_out.return_value = ({}, 0, 0)
+        mock_fan_out.return_value = {}
 
         result = import_records([], dataset_id="test")
 
@@ -186,7 +186,7 @@ class TestImportRecords:
 
     @patch("pragmata.api.annotation_import.fan_out_records")
     def test_validation_errors_reported(self, mock_fan_out: MagicMock) -> None:
-        mock_fan_out.return_value = ({"ds1": 1}, 0, 1)
+        mock_fan_out.return_value = {"ds1": 1}
         raw = [_make_raw(), {"query": "missing required fields"}]
 
         result = import_records(raw, dataset_id="test")
@@ -199,7 +199,7 @@ class TestImportRecords:
 
     @patch("pragmata.api.annotation_import.fan_out_records")
     def test_all_invalid_skips_fan_out(self, mock_fan_out: MagicMock) -> None:
-        mock_fan_out.return_value = ({}, 0, 0)
+        mock_fan_out.return_value = {}
         raw = [{"bad": "data"}, {"also": "bad"}]
 
         result = import_records(raw, dataset_id="test")
@@ -211,7 +211,7 @@ class TestImportRecords:
 
     @patch("pragmata.api.annotation_import.fan_out_records")
     def test_accepts_json_file_path(self, mock_fan_out: MagicMock, tmp_path: Path) -> None:
-        mock_fan_out.return_value = ({"ds1": 1}, 0, 1)
+        mock_fan_out.return_value = {"ds1": 1}
         f = tmp_path / "data.json"
         f.write_text(json.dumps([_make_raw()]))
 
@@ -222,7 +222,7 @@ class TestImportRecords:
 
     @patch("pragmata.api.annotation_import.fan_out_records")
     def test_accepts_path_object(self, mock_fan_out: MagicMock, tmp_path: Path) -> None:
-        mock_fan_out.return_value = ({"ds1": 1}, 0, 1)
+        mock_fan_out.return_value = {"ds1": 1}
         f = tmp_path / "data.json"
         f.write_text(json.dumps([_make_raw()]))
 
@@ -232,7 +232,7 @@ class TestImportRecords:
 
     @patch("pragmata.api.annotation_import.fan_out_records")
     def test_accepts_jsonl_file(self, mock_fan_out: MagicMock, tmp_path: Path) -> None:
-        mock_fan_out.return_value = ({"ds1": 1}, 0, 1)
+        mock_fan_out.return_value = {"ds1": 1}
         f = tmp_path / "data.jsonl"
         f.write_text(json.dumps(_make_raw()) + "\n")
 
@@ -242,7 +242,7 @@ class TestImportRecords:
 
     @patch("pragmata.api.annotation_import.fan_out_records")
     def test_format_override(self, mock_fan_out: MagicMock, tmp_path: Path) -> None:
-        mock_fan_out.return_value = ({"ds1": 1}, 0, 1)
+        mock_fan_out.return_value = {"ds1": 1}
         f = tmp_path / "data.txt"
         f.write_text(json.dumps([_make_raw()]))
 
@@ -262,7 +262,7 @@ class TestImportRecords:
 
     @patch("pragmata.api.annotation_import.fan_out_records")
     def test_accepts_hf_dataset(self, mock_fan_out: MagicMock) -> None:
-        mock_fan_out.return_value = ({"ds1": 1}, 0, 1)
+        mock_fan_out.return_value = {"ds1": 1}
 
         FakeDataset = type("Dataset", (), {"to_list": lambda self: [_make_raw()]})
         fake_ds = FakeDataset()
@@ -276,7 +276,7 @@ class TestImportRecords:
 
     @patch("pragmata.api.annotation_import.fan_out_records")
     def test_accepts_dataframe(self, mock_fan_out: MagicMock) -> None:
-        mock_fan_out.return_value = ({"ds1": 1}, 0, 1)
+        mock_fan_out.return_value = {"ds1": 1}
 
         FakeDataFrame = type("DataFrame", (), {"to_dict": lambda self, orient: [_make_raw()]})
         fake_df = FakeDataFrame()
@@ -327,7 +327,7 @@ class TestImportRecordsCalibrationValidation:
         config_path = self._no_calibration_config(tmp_path)
 
         with patch("pragmata.api.annotation_import.fan_out_records") as mock_fan_out:
-            mock_fan_out.return_value = ({"retrieval_production": 1}, 0, 1)
+            mock_fan_out.return_value = {"retrieval_production": 1}
             result = import_records([_make_raw()], dataset_id="t", calibration_fraction=0.0, config_path=config_path)
         assert result.calibration_count == 0
 
