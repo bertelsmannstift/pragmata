@@ -21,6 +21,7 @@ _BASE = {
     "record_uuid": "abc123",
     "annotator_id": "user1",
     "language": "en",
+    "calibration": False,
     "inserted_at": _NOW,
     "created_at": _NOW,
     "record_status": "submitted",
