@@ -295,4 +295,4 @@ class TestExportAnnotations:
 
         assert set(result.files.keys()) == {Task.RETRIEVAL, Task.GROUNDING, Task.GENERATION}
         called_names = {call.args[0] for call in mock_client.datasets.call_args_list}
-        assert called_names == {"retrieval", "grounding", "generation"}
+        assert called_names == {"retrieval_production", "grounding_production", "generation_production"}

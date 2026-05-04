@@ -13,8 +13,8 @@ from typing import Any
 import argilla as rg
 from argilla.records._dataset_records import RecordErrorHandling  # no public re-export in argilla v2; pinned to ==2.6.0
 
-from pragmata.core.annotation.argilla_ops import apply_suffix, create_dataset
-from pragmata.core.annotation.argilla_task_definitions import DATASET_NAMES, build_task_settings
+from pragmata.core.annotation.argilla_ops import create_dataset
+from pragmata.core.annotation.argilla_task_definitions import build_task_settings, dataset_name
 from pragmata.core.schemas.annotation_import import QueryResponsePair
 from pragmata.core.schemas.annotation_task import Task
 from pragmata.core.settings.annotation_settings import AnnotationSettings, TaskOverlap
@@ -192,7 +192,7 @@ def fan_out_records(
             continue
         ws_base, overlap = binding
 
-        ds_name = apply_suffix(DATASET_NAMES[task], settings.dataset_id)
+        ds_name = dataset_name(task, calibration=False, dataset_id=settings.dataset_id)
 
         workspace = client.workspaces(ws_base)
         if workspace is None:

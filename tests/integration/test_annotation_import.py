@@ -78,9 +78,9 @@ def test_record_counts_per_dataset(client: rg.Argilla, sample_records: list[dict
     assert result.total_records == n_records
     assert result.errors == []
 
-    ret_ds_name = f"retrieval_{_DATASET_ID}"
-    gnd_ds_name = f"grounding_{_DATASET_ID}"
-    gen_ds_name = f"generation_{_DATASET_ID}"
+    ret_ds_name = f"retrieval_production_{_DATASET_ID}"
+    gnd_ds_name = f"grounding_production_{_DATASET_ID}"
+    gen_ds_name = f"generation_production_{_DATASET_ID}"
 
     assert result.dataset_counts[ret_ds_name] == n_retrieval
     assert result.dataset_counts[gnd_ds_name] == n_records
@@ -91,9 +91,9 @@ def test_records_exist_in_argilla(client: rg.Argilla, sample_records: list[dict]
     """After import, all three datasets contain records."""
     import_records(sample_records, dataset_id=_DATASET_ID, **_CREDS)
 
-    ret_ds = client.datasets(f"retrieval_{_DATASET_ID}", workspace="retrieval")
-    gnd_ds = client.datasets(f"grounding_{_DATASET_ID}", workspace="grounding")
-    gen_ds = client.datasets(f"generation_{_DATASET_ID}", workspace="generation")
+    ret_ds = client.datasets(f"retrieval_production_{_DATASET_ID}", workspace="retrieval")
+    gnd_ds = client.datasets(f"grounding_production_{_DATASET_ID}", workspace="grounding")
+    gen_ds = client.datasets(f"generation_production_{_DATASET_ID}", workspace="generation")
 
     assert ret_ds is not None
     assert gnd_ds is not None
@@ -113,9 +113,9 @@ def test_record_uuid_linkage(client: rg.Argilla, sample_records: list[dict]) -> 
         ds = client.datasets(ds_name, workspace=ws_name)
         return {r.metadata["record_uuid"] for r in ds.records if r.metadata.get("record_uuid")}
 
-    ret_uuids = _uuids(f"retrieval_{_DATASET_ID}", "retrieval")
-    gnd_uuids = _uuids(f"grounding_{_DATASET_ID}", "grounding")
-    gen_uuids = _uuids(f"generation_{_DATASET_ID}", "generation")
+    ret_uuids = _uuids(f"retrieval_production_{_DATASET_ID}", "retrieval")
+    gnd_uuids = _uuids(f"grounding_production_{_DATASET_ID}", "grounding")
+    gen_uuids = _uuids(f"generation_production_{_DATASET_ID}", "generation")
 
     # All three datasets share the same UUIDs
     assert ret_uuids == gnd_uuids == gen_uuids
@@ -132,9 +132,9 @@ def test_idempotent_reimport(client: rg.Argilla, sample_records: list[dict]) -> 
     import_records(sample_records, dataset_id=_DATASET_ID, **_CREDS)
     import_records(sample_records, dataset_id=_DATASET_ID, **_CREDS)
 
-    ret_ds = client.datasets(f"retrieval_{_DATASET_ID}", workspace="retrieval")
-    gnd_ds = client.datasets(f"grounding_{_DATASET_ID}", workspace="grounding")
-    gen_ds = client.datasets(f"generation_{_DATASET_ID}", workspace="generation")
+    ret_ds = client.datasets(f"retrieval_production_{_DATASET_ID}", workspace="retrieval")
+    gnd_ds = client.datasets(f"grounding_production_{_DATASET_ID}", workspace="grounding")
+    gen_ds = client.datasets(f"generation_production_{_DATASET_ID}", workspace="generation")
 
     n_retrieval = sum(len(r["chunks"]) for r in sample_records)
     n_records = len(sample_records)
@@ -172,9 +172,9 @@ def test_dataset_auto_creation(client: rg.Argilla) -> None:
     assert result.errors == []
 
     # Datasets exist
-    assert client.datasets(f"retrieval_{auto_id}", workspace="retrieval") is not None
-    assert client.datasets(f"grounding_{auto_id}", workspace="grounding") is not None
-    assert client.datasets(f"generation_{auto_id}", workspace="generation") is not None
+    assert client.datasets(f"retrieval_production_{auto_id}", workspace="retrieval") is not None
+    assert client.datasets(f"grounding_production_{auto_id}", workspace="grounding") is not None
+    assert client.datasets(f"generation_production_{auto_id}", workspace="generation") is not None
 
     # Clean up
     teardown_resources(client, auto_settings)
