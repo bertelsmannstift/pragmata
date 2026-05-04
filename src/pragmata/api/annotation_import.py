@@ -1,4 +1,4 @@
-"""Annotation import API — thin orchestration over core/ implementation."""
+"""Annotation import API - thin orchestration over core/ implementation."""
 
 import logging
 import os
@@ -75,7 +75,7 @@ def import_records(
     via a manifest sidecar at
     ``annotation/imports/{dataset_id}/partition.meta.json``.
 
-    Validation failures are collected in ImportResult.errors — invalid
+    Validation failures are collected in ImportResult.errors - invalid
     records are skipped, not raised.
 
     Datasets are auto-created if they don't exist. Workspaces must already
@@ -115,7 +115,7 @@ def import_records(
 
     raw = resolve_records(records, format=format)
     settings = AnnotationSettings.resolve(
-        config=load_config_file(config_path) if isinstance(config_path, (str, Path)) else None,
+        config=load_config_file(config_path) if isinstance(config_path, str | Path) else None,
         env={"argilla": {"api_url": os.environ.get("ARGILLA_API_URL")}} if os.environ.get("ARGILLA_API_URL") else None,
         overrides={
             "argilla": {"api_url": api_url},
@@ -172,9 +172,10 @@ def import_records(
         )
         write_partition_manifest(import_paths.partition_manifest, manifest)
 
-        dataset_counts, calibration_count, production_count = fan_out_records(
-            client, validation.valid, settings, assignments=assignments
-        )
+        calibration_count = sum(1 for is_cal in assignments.values() if is_cal)
+        production_count = len(assignments) - calibration_count
+
+        dataset_counts = fan_out_records(client, validation.valid, settings, assignments=assignments)
     logger.info(
         "Import complete: %d records across %d datasets (calibration=%d, production=%d, fraction=%.3f)",
         len(raw),

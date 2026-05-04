@@ -182,9 +182,21 @@ def _bucket_calibration(record_uuid: str, fraction: float, seed: int) -> bool:
 
 
 def load_partition_manifest(path: Path, *, dataset_id: str, partition_seed: int) -> PartitionManifest:
-    """Load an existing manifest from disk or create an empty one."""
+    """Load an existing manifest from disk or create an empty one.
+
+    Raises if the on-disk manifest's dataset_id does not match the caller's,
+    which would indicate a base_dir or scope mispoint that could silently
+    corrupt assignments across scopes.
+    """
     if path.exists():
-        return PartitionManifest.model_validate_json(path.read_text(encoding="utf-8"))
+        manifest = PartitionManifest.model_validate_json(path.read_text(encoding="utf-8"))
+        if manifest.dataset_id != dataset_id:
+            raise ValueError(
+                f"Partition manifest at {path} has dataset_id={manifest.dataset_id!r} "
+                f"but the current scope is {dataset_id!r}. Refusing to load to avoid "
+                "cross-scope assignment corruption."
+            )
+        return manifest
     now = datetime.now(timezone.utc)
     return PartitionManifest(
         dataset_id=dataset_id,
@@ -196,8 +208,11 @@ def load_partition_manifest(path: Path, *, dataset_id: str, partition_seed: int)
 
 
 def write_partition_manifest(path: Path, manifest: PartitionManifest) -> None:
-    """Write manifest atomically (write-tmp-then-rename)."""
-    path.parent.mkdir(parents=True, exist_ok=True)
+    """Write manifest atomically (write-tmp-then-rename).
+
+    The parent directory must already exist; path resolution and directory
+    creation belong in core/paths/ (see AnnotationImportPaths.ensure_dirs).
+    """
     payload = json.dumps(manifest.model_dump(mode="json"), indent=2)
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(payload, encoding="utf-8")
@@ -297,7 +312,7 @@ def fan_out_records(
     settings: AnnotationSettings,
     *,
     assignments: dict[str, bool],
-) -> tuple[dict[str, int], int, int]:
+) -> dict[str, int]:
     """Build and log Argilla records to per-purpose datasets.
 
     Datasets are created on-the-fly if they don't exist (idempotent).
@@ -312,32 +327,35 @@ def fan_out_records(
             to a bucket via the manifest.
 
     Returns:
-        ``(dataset_counts, calibration_count, production_count)``.
+        Mapping of dataset name to record count for that dataset. Calibration
+        vs production totals are computable from ``assignments`` and stay in
+        the api layer.
     """
     task_to_ws = _invert_workspace_map(settings.workspace_dataset_map)
     task_settings_map = build_task_settings()
     batches = _build_batches(records, assignments)
 
     dataset_counts: dict[str, int] = {}
-    calibration_count = sum(1 for is_cal in assignments.values() if is_cal)
-    production_count = len(assignments) - calibration_count
 
     for (task, calibration), rg_records in batches.items():
         if not rg_records:
             continue
         binding = task_to_ws.get(task)
         if binding is None:
-            logger.warning("Task %r not in workspace_dataset_map — skipping", task)
+            logger.warning("Task %r not in workspace_dataset_map - skipping", task)
             continue
         ws_base, overlap = binding
-        if calibration and overlap.calibration_min_submitted is None:
-            # Defensive: should not happen because assign_partitions only
-            # assigns calibration when topology supports it. Surface as an
-            # error rather than silently route to production.
-            raise RuntimeError(f"Task {task.value} has calibration records assigned but topology disables calibration")
-        min_submitted = overlap.calibration_min_submitted if calibration else overlap.production_min_submitted
-        # mypy: narrowed by the guard above
-        assert min_submitted is not None
+        if calibration:
+            if overlap.calibration_min_submitted is None:
+                # Defensive: should not happen because assign_partitions only
+                # assigns calibration when topology supports it. Surface as an
+                # error rather than silently route to production.
+                raise RuntimeError(
+                    f"Task {task.value} has calibration records assigned but topology disables calibration"
+                )
+            min_submitted = overlap.calibration_min_submitted
+        else:
+            min_submitted = overlap.production_min_submitted
         dataset = _ensure_dataset(
             client,
             task=task,
@@ -352,4 +370,4 @@ def fan_out_records(
         dataset_counts[ds_name] = len(rg_records)
         logger.info("Logged %d records to dataset %r", len(rg_records), ds_name)
 
-    return dataset_counts, calibration_count, production_count
+    return dataset_counts
