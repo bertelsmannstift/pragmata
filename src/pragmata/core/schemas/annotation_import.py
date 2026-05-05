@@ -1,10 +1,11 @@
 """Boundary schemas for canonical annotation import records and partition state."""
 
 from datetime import datetime
+from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from pragmata.core.types import NonEmptyStr
+from pragmata.core.types import NonEmptyStr, SafePathSegment
 
 
 class Chunk(BaseModel):
@@ -61,7 +62,7 @@ class PartitionManifestEntry(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     calibration: bool
-    import_id: str
+    import_id: NonEmptyStr
     calibration_fraction_at_import: float = Field(ge=0.0, le=1.0)
     assigned_at: datetime
 
@@ -83,8 +84,14 @@ class PartitionManifest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    dataset_id: str
+    dataset_id: SafePathSegment
     created_at: datetime
     updated_at: datetime
     partition_seed: int
     assignments: dict[str, PartitionManifestEntry] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _check_timestamps(self) -> Self:
+        if self.updated_at < self.created_at:
+            raise ValueError("updated_at must be >= created_at")
+        return self

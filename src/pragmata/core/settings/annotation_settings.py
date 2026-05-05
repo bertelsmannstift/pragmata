@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, NonNegativeInt, PositiveInt
 
 from pragmata.core.schemas.annotation_task import Task
 from pragmata.core.settings.settings_base import ResolveSettings
+from pragmata.core.types import SafePathSegment
 
 
 class ArgillaSettings(BaseModel):
@@ -49,7 +50,7 @@ class AnnotationSettings(ResolveSettings):
 
     argilla: ArgillaSettings = Field(default_factory=ArgillaSettings)
     base_dir: Path = Field(default_factory=Path.cwd)
-    dataset_id: str = ""
+    dataset_id: SafePathSegment = ""
     workspace_dataset_map: dict[str, dict[Task, TaskOverlap]] = Field(
         default_factory=lambda: {
             "retrieval": {Task.RETRIEVAL: TaskOverlap()},
