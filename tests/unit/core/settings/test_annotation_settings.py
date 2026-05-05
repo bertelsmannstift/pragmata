@@ -70,6 +70,11 @@ class TestAnnotationSettingsResolve:
         s = AnnotationSettings.resolve(overrides={"calibration_partition_seed": 42})
         assert s.calibration_partition_seed == 42
 
+    @pytest.mark.parametrize("bad", ["a/b", "..", "foo..bar", " run", "run\\sub"])
+    def test_unsafe_dataset_id_rejected(self, bad):
+        with pytest.raises(ValidationError):
+            AnnotationSettings(dataset_id=bad)
+
 
 class TestArgillaSettings:
     def test_defaults_to_none_api_url(self):

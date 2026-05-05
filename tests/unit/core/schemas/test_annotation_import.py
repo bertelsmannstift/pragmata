@@ -175,6 +175,11 @@ class TestPartitionManifestEntry:
         with pytest.raises(ValidationError):
             PartitionManifestEntry(**valid_entry_kwargs)
 
+    def test_empty_import_id_rejected(self, valid_entry_kwargs):
+        valid_entry_kwargs["import_id"] = ""
+        with pytest.raises(ValidationError):
+            PartitionManifestEntry(**valid_entry_kwargs)
+
     def test_frozen(self, valid_entry_kwargs):
         entry = PartitionManifestEntry(**valid_entry_kwargs)
         with pytest.raises(ValidationError):
@@ -200,3 +205,14 @@ class TestPartitionManifest:
         valid_manifest_kwargs["dataset_id"] = ""
         manifest = PartitionManifest(**valid_manifest_kwargs)
         assert manifest.dataset_id == ""
+
+    @pytest.mark.parametrize("bad", ["a/b", "..", "foo..bar", " run", "run\\sub"])
+    def test_unsafe_dataset_id_rejected(self, valid_manifest_kwargs, bad):
+        valid_manifest_kwargs["dataset_id"] = bad
+        with pytest.raises(ValidationError):
+            PartitionManifest(**valid_manifest_kwargs)
+
+    def test_updated_before_created_rejected(self, valid_manifest_kwargs):
+        valid_manifest_kwargs["updated_at"] = _ENTRY_NOW.replace(year=2025)
+        with pytest.raises(ValidationError):
+            PartitionManifest(**valid_manifest_kwargs)
