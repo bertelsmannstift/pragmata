@@ -16,7 +16,6 @@ from string import Template
 
 import argilla as rg
 
-from pragmata.core.annotation.argilla_ops import apply_suffix
 from pragmata.core.schemas.annotation_task import DiscardReason, Task
 
 DATASET_NAMES: dict[Task, str] = {
@@ -35,8 +34,9 @@ def dataset_name(task: Task, *, calibration: bool, dataset_id: str = "") -> str:
     run-scoping when present.
     """
     base = DATASET_NAMES[task]
-    suffix = "_calibration" if calibration else "_production"
-    return apply_suffix(f"{base}{suffix}", dataset_id)
+    purpose = "calibration" if calibration else "production"
+    name = f"{base}_{purpose}"
+    return f"{name}_{dataset_id}" if dataset_id else name
 
 
 def _collapsible_field(name: str, title: str, template_text: str) -> rg.CustomField:

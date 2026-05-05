@@ -5,19 +5,8 @@ No Argilla server required; these tests exercise pure Python logic only.
 
 from dataclasses import fields
 
-from pragmata.core.annotation.argilla_ops import apply_suffix, generate_password
+from pragmata.core.annotation.argilla_ops import generate_password
 from pragmata.core.annotation.setup import SetupResult
-
-
-class TestApplySuffix:
-    def test_empty_suffix_returns_name(self) -> None:
-        assert apply_suffix("retrieval", "") == "retrieval"
-
-    def test_non_empty_suffix_appends(self) -> None:
-        assert apply_suffix("retrieval", "run1") == "retrieval_run1"
-
-    def test_non_empty_suffix_any_name(self) -> None:
-        assert apply_suffix("generation", "batch2") == "generation_batch2"
 
 
 class TestGeneratePassword:
