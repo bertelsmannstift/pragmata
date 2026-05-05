@@ -6,7 +6,7 @@ core/settings/). They encode the annotation protocol (fields, questions, labels)
 and are hardcoded per ADR-0009.
 
 Distribution (min_submitted) is intentionally omitted — it is an operational
-setting controlled by AnnotationSettings.min_submitted and applied at
+setting controlled by AnnotationSettings.workspace_dataset_map and applied at
 dataset creation time.
 """
 
@@ -23,6 +23,20 @@ DATASET_NAMES: dict[Task, str] = {
     Task.GROUNDING: "grounding",
     Task.GENERATION: "generation",
 }
+
+
+def dataset_name(task: Task, *, calibration: bool, dataset_id: str = "") -> str:
+    """Always-suffixed Argilla dataset name for a task and purpose.
+
+    Names are unconditional: production datasets are always
+    ``task_<task>_production`` and calibration datasets are always
+    ``task_<task>_calibration``. The ``dataset_id`` suffix is appended for
+    run-scoping when present.
+    """
+    base = DATASET_NAMES[task]
+    purpose = "calibration" if calibration else "production"
+    name = f"{base}_{purpose}"
+    return f"{name}_{dataset_id}" if dataset_id else name
 
 
 def _collapsible_field(name: str, title: str, template_text: str) -> rg.CustomField:

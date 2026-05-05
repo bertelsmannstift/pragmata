@@ -10,8 +10,7 @@ from uuid import UUID
 
 import argilla as rg
 
-from pragmata.core.annotation.argilla_ops import apply_suffix
-from pragmata.core.annotation.argilla_task_definitions import DATASET_NAMES
+from pragmata.core.annotation.argilla_task_definitions import dataset_name
 from pragmata.core.annotation.constraints import CONSTRAINT_CHECKERS
 from pragmata.core.schemas.annotation_export import (
     GenerationAnnotation,
@@ -105,7 +104,7 @@ def fetch_task(
     By default returns only submitted responses; pass ``include_discarded=True``
     to also include responses the annotator discarded.
     """
-    dataset_name = apply_suffix(DATASET_NAMES[task], settings.dataset_id)
+    ds_name = dataset_name(task, calibration=False, dataset_id=settings.dataset_id)
 
     workspace_name: str | None = None
     for ws_base, task_overlaps in settings.workspace_dataset_map.items():
@@ -113,7 +112,7 @@ def fetch_task(
             workspace_name = ws_base
             break
 
-    dataset = client.datasets(dataset_name, workspace=workspace_name)
+    dataset = client.datasets(ds_name, workspace=workspace_name)
     statuses = ["submitted", "discarded"] if include_discarded else ["submitted"]
     query = rg.Query(filter=rg.Filter([("response.status", "in", statuses)]))
     check_constraints = CONSTRAINT_CHECKERS[task]

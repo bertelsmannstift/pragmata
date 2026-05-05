@@ -9,8 +9,8 @@ from dataclasses import dataclass, field
 
 import argilla as rg
 
-from pragmata.core.annotation.argilla_ops import apply_suffix, create_user, create_workspace
-from pragmata.core.annotation.argilla_task_definitions import DATASET_NAMES
+from pragmata.core.annotation.argilla_ops import create_user, create_workspace
+from pragmata.core.annotation.argilla_task_definitions import dataset_name
 from pragmata.core.settings.annotation_settings import AnnotationSettings, UserSpec
 
 logger = logging.getLogger(__name__)
@@ -103,11 +103,12 @@ def teardown_resources(
             continue
 
         for task in task_overlaps:
-            ds_name = apply_suffix(DATASET_NAMES[task], settings.dataset_id)
-            dataset = client.datasets(ds_name, workspace=ws_base)
-            if dataset is not None:
-                dataset.delete()
-                logger.info("Deleted dataset %r from workspace %r", ds_name, ws_base)
+            for calibration in (False, True):
+                ds_name = dataset_name(task, calibration=calibration, dataset_id=settings.dataset_id)
+                dataset = client.datasets(ds_name, workspace=ws_base)
+                if dataset is not None:
+                    dataset.delete()
+                    logger.info("Deleted dataset %r from workspace %r", ds_name, ws_base)
 
         if not settings.dataset_id:
             for user in list(workspace.users):
