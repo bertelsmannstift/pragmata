@@ -2,9 +2,9 @@
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, NonNegativeInt, PositiveInt
+from pydantic import BaseModel, ConfigDict, Field, NonNegativeInt, PositiveInt, model_validator
 
 from pragmata.core.schemas.annotation_task import Task
 from pragmata.core.settings.settings_base import ResolveSettings
@@ -58,8 +58,29 @@ class AnnotationSettings(ResolveSettings):
             "generation": {Task.GENERATION: TaskOverlap()},
         }
     )
+    calibration_fraction: float = Field(0.1, ge=0.0, le=1.0)
     calibration_partition_seed: NonNegativeInt = 0
     include_discarded: bool = False
+
+    @model_validator(mode="after")
+    def _check_calibration_topology(self) -> Self:
+        if self.calibration_fraction <= 0.0:
+            return self
+        missing = sorted(
+            {
+                task.value
+                for task_overlaps in self.workspace_dataset_map.values()
+                for task, overlap in task_overlaps.items()
+                if overlap.calibration_min_submitted is None
+            }
+        )
+        if missing:
+            raise ValueError(
+                f"calibration_fraction={self.calibration_fraction} > 0 but topology has no "
+                f"calibration dataset for tasks: {missing}. Either set calibration_fraction=0.0 "
+                f"or enable calibration in workspace_dataset_map."
+            )
+        return self
 
 
 @dataclass

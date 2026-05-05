@@ -12,6 +12,8 @@ import pytest
 from pragmata.api.annotation_import import import_records
 from pragmata.core.annotation.argilla_task_definitions import dataset_name
 from pragmata.core.annotation.setup import setup_workspaces, teardown_resources
+from pragmata.core.paths.annotation_paths import resolve_import_paths
+from pragmata.core.paths.paths import WorkspacePaths
 from pragmata.core.schemas.annotation_import import PartitionManifest
 from pragmata.core.schemas.annotation_task import Task
 from pragmata.core.settings.annotation_settings import AnnotationSettings
@@ -34,6 +36,12 @@ def _make_raw(i: int) -> dict:
         "context_set": "ctx-001",
         "language": "en",
     }
+
+
+def _manifest_path(base_dir: Path, dataset_id: str) -> Path:
+    """Resolve the partition manifest path the same way the import API does."""
+    workspace = WorkspacePaths.from_base_dir(base_dir)
+    return resolve_import_paths(workspace=workspace, dataset_id=dataset_id).partition_manifest
 
 
 @pytest.fixture(scope="module")
@@ -60,24 +68,39 @@ def base_dir(tmp_path: Path) -> Path:
 # ---------------------------------------------------------------------------
 
 
-def test_default_calibration_fraction_creates_both_datasets(client: rg.Argilla, base_dir: Path) -> None:
-    """Default fraction=0.1 routes ~10% to calibration; both datasets exist."""
+def test_explicit_fraction_creates_both_datasets(client: rg.Argilla, base_dir: Path) -> None:
+    """Explicit calibration_fraction=0.5 routes records into both datasets."""
     teardown_resources(client, _SETTINGS)
     setup_workspaces(client, _SETTINGS)
 
     records = [_make_raw(i) for i in range(50)]
     result = import_records(records, dataset_id=_DATASET_ID, base_dir=base_dir, calibration_fraction=0.5, **_CREDS)
 
-    # Both production and calibration datasets exist for retrieval
     prod_name = dataset_name(Task.RETRIEVAL, calibration=False, dataset_id=_DATASET_ID)
     cal_name = dataset_name(Task.RETRIEVAL, calibration=True, dataset_id=_DATASET_ID)
     assert client.datasets(prod_name, workspace="retrieval") is not None
     assert client.datasets(cal_name, workspace="retrieval") is not None
 
-    # Both populated
     assert result.calibration_count > 0
     assert result.production_count > 0
     assert result.calibration_count + result.production_count == len(records)
+    assert result.calibration_fraction == 0.5
+
+
+def test_default_fraction_resolves_from_settings(client: rg.Argilla, base_dir: Path) -> None:
+    """Omitted CLI/API kwarg falls through to AnnotationSettings default (0.1)."""
+    auto_id = "testdefaultfraction"
+    auto_settings = AnnotationSettings(dataset_id=auto_id)
+    teardown_resources(client, auto_settings)
+    setup_workspaces(client, auto_settings)
+
+    try:
+        # No calibration_fraction kwarg - settings default (0.1) wins.
+        result = import_records([_make_raw(i) for i in range(50)], dataset_id=auto_id, base_dir=base_dir, **_CREDS)
+        assert result.calibration_fraction == 0.1
+        assert result.calibration_count >= 1  # 0.1 of 50 records ~ 5 expected
+    finally:
+        teardown_resources(client, auto_settings)
 
 
 def test_calibration_fraction_zero_skips_calibration_dataset(client: rg.Argilla, base_dir: Path) -> None:
@@ -124,7 +147,7 @@ def test_reimport_locks_partition_assignments(client: rg.Argilla, base_dir: Path
         assert first.production_count == second.production_count
 
         # Manifest sidecar exists and has all 20 entries
-        manifest_path = base_dir / "annotation" / "imports" / auto_id / "partition.meta.json"
+        manifest_path = _manifest_path(base_dir, auto_id)
         assert manifest_path.exists()
         manifest = PartitionManifest.model_validate_json(manifest_path.read_text())
         assert len(manifest.assignments) == 20
@@ -149,7 +172,7 @@ def test_growing_batch_partitions_new_records_only(client: rg.Argilla, base_dir:
 
         # The first 10 keep their original assignments. The next 10 all go production
         # because fraction=0 on the second import.
-        manifest_path = base_dir / "annotation" / "imports" / auto_id / "partition.meta.json"
+        manifest_path = _manifest_path(base_dir, auto_id)
         manifest = PartitionManifest.model_validate_json(manifest_path.read_text())
         assert len(manifest.assignments) == 20
 
@@ -171,7 +194,7 @@ def test_records_carry_calibration_metadata_to_argilla(client: rg.Argilla, base_
         records = [_make_raw(i) for i in range(10)]
         import_records(records, dataset_id=auto_id, base_dir=base_dir, calibration_fraction=0.5, **_CREDS)
 
-        manifest_path = base_dir / "annotation" / "imports" / auto_id / "partition.meta.json"
+        manifest_path = _manifest_path(base_dir, auto_id)
         manifest = PartitionManifest.model_validate_json(manifest_path.read_text())
 
         cal_uuids = {rid for rid, entry in manifest.assignments.items() if entry.calibration}

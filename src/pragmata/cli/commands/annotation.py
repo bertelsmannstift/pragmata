@@ -35,7 +35,7 @@ def setup_command(
 
     Datasets are created automatically on import, not here. Per-task overlap
     (production and calibration ``min_submitted``) is configured via
-    ``workspace_dataset_map`` in the YAML config or ``AnnotationSettings``.
+    ``workspace_dataset_map`` in the YAML config (``--config``).
     """
     from pragmata import annotation
 
@@ -86,11 +86,12 @@ def import_command(
     format: str | None = typer.Option(
         None, "--format", help="File format override (json, jsonl, csv). Auto-detected by default."
     ),
-    calibration_fraction: float = typer.Option(
-        0.1,
+    calibration_fraction: float | None = typer.Option(
+        None,
         "--calibration-fraction",
         help="Fraction of records routed to the calibration dataset for this batch. "
-        "Set to 0.0 for production-only batches.",
+        "Falls through to YAML config and built-in default (0.1) when omitted; "
+        "set to 0.0 for production-only batches.",
     ),
 ) -> None:
     """Validate and import records into annotation datasets.
@@ -109,12 +110,14 @@ def import_command(
         dataset_id=UNSET if dataset_id is None else dataset_id,
         base_dir=UNSET if base_dir is None else base_dir,
         config_path=UNSET if config is None else config,
-        calibration_fraction=calibration_fraction,
+        calibration_fraction=UNSET if calibration_fraction is None else calibration_fraction,
     )
     typer.echo(f"Total records: {result.total_records}")
     typer.echo(
         f"Calibration: {result.calibration_count}, "
-        f"production: {result.production_count} (fraction={result.calibration_fraction:.3f})"
+        f"production: {result.production_count} "
+        f"(configured={result.calibration_fraction:.3f}, "
+        f"realised={result.realised_calibration_fraction:.3f})"
     )
     for ds, count in result.dataset_counts.items():
         typer.echo(f"  {ds}: {count}")

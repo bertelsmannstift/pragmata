@@ -43,18 +43,17 @@ class TestBucketCalibration:
         assert len(set(results)) == 1
 
     def test_different_seed_different_bucket(self) -> None:
-        # Probabilistic: different seeds usually flip at least one of N records
-        flips = 0
-        for i in range(50):
-            uuid = f"uuid-{i}"
-            if _bucket_calibration(uuid, 0.5, seed=0) != _bucket_calibration(uuid, 0.5, seed=99):
-                flips += 1
-        assert flips > 0
+        # Deterministic flip: "uuid-fixed" at fraction=0.5 buckets to True with
+        # seed=0 and to False with seed=5. Pinning specific values keeps this
+        # a regression check rather than a statistical sniff test.
+        assert _bucket_calibration("uuid-fixed", 0.5, seed=0) is True
+        assert _bucket_calibration("uuid-fixed", 0.5, seed=5) is False
 
-    def test_fraction_bounded_for_uniform_uuids(self) -> None:
-        # 10% target on 1000 records should be near 100, with wide tolerance for hash variance
+    def test_fraction_exact_count_for_fixed_uuids(self) -> None:
+        # Determined empirically for this exact (uuid set, fraction, seed); locks
+        # the hash-to-bucket mapping so any drift surfaces immediately.
         n_cal = sum(1 for i in range(1000) if _bucket_calibration(f"uuid-{i}", 0.1, seed=7))
-        assert 50 <= n_cal <= 150
+        assert n_cal == 116
 
 
 class TestAssignPartitions:

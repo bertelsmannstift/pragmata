@@ -37,7 +37,12 @@ class ImportResult:
         dataset_counts: Records submitted per dataset name.
         calibration_count: Records routed to the calibration dataset.
         production_count: Records routed to the production dataset.
-        calibration_fraction: Effective fraction in force this run.
+        calibration_fraction: Configured fraction used to assign new records
+            this run. May differ from ``realised_calibration_fraction`` on
+            re-imports because prior assignments are locked by the manifest.
+        realised_calibration_fraction: Actual share of records routed to
+            calibration this run, ``calibration_count / (calibration_count +
+            production_count)``. Zero when no records were assigned.
         errors: Per-record validation failures (index + detail).
     """
 
@@ -46,6 +51,7 @@ class ImportResult:
     calibration_count: int = 0
     production_count: int = 0
     calibration_fraction: float = 0.0
+    realised_calibration_fraction: float = 0.0
     errors: list[RecordError] = field(default_factory=list)
 
 
@@ -58,7 +64,7 @@ def import_records(
     dataset_id: str | Unset = UNSET,
     base_dir: str | Path | Unset = UNSET,
     config_path: str | Path | Unset = UNSET,
-    calibration_fraction: float = 0.1,
+    calibration_fraction: float | Unset = UNSET,
 ) -> ImportResult:
     """Validate and fan out records to per-purpose Argilla annotation datasets.
 
@@ -97,46 +103,25 @@ def import_records(
         base_dir: Workspace base directory. Defaults to cwd.
         config_path: Path to YAML config file for settings resolution.
         calibration_fraction: Fraction of records routed to the calibration
-            dataset for this import. Default 0.1 (industry standard for IAA
-            pilots). Set to 0.0 for production-only batches; use a non-zero
-            value when starting a calibration phase or re-calibrating.
+            dataset for this import. Falls through to YAML config and the
+            built-in default (0.1) when omitted. Set to 0.0 for
+            production-only batches.
 
     Returns:
         ImportResult with totals, per-dataset counts, partition counts, and
         validation errors.
-
-    Raises:
-        ValueError: ``calibration_fraction`` is outside [0.0, 1.0], or is
-            > 0 when topology declares no calibration dataset for any task
-            receiving records.
     """
-    if not 0.0 <= calibration_fraction <= 1.0:
-        raise ValueError(f"calibration_fraction must be in [0.0, 1.0]; got {calibration_fraction}")
-
     raw = resolve_records(records, format=format)
     settings = AnnotationSettings.resolve(
-        config=load_config_file(config_path) if isinstance(config_path, str | Path) else None,
+        config=load_config_file(config_path) if isinstance(config_path, (str, Path)) else None,
         env={"argilla": {"api_url": os.environ.get("ARGILLA_API_URL")}} if os.environ.get("ARGILLA_API_URL") else None,
         overrides={
             "argilla": {"api_url": api_url},
             "dataset_id": dataset_id,
             "base_dir": base_dir,
+            "calibration_fraction": calibration_fraction,
         },
     )
-
-    if calibration_fraction > 0.0:
-        missing = [
-            task.value
-            for task_overlaps in settings.workspace_dataset_map.values()
-            for task, overlap in task_overlaps.items()
-            if overlap.calibration_min_submitted is None
-        ]
-        if missing:
-            raise ValueError(
-                f"calibration_fraction={calibration_fraction} > 0 but topology has no "
-                f"calibration dataset for tasks: {sorted(set(missing))}. Either set "
-                f"calibration_fraction=0.0 or enable calibration in workspace_dataset_map."
-            )
 
     api_key = api_key if isinstance(api_key, str) else resolve_api_key("argilla")
     client = resolve_argilla_client(settings.argilla.api_url, api_key)
@@ -167,28 +152,33 @@ def import_records(
         assignments = assign_partitions(
             validation.valid,
             manifest=manifest,
-            fraction=calibration_fraction,
+            fraction=settings.calibration_fraction,
             import_id=import_id,
         )
         write_partition_manifest(import_paths.partition_manifest, manifest)
 
         calibration_count = sum(1 for is_cal in assignments.values() if is_cal)
         production_count = len(assignments) - calibration_count
+        assigned_total = calibration_count + production_count
+        realised = calibration_count / assigned_total if assigned_total else 0.0
 
         dataset_counts = fan_out_records(client, validation.valid, settings, assignments=assignments)
     logger.info(
-        "Import complete: %d records across %d datasets (calibration=%d, production=%d, fraction=%.3f)",
+        "Import complete: %d records across %d datasets "
+        "(calibration=%d, production=%d, configured=%.3f, realised=%.3f)",
         len(raw),
         len(dataset_counts),
         calibration_count,
         production_count,
-        calibration_fraction,
+        settings.calibration_fraction,
+        realised,
     )
     return ImportResult(
         total_records=len(raw),
         dataset_counts=dataset_counts,
         calibration_count=calibration_count,
         production_count=production_count,
-        calibration_fraction=calibration_fraction,
+        calibration_fraction=settings.calibration_fraction,
+        realised_calibration_fraction=realised,
         errors=validation.errors,
     )
