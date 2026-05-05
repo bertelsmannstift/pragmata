@@ -336,3 +336,38 @@ class TestImportRecordsCalibrationValidation:
 
         with pytest.raises(ValueError, match="calibration_fraction"):
             import_records([_make_raw()], dataset_id="t", calibration_fraction=0.1, config_path=config_path)
+
+
+class TestImportRecordsManifestOrdering:
+    """Manifest is written only after fan_out_records succeeds."""
+
+    @staticmethod
+    def _manifest_path(base_dir: Path, dataset_id: str) -> Path:
+        from pragmata.core.paths.annotation_paths import resolve_import_paths
+        from pragmata.core.paths.paths import WorkspacePaths
+
+        workspace = WorkspacePaths.from_base_dir(base_dir)
+        return resolve_import_paths(workspace=workspace, dataset_id=dataset_id).partition_manifest
+
+    @patch("pragmata.api.annotation_import.fan_out_records")
+    def test_manifest_written_after_successful_fan_out(self, mock_fan_out: MagicMock, _isolate_base_dir: Path) -> None:
+        mock_fan_out.return_value = {"ds1": 1}
+
+        manifest_path = self._manifest_path(_isolate_base_dir, "myrun")
+        assert not manifest_path.exists()
+
+        import_records([_make_raw()], dataset_id="myrun", calibration_fraction=0.0)
+
+        assert manifest_path.exists()
+
+    @patch("pragmata.api.annotation_import.fan_out_records")
+    def test_manifest_not_written_when_fan_out_raises(self, mock_fan_out: MagicMock, _isolate_base_dir: Path) -> None:
+        mock_fan_out.side_effect = RuntimeError("argilla blew up mid-batch")
+
+        manifest_path = self._manifest_path(_isolate_base_dir, "myrun")
+        assert not manifest_path.exists()
+
+        with pytest.raises(RuntimeError, match="argilla blew up"):
+            import_records([_make_raw()], dataset_id="myrun", calibration_fraction=0.0)
+
+        assert not manifest_path.exists(), "manifest must not be persisted on fan-out failure"

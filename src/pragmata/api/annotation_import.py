@@ -155,14 +155,18 @@ def import_records(
             fraction=settings.calibration_fraction,
             import_id=import_id,
         )
-        write_partition_manifest(import_paths.partition_manifest, manifest)
 
         calibration_count = sum(1 for is_cal in assignments.values() if is_cal)
         production_count = len(assignments) - calibration_count
         assigned_total = calibration_count + production_count
         realised = calibration_count / assigned_total if assigned_total else 0.0
 
+        # Manifest is written only after fan-out succeeds. On failure, the
+        # in-memory assignments are dropped; deterministic hashing ensures the
+        # next attempt re-derives the same buckets without persisting state for
+        # records that were never logged.
         dataset_counts = fan_out_records(client, validation.valid, settings, assignments=assignments)
+        write_partition_manifest(import_paths.partition_manifest, manifest)
     logger.info(
         "Import complete: %d records across %d datasets "
         "(calibration=%d, production=%d, configured=%.3f, realised=%.3f)",
