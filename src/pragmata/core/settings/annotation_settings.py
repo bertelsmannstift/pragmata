@@ -22,9 +22,7 @@ class TaskOverlap(BaseModel):
     """Per-task overlap topology: production and (optional) calibration thresholds.
 
     Calibration is declared here so future imports can route a subset of
-    records to a separate calibration dataset for IAA. This PR only reads
-    ``production_min_submitted``; calibration support arrives in subsequent
-    PRs.
+    records to a separate calibration dataset for IAA.
 
     Attributes:
         production_min_submitted: Argilla ``min_submitted`` for the production

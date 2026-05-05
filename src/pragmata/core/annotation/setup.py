@@ -103,7 +103,7 @@ def teardown_resources(
             continue
 
         for task in task_overlaps:
-            ds_name = dataset_name(task, calibration=False, dataset_id=settings.dataset_id)
+            ds_name = apply_suffix(DATASET_NAMES[task], settings.dataset_id)
             dataset = client.datasets(ds_name, workspace=ws_base)
             if dataset is not None:
                 dataset.delete()

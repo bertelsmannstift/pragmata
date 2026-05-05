@@ -35,7 +35,9 @@ def _make_raw(n_chunks: int = 2, *, language: str | None = "de") -> dict:
 
 
 @pytest.fixture(scope="module")
-def client() -> rg.Argilla:
+def client(annotation_stack_status) -> rg.Argilla:
+    if not annotation_stack_status.ready:
+        pytest.skip(annotation_stack_status.skip_reason or "annotation stack not ready")
     return rg.Argilla(api_url=_API_URL, api_key=_API_KEY)
 
 
