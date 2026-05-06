@@ -82,6 +82,19 @@ class AnnotationSettings(ResolveSettings):
             )
         return self
 
+    @model_validator(mode="after")
+    def _validate_task_uniqueness(self) -> Self:
+        seen: set[Task] = set()
+        for task_overlaps in self.workspace_dataset_map.values():
+            for task in task_overlaps:
+                if task in seen:
+                    raise ValueError(
+                        f"task {task.value!r} appears in multiple workspace_dataset_map entries; "
+                        "each task must belong to exactly one workspace."
+                    )
+                seen.add(task)
+        return self
+
 
 @dataclass
 class UserSpec:
