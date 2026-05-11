@@ -1,6 +1,6 @@
 """Tests for the synthetic query-generation stage-1 planning executor."""
 
-from unittest.mock import Mock
+from unittest.mock import ANY, Mock
 
 import pytest
 
@@ -282,13 +282,19 @@ def test_run_planning_stage_wires_planning_assets_and_settings_into_llm_builder(
         model_provider=llm_settings.model_provider,
         model=llm_settings.planning_model,
         api_key="test-api-key",
-        output_schema=QueryBlueprintList,
+        output_schema=ANY,
         requests_per_second=llm_settings.requests_per_second,
         check_every_n_seconds=llm_settings.check_every_n_seconds,
         max_bucket_size=llm_settings.max_bucket_size,
         base_url=llm_settings.base_url,
         model_kwargs=llm_settings.planning_model_kwargs,
     )
+
+    output_schema = build_llm_runnable_mock.call_args.kwargs["output_schema"]
+    assert issubclass(output_schema, QueryBlueprintList)
+    assert output_schema is not QueryBlueprintList
+    assert output_schema.__name__ == "QueryBlueprintListLen1"
+
     mock_runnable.invoke.assert_called_once_with(expected_prompt_vars)
 
 

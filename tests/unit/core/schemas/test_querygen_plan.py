@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from pragmata.core.schemas.querygen_plan import QueryBlueprint, QueryBlueprintList
+from pragmata.core.schemas.querygen_plan import QueryBlueprint, QueryBlueprintList, make_query_blueprint_list_schema
 
 
 @pytest.fixture()
@@ -111,6 +111,22 @@ def test_query_blueprint_list_accepts_valid_candidates(
     assert len(result.candidates) == 2
     assert result.candidates[1].domain == "labour market policy"
     assert result.candidates[1].topic == "minimum wage effects"
+
+
+def test_dynamic_query_blueprint_list_schema_enforces_expected_candidate_count(
+    base_payload: dict[str, object],
+) -> None:
+    """Dynamic wrapper schema enforces the expected candidate count."""
+    schema = make_query_blueprint_list_schema(expected_length=2)
+    second_payload = {**base_payload, "candidate_id": "candidate-002"}
+
+    result = schema.model_validate({"candidates": [base_payload, second_payload]})
+
+    assert isinstance(result, QueryBlueprintList)
+    assert len(result.candidates) == 2
+
+    with pytest.raises(ValidationError):
+        schema.model_validate({"candidates": [base_payload]})
 
 
 def test_query_blueprint_list_rejects_extra_fields() -> None:

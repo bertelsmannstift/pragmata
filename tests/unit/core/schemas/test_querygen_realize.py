@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from pragmata.core.schemas.querygen_realize import RealizedQuery, RealizedQueryList
+from pragmata.core.schemas.querygen_realize import RealizedQuery, RealizedQueryList, make_realized_query_list_schema
 
 
 @pytest.fixture()
@@ -55,6 +55,21 @@ def test_realized_query_list_accepts_valid_payload(
     assert len(realized_query_list.queries) == 2
     assert realized_query_list.queries[0].candidate_id == "cand_001"
     assert realized_query_list.queries[1].query == "What documents do I need to apply for housing support?"
+
+
+def test_dynamic_realized_query_list_schema_enforces_expected_query_count(
+    valid_realized_query_list_payload: dict[str, list[dict[str, str]]],
+) -> None:
+    """Dynamic wrapper schema enforces the expected realized-query count."""
+    schema = make_realized_query_list_schema(expected_length=2)
+
+    result = schema.model_validate(valid_realized_query_list_payload)
+
+    assert isinstance(result, RealizedQueryList)
+    assert len(result.queries) == 2
+
+    with pytest.raises(ValidationError):
+        schema.model_validate({"queries": valid_realized_query_list_payload["queries"][:1]})
 
 
 def test_realized_query_list_rejects_extra_keys(
