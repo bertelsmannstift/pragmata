@@ -1,4 +1,4 @@
-"""Filtering for positional candidate-ID alignment."""
+"""Filtering for candidate-ID membership alignment."""
 
 from pragmata.core.types import CandidateItemT
 
@@ -7,20 +7,26 @@ def filter_aligned_candidate_ids(
     items: list[CandidateItemT],
     expected_candidate_ids: list[str],
 ) -> list[CandidateItemT]:
-    """Filter items by positional candidate-ID agreement.
+    """Filter generated items by candidate-ID membership.
 
-    Args:
-        items: Generated items carrying ``candidate_id`` attributes.
-        expected_candidate_ids: Ordered candidate IDs expected for the current
-            stage output.
-
-    Returns:
-        A filtered list containing only positionally aligned items.
+    The first returned item for each expected candidate_id is kept. Unexpected
+    candidate IDs and later duplicates are ignored. Returned items follow the
+    expected candidate-ID order.
     """
-    kept_items: list[CandidateItemT] = []
+    expected_ids = set(expected_candidate_ids)
+    first_item_by_id: dict[str, CandidateItemT] = {}
 
-    for expected_candidate_id, item in zip(expected_candidate_ids, items, strict=False):
-        if item.candidate_id == expected_candidate_id:
-            kept_items.append(item)
+    for item in items:
+        candidate_id = item.candidate_id
 
-    return kept_items
+        if candidate_id not in expected_ids:
+            continue
+
+        if candidate_id in first_item_by_id:
+            continue
+
+        first_item_by_id[candidate_id] = item
+
+    return [
+        first_item_by_id[candidate_id] for candidate_id in expected_candidate_ids if candidate_id in first_item_by_id
+    ]
