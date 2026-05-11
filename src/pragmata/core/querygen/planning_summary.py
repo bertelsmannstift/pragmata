@@ -184,7 +184,7 @@ def run_planning_summary(
             check_every_n_seconds=llm_settings.check_every_n_seconds,
             max_bucket_size=llm_settings.max_bucket_size,
             base_url=llm_settings.base_url,
-            model_kwargs=llm_settings.model_kwargs,
+            model_kwargs=llm_settings.planning_model_kwargs,
         )
         llm_output = llm_runnable.invoke(prompt_vars)
     except LlmInitializationError:
