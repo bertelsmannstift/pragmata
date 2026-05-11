@@ -34,7 +34,8 @@ def test_llm_settings_defaults() -> None:
     assert settings.planning_model == "magistral-medium-latest"
     assert settings.realization_model == "mistral-medium-latest"
     assert settings.base_url is None
-    assert settings.model_kwargs == {}
+    assert settings.planning_model_kwargs == {}
+    assert settings.realization_model_kwargs == {}
     assert settings.requests_per_second == 1.0
     assert settings.check_every_n_seconds == 1.0
     assert settings.max_bucket_size == 1
@@ -47,7 +48,8 @@ def test_querygen_run_settings_construction_with_defaults() -> None:
     assert settings.llm.model_provider == "mistralai"
     assert settings.llm.planning_model == "magistral-medium-latest"
     assert settings.llm.realization_model == "mistral-medium-latest"
-    assert settings.llm.model_kwargs == {}
+    assert settings.llm.planning_model_kwargs == {}
+    assert settings.llm.realization_model_kwargs == {}
     assert isinstance(settings.base_dir, Path)
     assert settings.run_id
     assert settings.n_queries == 50
@@ -63,9 +65,12 @@ def test_querygen_run_settings_resolve_deep_merges_nested_llm_settings() -> None
             "spec": _valid_spec_payload(),
             "llm": {
                 "model_provider": "mistralai",
-                "model_kwargs": {
+                "planning_model_kwargs": {
                     "temperature": 0.2,
                     "top_p": 0.9,
+                },
+                "realization_model_kwargs": {
+                    "temperature": 0.4,
                 },
             },
             "n_queries": 20,
@@ -73,7 +78,7 @@ def test_querygen_run_settings_resolve_deep_merges_nested_llm_settings() -> None
         overrides={
             "llm": {
                 "planning_model": "magistral-small-latest",
-                "model_kwargs": {
+                "planning_model_kwargs": {
                     "temperature": 0.7,
                 },
             }
@@ -84,9 +89,12 @@ def test_querygen_run_settings_resolve_deep_merges_nested_llm_settings() -> None
     assert resolved.llm.model_provider == "mistralai"
     assert resolved.llm.planning_model == "magistral-small-latest"
     assert resolved.llm.realization_model == "mistral-medium-latest"
-    assert resolved.llm.model_kwargs == {
+    assert resolved.llm.planning_model_kwargs == {
         "temperature": 0.7,
         "top_p": 0.9,
+    }
+    assert resolved.llm.realization_model_kwargs == {
+        "temperature": 0.4,
     }
 
 
@@ -96,32 +104,47 @@ def test_querygen_run_settings_model_kwargs_merge_semantics() -> None:
         config={
             "spec": _valid_spec_payload(),
             "llm": {
-                "model_kwargs": {
+                "planning_model_kwargs": {
                     "temperature": 0.2,
                     "top_p": 0.9,
-                }
+                },
+                "realization_model_kwargs": {
+                    "temperature": 0.4,
+                    "max_tokens": 500,
+                },
             },
         },
         env={
             "llm": {
-                "model_kwargs": {
+                "planning_model_kwargs": {
                     "max_tokens": 300,
-                }
+                },
+                "realization_model_kwargs": {
+                    "temperature": 0.6,
+                },
             },
         },
         overrides={
             "llm": {
-                "model_kwargs": {
+                "planning_model_kwargs": {
                     "temperature": 0.7,
-                }
+                },
+                "realization_model_kwargs": {
+                    "top_p": 0.8,
+                },
             }
         },
     )
 
-    assert resolved.llm.model_kwargs == {
+    assert resolved.llm.planning_model_kwargs == {
         "temperature": 0.7,
         "top_p": 0.9,
         "max_tokens": 300,
+    }
+    assert resolved.llm.realization_model_kwargs == {
+        "temperature": 0.6,
+        "max_tokens": 500,
+        "top_p": 0.8,
     }
 
 
