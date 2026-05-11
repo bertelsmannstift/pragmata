@@ -3,7 +3,7 @@
 from pragmata.core.querygen.llm import LlmInitializationError, build_llm_runnable
 from pragmata.core.querygen.prompts import SYSTEM_PROMPT_PLANNING, USER_PROMPT_PLANNING
 from pragmata.core.schemas.querygen_input import QueryGenSpec, WeightedValue
-from pragmata.core.schemas.querygen_plan import QueryBlueprint, QueryBlueprintList
+from pragmata.core.schemas.querygen_plan import QueryBlueprint, make_query_blueprint_list_schema
 from pragmata.core.schemas.querygen_summary import PlanningSummaryState
 from pragmata.core.settings.querygen_settings import LlmSettings
 
@@ -152,6 +152,8 @@ def run_planning_stage(
         planning_summary=planning_summary,
     )
 
+    output_schema = make_query_blueprint_list_schema(len(batch_candidate_ids))
+
     try:
         llm_runnable = build_llm_runnable(
             system_text=SYSTEM_PROMPT_PLANNING,
@@ -159,7 +161,7 @@ def run_planning_stage(
             model_provider=llm_settings.model_provider,
             model=llm_settings.planning_model,
             api_key=api_key,
-            output_schema=QueryBlueprintList,
+            output_schema=output_schema,
             requests_per_second=llm_settings.requests_per_second,
             check_every_n_seconds=llm_settings.check_every_n_seconds,
             max_bucket_size=llm_settings.max_bucket_size,
