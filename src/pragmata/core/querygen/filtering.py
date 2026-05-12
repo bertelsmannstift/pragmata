@@ -9,9 +9,15 @@ def filter_aligned_candidate_ids(
 ) -> list[CandidateItemT]:
     """Filter generated items by candidate-ID membership.
 
-    The first returned item for each expected candidate_id is kept. Unexpected
-    candidate IDs and later duplicates are ignored. Returned items follow the
-    expected candidate-ID order.
+    Args:
+        items: Generated items carrying ``candidate_id`` attributes.
+        expected_candidate_ids: Ordered candidate IDs expected for the current
+            stage output.
+
+    Returns:
+        A filtered list containing the first returned item for each expected
+        candidate ID. Unexpected candidate IDs and later duplicates are ignored.
+        Returned items follow the expected candidate-ID order.
     """
     expected_ids = set(expected_candidate_ids)
     first_item_by_id: dict[str, CandidateItemT] = {}
