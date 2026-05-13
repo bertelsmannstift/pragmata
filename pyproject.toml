@@ -3,7 +3,7 @@ name = "pragmata"
 version = "0.0.1"
 description = "Evidence-grounded evaluation framework for RAG systems with synthetic query generation, structured annotation, and model-assisted label inference for scalable scoring."
 authors =[
-  { name = "Sascha Göbel", email = "goebel@hertie-school.org" },
+  { name = "Sascha Göbel", email = "sascha.goebel@tuta.com" },
   { name = "Henry Baker", email =  "h.baker@hertie-school.org" },
   { name = "Luis Fernando Ramírez Ruiz" },
 ]
