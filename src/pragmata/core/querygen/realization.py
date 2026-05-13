@@ -3,7 +3,7 @@
 from pragmata.core.querygen.llm import LlmInitializationError, build_llm_runnable
 from pragmata.core.querygen.prompts import SYSTEM_PROMPT_REALIZATION, USER_PROMPT_REALIZATION
 from pragmata.core.schemas.querygen_plan import QueryBlueprint
-from pragmata.core.schemas.querygen_realize import RealizedQuery, RealizedQueryList
+from pragmata.core.schemas.querygen_realize import RealizedQuery, make_realized_query_list_schema
 from pragmata.core.settings.querygen_settings import LlmSettings
 
 
@@ -90,6 +90,8 @@ def run_realization_stage(
     """
     prompt_vars = _build_realization_prompt_vars(candidates)
 
+    output_schema = make_realized_query_list_schema(len(candidates))
+
     try:
         llm_runnable = build_llm_runnable(
             system_text=SYSTEM_PROMPT_REALIZATION,
@@ -97,7 +99,7 @@ def run_realization_stage(
             model_provider=llm_settings.model_provider,
             model=llm_settings.realization_model,
             api_key=api_key,
-            output_schema=RealizedQueryList,
+            output_schema=output_schema,
             requests_per_second=llm_settings.requests_per_second,
             check_every_n_seconds=llm_settings.check_every_n_seconds,
             max_bucket_size=llm_settings.max_bucket_size,
