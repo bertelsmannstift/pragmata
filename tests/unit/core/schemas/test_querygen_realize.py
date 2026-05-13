@@ -76,9 +76,7 @@ def test_dynamic_realized_query_list_schema_enforces_expected_query_count(
         schema.model_validate({"queries": valid_realized_query_list_payload["queries"][:1]})
 
     with pytest.raises(ValidationError):
-        schema.model_validate(
-            {"queries": [*valid_realized_query_list_payload["queries"], extra_query_payload]}
-        )
+        schema.model_validate({"queries": [*valid_realized_query_list_payload["queries"], extra_query_payload]})
 
 
 def test_realized_query_list_rejects_extra_keys(
