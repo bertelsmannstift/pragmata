@@ -27,7 +27,8 @@ def llm_settings() -> LlmSettings:
         check_every_n_seconds=0.2,
         max_bucket_size=3,
         base_url="https://example.invalid/v1",
-        model_kwargs={"temperature": 0.2},
+        planning_model_kwargs={"temperature": 0.2},
+        realization_model_kwargs={"temperature": 0.8},
     )
 
 
@@ -177,7 +178,7 @@ def test_run_realization_stage_wires_realization_assets_and_settings_into_llm_bu
         check_every_n_seconds=llm_settings.check_every_n_seconds,
         max_bucket_size=llm_settings.max_bucket_size,
         base_url=llm_settings.base_url,
-        model_kwargs=llm_settings.model_kwargs,
+        model_kwargs=llm_settings.realization_model_kwargs,
     )
     mock_runnable.invoke.assert_called_once_with(expected_prompt_vars_single)
 

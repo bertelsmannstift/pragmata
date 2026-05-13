@@ -253,17 +253,20 @@ def happy_path_workflow_stubs(
     planning_summary_contexts: list[str] = []
     planning_summary_calls: list[dict[str, object]] = []
     realization_calls: list[list[str]] = []
+    planning_build_calls: list[dict[str, object]] = []
+    planning_summary_build_calls: list[dict[str, object]] = []
+    realization_build_calls: list[dict[str, object]] = []
 
     def fake_planning_build_llm_runnable(**kwargs: object) -> _PlanningRunnableStub:
-        del kwargs
+        planning_build_calls.append(dict(kwargs))
         return _PlanningRunnableStub(planning_calls, planning_summary_contexts)
 
     def fake_planning_summary_build_llm_runnable(**kwargs: object) -> _PlanningSummaryRunnableStub:
-        del kwargs
+        planning_summary_build_calls.append(dict(kwargs))
         return _PlanningSummaryRunnableStub(planning_summary_calls)
 
     def fake_realization_build_llm_runnable(**kwargs: object) -> _RealizationRunnableStub:
-        del kwargs
+        realization_build_calls.append(dict(kwargs))
         return _RealizationRunnableStub(realization_calls)
 
     monkeypatch.setattr(planning, "build_llm_runnable", fake_planning_build_llm_runnable)
@@ -289,6 +292,9 @@ def happy_path_workflow_stubs(
         "planning_summary_contexts": planning_summary_contexts,
         "planning_summary_calls": planning_summary_calls,
         "realization_calls": realization_calls,
+        "planning_build_calls": planning_build_calls,
+        "planning_summary_build_calls": planning_summary_build_calls,
+        "realization_build_calls": realization_build_calls,
     }
 
 
@@ -298,12 +304,22 @@ def test_gen_queries_executes_staged_workflow_with_recursive_planning_summary_an
 ) -> None:
     base_dir = tmp_path / "workspace"
     run_id = "integration-run-staged-001"
+    planning_model_kwargs = {
+        "temperature": 0.2,
+        "metadata": {"stage": "planning"},
+    }
+    realization_model_kwargs = {
+        "temperature": 0.8,
+        "metadata": {"stage": "realization"},
+    }
 
     result = querygen.gen_queries(
         **_required_querygen_kwargs(base_dir),
         run_id=run_id,
         n_queries=5,
         batch_size=2,
+        planning_model_kwargs=planning_model_kwargs,
+        realization_model_kwargs=realization_model_kwargs,
     )
 
     assert isinstance(result, querygen.QueryGenRunResult)
@@ -322,6 +338,22 @@ def test_gen_queries_executes_staged_workflow_with_recursive_planning_summary_an
         ["c001", "c002"],
         ["c003"],
     ]
+
+    planning_build_calls = happy_path_workflow_stubs["planning_build_calls"]
+    planning_summary_build_calls = happy_path_workflow_stubs["planning_summary_build_calls"]
+    realization_build_calls = happy_path_workflow_stubs["realization_build_calls"]
+
+    assert len(planning_build_calls) == 3
+    assert len(planning_summary_build_calls) == 3
+    assert len(realization_build_calls) == 2
+
+    assert all(call["model_kwargs"] == planning_model_kwargs for call in planning_build_calls)
+    assert all(call["model_kwargs"] == planning_model_kwargs for call in planning_summary_build_calls)
+    assert all(call["model_kwargs"] == realization_model_kwargs for call in realization_build_calls)
+
+    assert all(call["model"] == "magistral-medium-latest" for call in planning_build_calls)
+    assert all(call["model"] == "magistral-medium-latest" for call in planning_summary_build_calls)
+    assert all(call["model"] == "mistral-medium-latest" for call in realization_build_calls)
 
     planning_summary_calls = happy_path_workflow_stubs["planning_summary_calls"]
     assert planning_summary_calls == [
