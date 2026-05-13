@@ -62,6 +62,10 @@ def test_dynamic_realized_query_list_schema_enforces_expected_query_count(
 ) -> None:
     """Dynamic wrapper schema enforces the expected realized-query count."""
     schema = make_realized_query_list_schema(expected_length=2)
+    extra_query_payload = {
+        "candidate_id": "cand_003",
+        "query": "Where can I check the status of a housing support application?",
+    }
 
     result = schema.model_validate(valid_realized_query_list_payload)
 
@@ -70,6 +74,11 @@ def test_dynamic_realized_query_list_schema_enforces_expected_query_count(
 
     with pytest.raises(ValidationError):
         schema.model_validate({"queries": valid_realized_query_list_payload["queries"][:1]})
+
+    with pytest.raises(ValidationError):
+        schema.model_validate(
+            {"queries": [*valid_realized_query_list_payload["queries"], extra_query_payload]}
+        )
 
 
 def test_realized_query_list_rejects_extra_keys(

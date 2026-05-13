@@ -119,6 +119,7 @@ def test_dynamic_query_blueprint_list_schema_enforces_expected_candidate_count(
     """Dynamic wrapper schema enforces the expected candidate count."""
     schema = make_query_blueprint_list_schema(expected_length=2)
     second_payload = {**base_payload, "candidate_id": "candidate-002"}
+    third_payload = {**base_payload, "candidate_id": "candidate-003"}
 
     result = schema.model_validate({"candidates": [base_payload, second_payload]})
 
@@ -127,6 +128,9 @@ def test_dynamic_query_blueprint_list_schema_enforces_expected_candidate_count(
 
     with pytest.raises(ValidationError):
         schema.model_validate({"candidates": [base_payload]})
+
+    with pytest.raises(ValidationError):
+        schema.model_validate({"candidates": [base_payload, second_payload, third_payload]})
 
 
 def test_query_blueprint_list_rejects_extra_fields() -> None:
