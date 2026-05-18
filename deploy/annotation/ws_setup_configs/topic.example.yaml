@@ -1,18 +1,50 @@
 # Example setup config for one annotation topic.
 #
-# Copy this file, replace "topic" with the actual topic slug, 
-# and tune workspace names / overlap thresholds.
-#
-# The workspace_dataset_map keys are Argilla workspace names; the inner keys
-# (retrieval / grounding / generation) are tasks. 
-#
-# Each task block accepts the TaskOverlap fields (production_min_submitted, 
-# calibration_min_submitted); left empty uses defaults from AnnotationSettings.
+# Copy this file, replace "topic" with the actual topic slug, and tune
+# workspace names / overlap thresholds. 
+# Pass with --config to `pragmata annotation setup` to create workspaces and partition the dataset.
 
 workspace_dataset_map:
   topic-retrieval:
-    retrieval: {}
+    retrieval: {} # defaults min_submitted: 1 for production, 3 for calibration
   topic-grounding:
     grounding: {}
   topic-generation:
     generation: {}
+
+# The above is equivalent to the more verbose form below, which shows all available fields and their defaults.
+
+workspace_dataset_map:
+  topic-retrieval:
+    retrieval:
+      production_min_submitted: 1
+      calibration_min_submitted: 3
+  topic-grounding:
+    grounding:
+      production_min_submitted: 1
+      calibration_min_submitted: 3
+  topic-generation:
+    generation:
+      production_min_submitted: 1
+      calibration_min_submitted: 3
+
+# Fraction of imported records routed to the calibration dataset.
+calibration_fraction: 0.1 # default
+
+# Hash seed for deterministic calibration partitioning. 
+calibration_partition_seed: 0 # default
+
+# Suffix appended to dataset names for run-scoping (e.g. "pilot1"
+# produces task_retrieval_production_pilot1). Empty string uses
+# unsuffixed names. Usually set via --dataset-id on the CLI rather
+# than here.
+dataset_id: "" # default
+
+# Workspace base directory for run artifacts (logs, partition
+# manifests, export CSVs). Defaults to the cwd at load time.
+base_dir: "." # default
+
+# Default for the export filter: when true, exported CSVs include
+# responses the annotator marked as discarded. The --include-discarded
+# CLI flag on `pragmata annotation export` overrides this.
+include_discarded: false # default
