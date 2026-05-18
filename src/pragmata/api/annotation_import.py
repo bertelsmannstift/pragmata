@@ -93,7 +93,7 @@ def import_records(
     Credential resolution:
     - ``api_url``: kwarg > ``ARGILLA_API_URL`` env > config (``argilla.api_url``)
     - ``api_key``: kwarg > ``ARGILLA_API_KEY`` env (secrets never live in config)
-    - ``locale``: kwarg > ``PRAGMATA_ANNOTATION_LOCALE`` env > config > default EN
+    - ``locale``: kwarg > ``--config`` file > default EN
 
     Args:
         records: Input data — list[dict], file path (str/Path), HF Dataset,
@@ -119,15 +119,7 @@ def import_records(
     raw = resolve_records(records, format=format)
     settings = AnnotationSettings.resolve(
         config=load_config_file(config_path) if isinstance(config_path, (str, Path)) else None,
-        env=(
-            ({"argilla": {"api_url": os.environ.get("ARGILLA_API_URL")}} if os.environ.get("ARGILLA_API_URL") else {})
-            | (
-                {"locale": os.environ.get("PRAGMATA_ANNOTATION_LOCALE")}
-                if os.environ.get("PRAGMATA_ANNOTATION_LOCALE")
-                else {}
-            )
-        )
-        or None,
+        env={"argilla": {"api_url": os.environ.get("ARGILLA_API_URL")}} if os.environ.get("ARGILLA_API_URL") else None,
         overrides={
             "argilla": {"api_url": api_url},
             "dataset_id": dataset_id,
