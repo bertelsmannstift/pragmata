@@ -1,11 +1,11 @@
 """Annotation import API - thin orchestration over core/ implementation."""
 
 import logging
+import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-from pragmata.api._env import annotation_env_layer
 from pragmata.api._error_log import error_log
 from pragmata.core.annotation.client import resolve_argilla_client
 from pragmata.core.annotation.loaders import RecordInput, resolve_records
@@ -119,7 +119,10 @@ def import_records(
     raw = resolve_records(records, format=format)
     settings = AnnotationSettings.resolve(
         config=load_config_file(config_path) if isinstance(config_path, (str, Path)) else None,
-        env=annotation_env_layer(),
+        env=(
+            ({"argilla": {"api_url": os.environ.get("ARGILLA_API_URL")}} if os.environ.get("ARGILLA_API_URL") else {})
+            | ({"locale": os.environ.get("PRAGMATA_ANNOTATION_LOCALE")} if os.environ.get("PRAGMATA_ANNOTATION_LOCALE") else {})
+        ) or None,
         overrides={
             "argilla": {"api_url": api_url},
             "dataset_id": dataset_id,
