@@ -1,0 +1,17 @@
+[
+  {
+    "username": "annotator-1",
+    "role": "annotator",
+    "workspaces": ["topic-retrieval", "topic-grounding"]
+  },
+  {
+    "username": "annotator-2",
+    "role": "annotator",
+    "workspaces": ["topic-generation"]
+  },
+  {
+    "username": "team-lead",
+    "role": "owner",
+    "workspaces": ["topic-retrieval", "topic-grounding", "topic-generation"]
+  }
+]

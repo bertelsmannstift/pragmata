@@ -29,3 +29,12 @@ venv/
 .env.*
 !.env.example
 !.env.*.example
+
+# Deployment instance data
+# tracked *.example files document the schema.
+deploy/annotation/input_records/*.jsonl
+!deploy/annotation/input_records/*.example.jsonl
+deploy/annotation/ws_setup_configs/*.yaml
+!deploy/annotation/ws_setup_configs/*.example.yaml
+deploy/annotation/users.json
+!deploy/annotation/users.example.json
