@@ -1,9 +1,9 @@
 """Annotation export API — fetch submitted responses and write flat CSVs per task."""
 
 import logging
-import os
 from pathlib import Path
 
+from pragmata.api._env import annotation_env_layer
 from pragmata.api._error_log import error_log
 from pragmata.core.annotation.client import resolve_argilla_client
 from pragmata.core.annotation.export_runner import ExportResult, resolve_export_id, run_export
@@ -56,7 +56,7 @@ def export_annotations(
     """
     settings = AnnotationSettings.resolve(
         config=load_config_file(config_path) if isinstance(config_path, (str, Path)) else None,
-        env={"argilla": {"api_url": os.environ.get("ARGILLA_API_URL")}} if os.environ.get("ARGILLA_API_URL") else None,
+        env=annotation_env_layer(),
         overrides={
             "argilla": {"api_url": api_url},
             "dataset_id": dataset_id,
