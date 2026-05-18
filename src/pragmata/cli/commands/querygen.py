@@ -60,10 +60,15 @@ def gen_queries_command(
     base_url: str | None = typer.Option(
         None, "--base-url", help="Base URL for the provider endpoint. Accepts a URL string"
     ),
-    model_kwargs: str | None = typer.Option(
+    planning_model_kwargs: str | None = typer.Option(
         None,
-        "--model-kwargs",
-        help="dditional model keyword arguments. Accepts a JSON object.",
+        "--planning-model-kwargs",
+        help="Additional planning-stage model keyword arguments. Accepts a JSON object.",
+    ),
+    realization_model_kwargs: str | None = typer.Option(
+        None,
+        "--realization-model-kwargs",
+        help="Additional realization-stage model keyword arguments. Accepts a JSON object.",
     ),
 ) -> None:
     """Prepare a synthetic query generation run."""
@@ -85,7 +90,8 @@ def gen_queries_command(
         planning_model=UNSET if planning_model is None else planning_model,
         realization_model=UNSET if realization_model is None else realization_model,
         base_url=UNSET if base_url is None else base_url,
-        model_kwargs=parse_cli_value(model_kwargs),
+        planning_model_kwargs=parse_cli_value(planning_model_kwargs),
+        realization_model_kwargs=parse_cli_value(realization_model_kwargs),
     )
 
     typer.echo("Synthetic query generation run prepared.")

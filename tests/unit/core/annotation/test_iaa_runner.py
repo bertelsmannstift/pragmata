@@ -18,6 +18,7 @@ from pragmata.core.schemas.iaa_report import IaaReport
 
 _BASE_FIELDS = {
     "language": "en",
+    "calibration": True,
     "inserted_at": datetime(2026, 1, 1, tzinfo=timezone.utc),
     "record_status": "submitted",
     "response_status": "submitted",

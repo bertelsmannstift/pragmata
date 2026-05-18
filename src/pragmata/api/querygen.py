@@ -67,7 +67,8 @@ def gen_queries(
     check_every_n_seconds: float | Unset = UNSET,
     max_bucket_size: int | Unset = UNSET,
     base_url: str | Unset = UNSET,
-    model_kwargs: dict[str, Any] | Unset = UNSET,
+    planning_model_kwargs: dict[str, Any] | Unset = UNSET,
+    realization_model_kwargs: dict[str, Any] | Unset = UNSET,
     batch_size: PositiveInt | Unset = UNSET,
     near_duplicate_tolerance: float | Unset = UNSET,
     enable_planning_memory: bool | Unset = UNSET,
@@ -128,8 +129,11 @@ def gen_queries(
         max_bucket_size: Maximum burst size for the llm rate limiter. Defaults to 1.
         base_url: Optional custom API endpoint for the provider (e.g., Azure
             OpenAI deployments).
-        model_kwargs: Additional provider-specific keyword arguments passed
-            through to the underlying chat model.
+        planning_model_kwargs: Additional provider-specific keyword arguments passed
+            through to the planning-stage chat model. Also used by the planning-summary
+            updater because it invokes the configured planning model.
+        realization_model_kwargs: Additional provider-specific keyword arguments passed
+            through to the realization-stage chat model.
 
     Returns:
         QueryGenRunResult: Run descriptor containing the resolved settings used
@@ -168,7 +172,8 @@ def gen_queries(
                 "check_every_n_seconds": check_every_n_seconds,
                 "max_bucket_size": max_bucket_size,
                 "base_url": base_url,
-                "model_kwargs": model_kwargs,
+                "planning_model_kwargs": planning_model_kwargs,
+                "realization_model_kwargs": realization_model_kwargs,
             },
             "base_dir": base_dir,
             "run_id": run_id,
