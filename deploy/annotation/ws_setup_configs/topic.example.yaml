@@ -1,0 +1,18 @@
+# Example setup config for one annotation topic.
+#
+# Copy this file, replace "topic" with the actual topic slug, 
+# and tune workspace names / overlap thresholds.
+#
+# The workspace_dataset_map keys are Argilla workspace names; the inner keys
+# (retrieval / grounding / generation) are tasks. 
+#
+# Each task block accepts the TaskOverlap fields (production_min_submitted, 
+# calibration_min_submitted); left empty uses defaults from AnnotationSettings.
+
+workspace_dataset_map:
+  topic-retrieval:
+    retrieval: {}
+  topic-grounding:
+    grounding: {}
+  topic-generation:
+    generation: {}
