@@ -121,8 +121,13 @@ def import_records(
         config=load_config_file(config_path) if isinstance(config_path, (str, Path)) else None,
         env=(
             ({"argilla": {"api_url": os.environ.get("ARGILLA_API_URL")}} if os.environ.get("ARGILLA_API_URL") else {})
-            | ({"locale": os.environ.get("PRAGMATA_ANNOTATION_LOCALE")} if os.environ.get("PRAGMATA_ANNOTATION_LOCALE") else {})
-        ) or None,
+            | (
+                {"locale": os.environ.get("PRAGMATA_ANNOTATION_LOCALE")}
+                if os.environ.get("PRAGMATA_ANNOTATION_LOCALE")
+                else {}
+            )
+        )
+        or None,
         overrides={
             "argilla": {"api_url": api_url},
             "dataset_id": dataset_id,
