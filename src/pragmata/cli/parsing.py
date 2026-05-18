@@ -8,6 +8,7 @@ from pragmata.api import UNSET
 
 if TYPE_CHECKING:
     from pragmata.annotation import Task, UserSpec
+    from pragmata.core.schemas.annotation_task import Locale
 
 
 def parse_cli_value(value: str | None) -> Any:
@@ -49,6 +50,19 @@ def parse_tasks(raw: str | None) -> "list[Task] | None":
     if raw is None:
         return None
     return [Task(item.strip()) for item in raw.split(",")]
+
+
+def parse_locale(raw: str | None) -> "Locale | None":
+    """Parse a locale string (e.g. ``en``, ``de``) into a Locale enum.
+
+    Returns None when no locale is supplied, leaving locale selection to
+    the downstream default.
+    """
+    from pragmata.core.schemas.annotation_task import Locale
+
+    if raw is None:
+        return None
+    return Locale(raw.strip())
 
 
 def parse_user_specs(path: str | None) -> "list[UserSpec] | None":

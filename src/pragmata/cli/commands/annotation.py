@@ -2,8 +2,8 @@
 
 import typer
 
-from pragmata.api import UNSET, Locale
-from pragmata.cli.parsing import parse_tasks, parse_user_specs
+from pragmata.api import UNSET
+from pragmata.cli.parsing import parse_locale, parse_tasks, parse_user_specs
 
 annotation_app = typer.Typer(help="Annotation pipeline commands.")
 
@@ -30,7 +30,7 @@ def setup_command(
     api_key: str | None = _api_key_opt,
     base_dir: str | None = _base_dir_opt,
     config: str | None = _config_opt,
-    locale: Locale | None = _locale_opt,
+    locale: str | None = _locale_opt,
     users_json: str | None = typer.Option(
         None,
         "--users",
@@ -52,7 +52,7 @@ def setup_command(
         api_key=UNSET if api_key is None else api_key,
         base_dir=UNSET if base_dir is None else base_dir,
         config_path=UNSET if config is None else config,
-        locale=UNSET if locale is None else locale,
+        locale=UNSET if locale is None else parse_locale(locale),
     )
     typer.echo(f"Workspaces created: {len(result.created_workspaces)}, skipped: {len(result.skipped_workspaces)}")
     typer.echo(f"Users created: {len(result.created_users)}, skipped: {len(result.skipped_users)}")
@@ -65,7 +65,7 @@ def teardown_command(
     dataset_id: str | None = _dataset_id_opt,
     base_dir: str | None = _base_dir_opt,
     config: str | None = _config_opt,
-    locale: Locale | None = _locale_opt,
+    locale: str | None = _locale_opt,
 ) -> None:
     """Remove Argilla datasets and (optionally) workspaces.
 
@@ -80,7 +80,7 @@ def teardown_command(
         dataset_id=UNSET if dataset_id is None else dataset_id,
         base_dir=UNSET if base_dir is None else base_dir,
         config_path=UNSET if config is None else config,
-        locale=UNSET if locale is None else locale,
+        locale=UNSET if locale is None else parse_locale(locale),
     )
     typer.echo("Teardown complete.")
 
@@ -93,7 +93,7 @@ def import_command(
     dataset_id: str | None = _dataset_id_opt,
     base_dir: str | None = _base_dir_opt,
     config: str | None = _config_opt,
-    locale: Locale | None = _locale_opt,
+    locale: str | None = _locale_opt,
     format: str | None = typer.Option(
         None, "--format", help="File format override (json, jsonl, csv). Auto-detected by default."
     ),
@@ -122,7 +122,7 @@ def import_command(
         base_dir=UNSET if base_dir is None else base_dir,
         config_path=UNSET if config is None else config,
         calibration_fraction=UNSET if calibration_fraction is None else calibration_fraction,
-        locale=UNSET if locale is None else locale,
+        locale=UNSET if locale is None else parse_locale(locale),
     )
     typer.echo(f"Total records: {result.total_records}")
     typer.echo(
