@@ -9,6 +9,7 @@ from pragmata.core.annotation.client import resolve_argilla_client
 from pragmata.core.annotation.setup import SetupResult, provision_users, setup_workspaces, teardown_resources
 from pragmata.core.paths.annotation_paths import resolve_annotation_paths
 from pragmata.core.paths.paths import WorkspacePaths
+from pragmata.core.schemas.annotation_task import Locale
 from pragmata.core.settings.annotation_settings import AnnotationSettings, UserSpec
 from pragmata.core.settings.settings_base import UNSET, Unset, load_config_file, resolve_api_key
 
@@ -22,6 +23,7 @@ def setup(
     api_key: str | Unset = UNSET,
     base_dir: str | Path | Unset = UNSET,
     config_path: str | Path | Unset = UNSET,
+    locale: Locale | Unset = UNSET,
 ) -> SetupResult:
     """Create the Argilla annotation environment idempotently.
 
@@ -40,6 +42,7 @@ def setup(
     Credential resolution:
     - ``api_url``: kwarg > ``ARGILLA_API_URL`` env > config (``argilla.api_url``)
     - ``api_key``: kwarg > ``ARGILLA_API_KEY`` env (secrets never live in config)
+    - ``locale``: kwarg > ``--config`` file > default EN
 
     Args:
         users: User accounts to provision. Pass None to skip user setup.
@@ -47,6 +50,7 @@ def setup(
         api_key: Argilla API key.
         base_dir: Workspace base directory. Defaults to cwd.
         config_path: Path to YAML config file for settings resolution.
+        locale: UI locale for Argilla dataset titles/questions/guidelines.
 
     Returns:
         SetupResult tracking created/skipped workspaces and users.
@@ -57,6 +61,7 @@ def setup(
         overrides={
             "argilla": {"api_url": api_url},
             "base_dir": base_dir,
+            "locale": locale,
         },
     )
     api_key = api_key if isinstance(api_key, str) else resolve_api_key("argilla")
@@ -82,6 +87,7 @@ def teardown(
     dataset_id: str | Unset = UNSET,
     base_dir: str | Path | Unset = UNSET,
     config_path: str | Path | Unset = UNSET,
+    locale: Locale | Unset = UNSET,
 ) -> None:
     """Remove the Argilla annotation environment.
 
@@ -99,6 +105,8 @@ def teardown(
             down workspaces too.
         base_dir: Workspace base directory. Defaults to cwd.
         config_path: Path to YAML config file for settings resolution.
+        locale: UI locale (accepted for interface parity with setup/import;
+            does not affect what is deleted).
     """
     settings = AnnotationSettings.resolve(
         config=load_config_file(config_path) if isinstance(config_path, (str, Path)) else None,
@@ -107,6 +115,7 @@ def teardown(
             "argilla": {"api_url": api_url},
             "dataset_id": dataset_id,
             "base_dir": base_dir,
+            "locale": locale,
         },
     )
     api_key = api_key if isinstance(api_key, str) else resolve_api_key("argilla")
