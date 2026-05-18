@@ -1,14 +1,14 @@
 # Example setup config for one annotation topic.
-# Copy this file, rename "topic" to your topic slug, and adjust workspace
+# Copy this file, rename "topic1" to your topic slug, and adjust workspace
 # names and overlap thresholds as needed.
 # Pass with --config to `pragmata annotation setup` and `pragmata annotation import`.
 #
 # See deploy/annotation/README.md for all available fields and their defaults.
 
 workspace_dataset_map:
-  topic-retrieval:
+  topic1-retrieval:
     retrieval: {}
-  topic-grounding:
+  topic1-grounding:
     grounding: {}
-  topic-generation:
+  topic1-generation:
     generation: {}
