@@ -12,7 +12,7 @@ configs, user specs, input records).
 | `docker-compose.dev.yml` | o | Argilla stack definition (Argilla + Postgres + Elasticsearch + Redis). |
 | `.env.dev.example` | o | Template for the env file consumed by Docker Compose. |
 | `.env` | x (gitignored) | Real env for this deployment. Copied from `.env.dev.example` on first `make docker-up`. |
-| `ws_setup_configs/topic.example.yaml` | o | Schema reference: every `AnnotationSettings` field shown at its default. |
+| `ws_setup_configs/topic.example.yaml` | o | Minimal copyable skeleton for a per-topic setup config. |
 | `ws_setup_configs/*.yaml` | x (gitignored) | Real per-topic configs (e.g. `team-a.yaml`). |
 | `users.example.json` | o | Schema example for the annotator/owner roster. |
 | `users.json` | x (gitignored) | Real roster for this deployment. **May contain passwords — never commit.** |
@@ -107,10 +107,40 @@ Each `{}` accepts default `TaskOverlap` values
 
 ### Full schema reference
 
-See [`ws_setup_configs/topic.example.yaml`](./ws_setup_configs/topic.example.yaml)
-for every tunable `AnnotationSettings` field (overlap thresholds,
-calibration fraction, partition seed, dataset id suffix, base directory,
-discarded-record export filter, etc.) shown at its default.
+All tunable `AnnotationSettings` fields with their defaults:
+
+```yaml
+workspace_dataset_map:
+  topic-retrieval:
+    retrieval:
+      production_min_submitted: 1   # responses needed to mark a record done in production
+      calibration_min_submitted: 3  # responses needed in the calibration dataset
+  topic-grounding:
+    grounding:
+      production_min_submitted: 1
+      calibration_min_submitted: 3
+  topic-generation:
+    generation:
+      production_min_submitted: 1
+      calibration_min_submitted: 3
+
+calibration_fraction: 0.1        # fraction of imported records routed to calibration
+calibration_partition_seed: 0    # RNG seed for deterministic calibration partitioning
+
+# Usually set via --dataset-id on the CLI rather than here.
+# Appended to dataset names for run-scoping (e.g. "pilot1" → retrieval_production_pilot1).
+dataset_id: ""
+
+# Workspace base directory for run artifacts (logs, manifests, export CSVs).
+# Defaults to cwd at load time.
+base_dir: "."
+
+# When true, exported CSVs include responses the annotator marked as discarded.
+# Overridden per-invocation by --include-discarded on `pragmata annotation export`.
+include_discarded: false
+```
+
+Connection settings (`argilla.api_url`, `api_key`) belong on the env/CLI layer — see [Secrets](#secrets) below.
 
 ## Configuration layers
 
