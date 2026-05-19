@@ -47,7 +47,21 @@ def __getattr__(name: str) -> object:
         module_path, attr = _LAZY[name]
     except KeyError as err:
         raise AttributeError(f"module 'pragmata.annotation' has no attribute {name!r}") from err
-    value = getattr(importlib.import_module(module_path), attr)
+    try:
+        module = importlib.import_module(module_path)
+    except ImportError as err:
+        # If the missing dependency is argilla itself (the optional extra),
+        # raise the design-doc friendly message. Other ImportErrors surface
+        # verbatim so unrelated breakage inside the optional dep isn't
+        # masked. See docs/design/config-and-settings.md §0.
+        missing = err.name or ""
+        if missing == "argilla" or missing.startswith("argilla."):
+            raise ImportError(
+                "'argilla' is required for pragmata.annotation. "
+                "Install with: pip install 'pragmata[annotation]'"
+            ) from err
+        raise
+    value = getattr(module, attr)
     globals()[name] = value
     return value
 
