@@ -49,6 +49,18 @@ pragmata = "pragmata.cli.app:app"
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+# Explicit packaging contract: assert src/pragmata/ is the wheel root so
+# package data (e.g. src/pragmata/annotation/docker-compose.yml resolved
+# at runtime via importlib.resources) is guaranteed to land in the wheel
+# and sdist. hatchling's src-layout default already picks this up, but
+# the explicit block guards against later refactors silently dropping it.
+# Verify after `python -m build`:
+#   unzip -l dist/*.whl | grep docker-compose
+#   tar -tzf dist/*.tar.gz | grep docker-compose
+# See docs/design/annotation-stack-lifecycle.md §2.2.
+[tool.hatch.build.targets.wheel]
+packages = ["src/pragmata"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [

@@ -1,0 +1,31 @@
+# Contributor dev overrides layered on top of
+# src/pragmata/annotation/docker-compose.yml.
+#
+# Stacked via the Makefile's `docker-*` targets:
+#   docker compose \
+#     -f src/pragmata/annotation/docker-compose.yml \
+#     -f deploy/annotation/docker-compose.dev.override.yml \
+#     ...
+#
+# Dev credentials and backing-service defaults come from .env (copied
+# from .env.dev.example). This override file is for compose-level dev
+# adjustments — health-check timings, debug ports, logging drivers —
+# that don't belong in the shipped (prod-first) baseline.
+#
+# Design contract: docs/design/annotation-stack-lifecycle.md §1.
+
+services:
+  argilla:
+    # Looser health-check timings: dev startup on a cold cache (image
+    # pull + Argilla schema migration) can take longer than production
+    # restarts; give it more headroom before declaring unhealthy.
+    healthcheck:
+      interval: 15s
+      retries: 20
+      start_period: 60s
+
+  elasticsearch:
+    healthcheck:
+      interval: 15s
+      retries: 20
+      start_period: 60s

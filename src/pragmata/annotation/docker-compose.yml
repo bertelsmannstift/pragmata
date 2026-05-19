@@ -1,0 +1,143 @@
+# Shipped Argilla annotation stack (production-first).
+#
+# This file ships as package data inside the installed pragmata wheel and
+# is resolved at runtime via `importlib.resources.files("pragmata.annotation")
+# / "docker-compose.yml"`. End users never touch this file directly — the
+# CLI's eventual `pragmata annotation up` (forthcoming, lifecycle Block B)
+# is the supported entry point.
+#
+# Contributors in a cloned repo layer the dev override on top via
+# `docker compose -f src/pragmata/annotation/docker-compose.yml -f \
+# deploy/annotation/docker-compose.dev.override.yml ...`. The Makefile's
+# `docker-*` targets do this automatically.
+#
+# Design contract: docs/design/annotation-stack-lifecycle.md
+# Requires Docker Compose v2.20.2+ (depends_on required: false).
+
+services:
+  argilla:
+    image: argilla/argilla-server:v2.8.0
+    restart: unless-stopped
+    ports:
+      # Localhost-only by default. Multi-annotator deployments add a
+      # reverse proxy in front (see lifecycle doc §4.3).
+      - "127.0.0.1:${ARGILLA_PORT:-6900}:6900"
+    environment:
+      # Backing-service URLs: pass through directly; if the operator
+      # hasn't supplied them, fall back to the bundled service names.
+      ARGILLA_DATABASE_URL: ${ARGILLA_DATABASE_URL:-postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@postgres/argilla}
+      ARGILLA_ELASTICSEARCH: ${ARGILLA_ELASTICSEARCH:-http://elasticsearch:9200}
+      ARGILLA_REDIS_URL: ${ARGILLA_REDIS_URL:-redis://redis:6379/0}
+      # Credential rename: shipped compose reads pragmata-namespaced env
+      # vars (ARGILLA_*) and exposes them under Argilla's bare names
+      # (USERNAME, PASSWORD, API_KEY). Bare names are too generic to set
+      # safely in a shell or CI environment. No hardcoded defaults — if
+      # unset, Argilla starts without creating an initial user (its own
+      # behaviour when USERNAME / PASSWORD are absent).
+      USERNAME: ${ARGILLA_USERNAME}
+      PASSWORD: ${ARGILLA_PASSWORD}
+      API_KEY: ${ARGILLA_API_KEY}
+    volumes:
+      - argilladata:/var/lib/argilla
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false
+      elasticsearch:
+        condition: service_healthy
+        required: false
+      redis:
+        condition: service_started
+        required: false
+    healthcheck:
+      # /api/v1/status is unauthenticated and probes the search-engine
+      # connection — preferable to the auth-gated /api/v1/me.
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:6900/api/v1/status', timeout=5)\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - argilla
+
+  worker:
+    image: argilla/argilla-server:v2.8.0
+    restart: unless-stopped
+    command: ["python", "-m", "argilla_server.cli", "worker", "--num-workers", "2"]
+    environment:
+      ARGILLA_DATABASE_URL: ${ARGILLA_DATABASE_URL:-postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@postgres/argilla}
+      ARGILLA_ELASTICSEARCH: ${ARGILLA_ELASTICSEARCH:-http://elasticsearch:9200}
+      ARGILLA_REDIS_URL: ${ARGILLA_REDIS_URL:-redis://redis:6379/0}
+    depends_on:
+      argilla:
+        condition: service_healthy
+    networks:
+      - argilla
+
+  # Backing services: opt-out per profile. Profile name names what's
+  # *external*; the matching service is *omitted* under that profile.
+  # See lifecycle doc §2.3.
+
+  postgres:
+    image: postgres:14
+    restart: unless-stopped
+    profiles: [all-bundled, external-es, external-redis]
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: argilla
+    volumes:
+      - postgresdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - argilla
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.17.0
+    restart: unless-stopped
+    profiles: [all-bundled, external-pg, external-redis]
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: -Xms512m -Xmx512m
+    volumes:
+      - elasticdata:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9200/_cluster/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - argilla
+
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    profiles: [all-bundled, external-pg, external-es]
+    volumes:
+      - redisdata:/data
+    networks:
+      - argilla
+
+volumes:
+  # Explicit names with `pragmata_annotation_` prefix per lifecycle doc
+  # §3.2. Operators upgrading from a previous layout where volumes were
+  # named `annotation_*` (Compose's default project-prefix) must migrate
+  # data manually — see deploy/annotation/README.md for the one-time
+  # `docker volume create` + cp procedure.
+  argilladata:
+    name: pragmata_annotation_argilladata
+  postgresdata:
+    name: pragmata_annotation_postgresdata
+  elasticdata:
+    name: pragmata_annotation_elasticdata
+  redisdata:
+    name: pragmata_annotation_redisdata
+
+networks:
+  argilla:

@@ -1,4 +1,16 @@
-"""Structural tests for the Docker Compose dev stack (no Docker required)."""
+"""Structural tests for the annotation Docker Compose stack (no Docker required).
+
+After the lifecycle migration (docs/design/annotation-stack-lifecycle.md §1),
+the stack lives in two files:
+- ``src/pragmata/annotation/docker-compose.yml`` — shipped as package data,
+  the production-first baseline. This file is the structural source of truth.
+- ``deploy/annotation/docker-compose.dev.override.yml`` — contributor-only
+  override layered on top by the Makefile's ``docker-*`` targets.
+
+These tests assert structural invariants on the shipped file. A separate
+packaging smoke test (``tests/packaging/test_packaged_compose.py``)
+asserts the shipped file actually lands in the built wheel.
+"""
 
 import pathlib
 import re
@@ -6,14 +18,20 @@ import re
 import yaml
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-DEPLOY_DIR = ROOT / "deploy" / "annotation"
-COMPOSE_PATH = DEPLOY_DIR / "docker-compose.dev.yml"
-ENV_EXAMPLE_PATH = DEPLOY_DIR / ".env.dev.example"
+SHIPPED_COMPOSE_PATH = ROOT / "src" / "pragmata" / "annotation" / "docker-compose.yml"
+DEV_OVERRIDE_PATH = ROOT / "deploy" / "annotation" / "docker-compose.dev.override.yml"
+ENV_EXAMPLE_PATH = ROOT / "deploy" / "annotation" / ".env.dev.example"
 MAKEFILE_PATH = ROOT / "Makefile"
 
 EXPECTED_SERVICES = {"argilla", "worker", "postgres", "elasticsearch", "redis"}
 HEALTHCHECK_SERVICES = {"argilla", "postgres", "elasticsearch"}
 NAMED_VOLUME_SERVICES = {"argilla", "postgres", "elasticsearch", "redis"}
+EXPECTED_VOLUME_NAMES = {
+    "argilladata": "pragmata_annotation_argilladata",
+    "postgresdata": "pragmata_annotation_postgresdata",
+    "elasticdata": "pragmata_annotation_elasticdata",
+    "redisdata": "pragmata_annotation_redisdata",
+}
 REQUIRED_ENV_VARS = {"ARGILLA_PORT", "ARGILLA_USERNAME", "ARGILLA_PASSWORD", "ARGILLA_API_KEY", "POSTGRES_PASSWORD"}
 EXPECTED_MAKE_TARGETS = {
     "docker-up",
@@ -28,32 +46,36 @@ EXPECTED_MAKE_TARGETS = {
 }
 
 
-def _load_compose() -> dict:
-    return yaml.safe_load(COMPOSE_PATH.read_text())
+def _load_shipped_compose() -> dict:
+    return yaml.safe_load(SHIPPED_COMPOSE_PATH.read_text())
 
 
-def test_compose_file_valid_yaml() -> None:
-    """docker-compose.dev.yml parses as valid YAML with a services key."""
-    data = _load_compose()
+def _load_dev_override() -> dict:
+    return yaml.safe_load(DEV_OVERRIDE_PATH.read_text())
+
+
+def test_shipped_compose_valid_yaml() -> None:
+    """Shipped docker-compose.yml parses as valid YAML with a services key."""
+    data = _load_shipped_compose()
     assert "services" in data
 
 
-def test_compose_defines_expected_services() -> None:
-    """All 5 required services are defined."""
-    services = set(_load_compose()["services"])
+def test_shipped_compose_defines_expected_services() -> None:
+    """All 5 required services are defined in the shipped compose."""
+    services = set(_load_shipped_compose()["services"])
     assert services == EXPECTED_SERVICES
 
 
-def test_compose_services_have_healthchecks() -> None:
-    """Critical services define healthcheck blocks."""
-    services = _load_compose()["services"]
+def test_shipped_compose_services_have_healthchecks() -> None:
+    """Critical services define healthcheck blocks in the shipped compose."""
+    services = _load_shipped_compose()["services"]
     for name in HEALTHCHECK_SERVICES:
         assert "healthcheck" in services[name], f"{name} missing healthcheck"
 
 
-def test_compose_services_use_named_volumes() -> None:
-    """Stateful services mount named volumes (not anonymous)."""
-    data = _load_compose()
+def test_shipped_compose_services_use_named_volumes() -> None:
+    """Stateful services mount top-level named volumes (not anonymous)."""
+    data = _load_shipped_compose()
     top_level_volumes = set(data.get("volumes", {}))
     services = data["services"]
     for name in NAMED_VOLUME_SERVICES:
@@ -62,6 +84,31 @@ def test_compose_services_use_named_volumes() -> None:
         for vol in svc_volumes:
             vol_name = vol.split(":")[0]
             assert vol_name in top_level_volumes, f"{name} volume '{vol_name}' not in top-level named volumes"
+
+
+def test_shipped_compose_volume_names_use_pragmata_annotation_prefix() -> None:
+    """Top-level volumes carry deterministic pragmata_annotation_* names per design §3.2."""
+    volumes = _load_shipped_compose().get("volumes", {})
+    for key, expected_name in EXPECTED_VOLUME_NAMES.items():
+        assert key in volumes, f"top-level volume {key} missing"
+        assert volumes[key].get("name") == expected_name, (
+            f"volume {key} has name {volumes[key].get('name')!r}, expected {expected_name!r}"
+        )
+
+
+def test_shipped_compose_loopback_only_port_binding() -> None:
+    """Argilla port binds to 127.0.0.1 in the shipped compose (multi-annotator requires reverse proxy)."""
+    argilla_ports = _load_shipped_compose()["services"]["argilla"].get("ports", [])
+    assert any("127.0.0.1:" in p for p in argilla_ports), (
+        "shipped compose must bind argilla to 127.0.0.1 only — see lifecycle doc §4.3"
+    )
+
+
+def test_dev_override_valid_yaml() -> None:
+    """Dev override parses as valid YAML."""
+    data = _load_dev_override()
+    assert isinstance(data, dict)
+    assert "services" in data
 
 
 def test_env_example_exists_with_required_vars() -> None:
