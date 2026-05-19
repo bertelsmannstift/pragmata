@@ -1,6 +1,7 @@
 # Annotation Stack Lifecycle
 
 Status: Draft
+
 Related:
 - ADR-0007 (packaging & invocation surface)
 - ADR-0003 (infra: self-hosted only)
@@ -14,19 +15,18 @@ Shared concerns (config resolution, settings precedence, secrets, generic CLI er
 
 ## Guiding principle (annotation-specific)
 
-**Dev tooling ≠ production tooling.** The `Makefile` is dev-only; the prod install path goes through the CLI (`pragmata annotation up`). They share the same shipped compose file but apply different overrides:
+**Dev tooling ≠ production tooling.** The `Makefile` is dev-only; the prod intall/deploy path goes through the CLI (`pragmata annotation up`). Both routes run the same shipped compose file underneath but layer different overrides on top:
 
 > The `Makefile` targets (`docker-up`, `docker-down`, `test-stack`) bind to `deploy/annotation/docker-compose.dev.yml` and assume a cloned repo + `make` (= non-starter for Windows, PyPI installs, and unattended/prod environments).
 >
 > The CLI command `pragmata annotation up` is the single end-user entry point and must work identically across all three environments.
 
-SOTA across CLIs that wrap a container stack - whether the CLI is PyPI-distributed (Dagster, Prefect, MLflow, Argilla) or a standalone binary (Supabase CLI in Go; Airbyte `abctl` in Go, which wraps Kubernetes via kind rather than Compose) - converges on a few points:
-- install is side-effect free
-- first-run bootstrap is an idempotent single command
-- upgrade is the #1 pain point (we mostly skip this)
-- dev ≠ prod
+SOTA across CLIs that wrap a container stack - whether the CLI is PyPI-distributed (Dagster, Prefect, Argilla, Airflow) or a standalone binary (Supabase CLI in Go; Airbyte `abctl` in Go, which wraps Kubernetes via kind rather than Compose) - converges on a few points:
 
-The container-runtime substrate (Compose vs. kind) varies; the UX shape doesn't.
+- **Install is side-effect free.** `pip install 'pragmata[annotation]'` installs the package and bundles the compose file; it doesn't start containers, pull images, write user config, or modify Docker daemon state. Install and "do anything" are separate steps. (Installers that pull images or start daemons at install time break CI, container builds, and exploratory venv workflows.)
+- **First-run bootstrap is an idempotent single command.** One verb (`pragmata annotation up`) gets you a running stack from a clean machine. Re-running it on an already-running stack is a no-op + health check, not a "did I run init yet?" decision the user has to track.
+- **Upgrade is the #1 pain point - and we mostly sidestep it** (see [§3.2](#32-upgrade)). Surveyed tools fail upgrade three ways: user-edited compose drifts from shipped; image tags fall out of sync with CLI version; persistent volumes carry old schema into new containers. Our locked-compose model (option Y) eliminates the first two - the file is package-owned, so `pip install -U` upgrades CLI and compose atomically with no drift. Argilla's own schema migrations between majors remain an upstream concern we don't shield users from.
+- **Dev ≠ prod, by artefact.** The contributor workflow (cloned repo, `make`, well-known dev credentials in `.env.dev.example`, exposed debug ports, looser health-check timing) and the end-user workflow (PyPI install, `pragmata annotation up`, env-injected credentials, localhost-only ports, production-tight defaults) run *different file pairs*, not the same file with "remember to change these in prod" comments. The shipped compose is the prod baseline; the dev override layers contributor-only conveniences on top.
 
 **Test boundary.** Integration tests (`make test-stack`, `tests/integration/`) run against `(shipped + dev-override)` - matching what contributors hit locally, with dev credentials. A separate packaging smoke test exercises the shipped file *alone* from an installed wheel (no override layered on top), asserting only that `importlib.resources` resolves the file and that the YAML parses. This is the only test that catches wheel / sdist divergence (e.g. the compose file silently dropped from `[tool.hatch.build.targets.wheel]` after a refactor). Two test paths, deliberately: the dev-override path covers behavioural correctness against real credentials; the shipped-only smoke test covers the packaging contract. SOTA doesn't converge here (Airflow and Argilla test against their dev compose because there's no separate shipped artefact; Supabase / Airbyte test against the locked artefact because that's the only one) - pragmata's two-artefact model means we need both, but the packaging test is intentionally minimal (~20 lines) to keep the cost down.
 
@@ -36,16 +36,26 @@ The runtime compose file ships as **package data under `src/pragmata/annotation/
 
 All services bundled by default (zero-config principle, see [`config-and-settings.md`](config-and-settings.md) principle 4). Each backing service (postgres/elasticsearch/redis) is opt-out-able via a Compose profile (§2.3).
 
-**Single shipped compose file, not a dev/prod pair.** Surveyed container-stack-wrapping CLIs (Airflow, Dagster, Prefect, MLflow on PyPI; Supabase as a Go binary; `abctl` on kind, not Compose) all converge on **one shipped runtime artefact**; nobody ships parallel `docker-compose.prod.yml` + `docker-compose.dev.yml`, since it forces users to answer "which one do I run?" before doing anything. The split here:
+**Deterministic project name.** The shipped compose declares a top-level `name: pragmata_annotation` (Compose v2.4+). This locks the project name regardless of the cwd `docker compose` is invoked from, so volumes, networks, and containers carry stable prefixes: volumes `pragmata_annotation_argilladata`, `_postgresdata`, `_elasticdata`, `_redisdata`; default network `pragmata_annotation_default`; containers `pragmata_annotation-argilla-1` etc. Without this, project name defaults to the cwd directory name and the prefixes shift per caller - breaking volume re-attach across upgrades and the named-container detection used by port-conflict diagnostics (§6). Equivalent fallback for older Compose: invoke as `docker compose -p pragmata_annotation`; the in-file `name:` keyword is preferred so the contract travels with the artefact.
+
+**One shipped runtime artefact + a contributor override, not two parallel runtime files.** Surveyed container-stack-wrapping CLIs (Airflow, Dagster, Prefect on PyPI; Supabase as a Go binary; `abctl` on kind, not Compose) all ship a single runtime file users invoke directly; parallel `docker-compose.prod.yml` + `docker-compose.dev.yml` would force "which one do I run?" on every invocation. We adopt the same shape:
 
 - **Shipped (package data):** `src/pragmata/annotation/docker-compose.yml` - production-first: pinned tags, env-driven credentials (no hardcoded defaults), sensible resource defaults, localhost-only port bindings (multi-annotator deployments add a reverse proxy on top - see §4.3). This is the file `pragmata annotation up` resolves at runtime.
-- **Contributor dev (cloned repo):** `deploy/annotation/docker-compose.dev.override.yml` (proposed - does not exist yet) - layered on top of the shipped file via Makefile targets using `docker compose -f ... -f ...`. Typical contents: well-known default creds (`argilla`/`1234`), stdout logging, looser health-check timing, exposed debug ports.
+- **Contributor dev (cloned repo):** `deploy/annotation/docker-compose.dev.override.yml` (proposed - does not exist yet) - layered on top of the shipped file via Makefile targets using `docker compose -f ... -f ...`. Typical contents: well-known default creds (`argilla` / `argilla123`, per [`.env.dev.example`](../../deploy/annotation/.env.dev.example)), stdout logging, looser health-check timing, exposed debug ports.
 
 End users (`pragmata annotation up`) only ever touch the shipped (package-data) file via CLI flags. The dev override is exclusively for contributors working in a cloned repo.
 
-**Prod credential injection.** The shipped compose is a thin wrapper that renames Argilla's three bare credential env vars to `ARGILLA_`-prefixed equivalents: `ARGILLA_USERNAME → USERNAME`, `ARGILLA_PASSWORD → PASSWORD`, `ARGILLA_API_KEY → API_KEY` (Argilla's `start_argilla_server.sh` reads the bare names; we prefix them in our compose because bare `USERNAME` / `PASSWORD` are too generic to set safely in a shell or CI environment). Backing-service vars (`ARGILLA_DATABASE_URL`, `ARGILLA_ELASTICSEARCH`, `ARGILLA_REDIS_URL`, `POSTGRES_PASSWORD`) are read through directly with no rename. Operators set these in their shell, CI environment, or a `.env` file they own before running `pragmata annotation up`. If `ARGILLA_USERNAME` and `ARGILLA_PASSWORD` are unset, Argilla starts without creating a user (its own behaviour when `USERNAME` / `PASSWORD` are absent). Dev defaults are in [`deploy/annotation/.env.dev.example`](../../deploy/annotation/.env.dev.example); contributors copy this to `.env` and the Makefile picks it up. End users never touch that file.
+**Prod credential injection.** The shipped compose is a thin wrapper that renames Argilla's three bare credential env vars to `ARGILLA_`-prefixed equivalents: `ARGILLA_USERNAME → USERNAME`, `ARGILLA_PASSWORD → PASSWORD`, `ARGILLA_API_KEY → API_KEY`. Argilla's `start_argilla_server.sh` reads the bare names; we prefix them on the host side because bare `USERNAME` and `PASSWORD` collide with names already in use by other tooling - notably the OS-provided `%USERNAME%` on Windows, the `USERNAME` shell var some `.env` loaders read implicitly, and `USERNAME` / `PASSWORD` keys in GitHub Actions matrix env blocks. Prefixing eliminates the collision class on the host without touching upstream. Backing-service vars (`ARGILLA_DATABASE_URL`, `ARGILLA_ELASTICSEARCH`, `ARGILLA_REDIS_URL`, `POSTGRES_PASSWORD`) are read through directly with no rename. Operators set these in their shell, CI environment, or a `.env` file they own before running `pragmata annotation up`. If `ARGILLA_USERNAME` and `ARGILLA_PASSWORD` are absent (or set to empty strings - see below), the upstream script's `if [ -n "$USERNAME" ] && [ -n "$PASSWORD" ]` guard skips default-user creation and the server starts normally. Dev defaults are in [`deploy/annotation/.env.dev.example`](../../deploy/annotation/.env.dev.example); contributors copy this to `.env` and the Makefile picks it up. End users never touch that file.
+
+> **Empty-string vs unset.** Docker Compose's `KEY: ${VAR}` substitution emits `KEY=` (empty string) into the container when `$VAR` is unset on the host, not an absent var. Upstream's `[ -n "$USERNAME" ]` test treats empty and unset the same, so behaviour is correct either way - but the safety relies on upstream's specific check, not on Compose passing through "absent". If upstream later switches to `[ -v USERNAME ]` (defined / not defined) this guarantee breaks, and the shipped compose would need to move to list-form `environment: [USERNAME, PASSWORD, API_KEY]` (Compose drops list entries whose source env var is unset on the host) to keep "absent stays absent".
 
 This rename is the only env-var rewriting the shipped compose does. It's intentionally minimal - anything else is pass-through.
+
+**Resource caps and restart policy (shipped baseline).** The current dev compose sets `restart: unless-stopped` on every service and constrains only Elasticsearch heap (`ES_JAVA_OPTS: -Xms512m -Xmx512m`). The shipped compose tightens both:
+
+- **Per-service memory caps.** Use Compose's `deploy.resources.limits.memory` (honoured by `docker compose` in non-swarm mode since v1.27): Argilla `1g`, worker `512m`, Postgres `512m`, Elasticsearch `1.5g` (with `ES_JAVA_OPTS=-Xms768m -Xmx768m` to stay ~50% under the cgroup limit), Redis `256m`. Total ceiling ~3.75 GB, comfortably under the 4 GB Docker Desktop default on macOS and the smallest realistic Linux VM. No CPU pinning - container scheduling on a single-host CLI deployment isn't worth the operational surface.
+- **`restart: on-failure` instead of `unless-stopped` on the shipped baseline.** `unless-stopped` makes the stack auto-start on every host reboot until the operator runs an explicit `pragmata annotation down` - acceptable for the contributor dev workflow but a footgun for laptop users who installed via `pipx` and don't expect a 3.75 GB stack to come up on every login. `on-failure` keeps containers self-healing within a session but does not survive reboot. Operators who want the always-on behaviour (dedicated annotation VM) set `PRAGMATA_RESTART_POLICY=unless-stopped` before `up`, or layer their own override.
+- **Override path for both.** The contributor dev override (`docker-compose.dev.override.yml`) restores `restart: unless-stopped` and lifts the memory caps - contributors hitting a constrained Argilla while writing tests is the exact failure mode the override exists to prevent.
 
 >**Migration from today's single `deploy/annotation/docker-compose.dev.yml`:**
 >
@@ -91,14 +101,28 @@ Ships as package data inside the installed package at `src/pragmata/annotation/d
 
 Image tags are pinned in the shipped compose and treated as package-owned. `pip install -U pragmata` ships a new compose with new tags - users automatically pick it up on next `up` (no drift, no warning needed under option Y).
 
-**Packaging contract (proposed - not yet configured):** `docker-compose.yml` must be confirmed as package data in both wheel and sdist. Today `pyproject.toml` declares `build-backend = "hatchling.build"` but has no explicit `[tool.hatch.build.targets.wheel]` block; hatchling's `src`-layout default picks up `src/pragmata/` automatically. As part of shipping this design we should add an explicit block to make the contract auditable:
+**Packaging contract (proposed - not yet configured):** `docker-compose.yml` must be confirmed as package data in both wheel and sdist. Today `pyproject.toml` declares `build-backend = "hatchling.build"` but has no explicit `[tool.hatch.build.targets.wheel]` block; hatchling's `src`-layout default picks up `src/pragmata/` automatically, and *does* by default include non-`.py` files under package directories - but that default is the failure mode we want to guard against (it depends on file-pattern defaults that have shifted between hatchling versions and that can be silently overridden by a future `include`/`exclude` line). The explicit contract pins both *which package roots are shipped* and *which non-Python artefacts must accompany them*:
 
 ```toml
 [tool.hatch.build.targets.wheel]
 packages = ["src/pragmata"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/pragmata/annotation/docker-compose.yml" = "pragmata/annotation/docker-compose.yml"
+"src/pragmata/core/annotation/collapsible_field.html" = "pragmata/core/annotation/collapsible_field.html"
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "src/pragmata/**/*.py",
+  "src/pragmata/**/*.yml",
+  "src/pragmata/**/*.html",
+  "pyproject.toml",
+  "README.md",
+  "LICENSE.md",
+]
 ```
 
-This is an explicit guard against later refactors silently breaking package-data inclusion. Verify by inspecting the built wheel before shipping:
+`force-include` is the explicit guard: it lists the non-Python artefacts the wheel *must* contain by path, so a future `exclude` rule or layout refactor cannot silently drop them without a corresponding edit to this block. Verify by inspecting the built wheel before shipping:
 
 ```
 unzip -l dist/*.whl | grep docker-compose
@@ -116,7 +140,7 @@ def test_shipped_compose_is_packaged():
     yaml.safe_load(path.read_text())  # raises if malformed
 ```
 
-Behavioural correctness (does Argilla actually come up against the shipped compose) is *not* this test's job - that belongs to the dev-override integration tests, which run against the same shipped file with credentials layered on. The packaging test exists for one purpose: catch wheel / sdist divergence that no in-tree test can see. This is the only check that detects "the compose file silently dropped from the wheel after a `[tool.hatch.build.targets.wheel]` refactor" before users hit it.
+Behavioural correctness (does Argilla actually come up against the shipped compose) is *not* this test's job - that belongs to the dev-override integration tests, which run against the same shipped file with credentials layered on. The packaging test exists for one purpose: catch wheel / sdist divergence that no in-tree test can see. This is the only check that detects "the compose file silently dropped from the wheel after a `force-include` / `exclude` refactor" before users hit it.
 
 ### 2.3 Profiles / bundles (the flag surface for external backing services)
 
@@ -164,7 +188,7 @@ pragmata annotation up --external-elastic <url>           # external-es profile,
 pragmata annotation up --external-redis <url>             # external-redis profile, wire Argilla to external Redis
 ```
 
-Flags compose: passing `--external-postgres … --external-redis …` selects the union of those two externals and bundles only Elasticsearch. (Implementation note: we either ship one composite profile per combination, or we drive the inclusion/exclusion by setting Compose `COMPOSE_PROFILES` to multiple values - the latter is simpler and matches Compose's own model.)
+Flags compose: passing `--external-postgres … --external-redis …` selects the union of those two externals and bundles only Elasticsearch. (Implementation note: we we drive the inclusion/exclusion by setting Compose `COMPOSE_PROFILES` to multiple values - this is simple and matches Compose's own model.)
 
 Internally: `--external-postgres` = select `external-pg` profile + inject `ARGILLA_DATABASE_URL`; `--external-elastic` = select `external-es` profile + inject `ARGILLA_ELASTICSEARCH`; `--external-redis` = select `external-redis` profile + inject `ARGILLA_REDIS_URL`. Settings resolution applies as normal - flag > env > config > default (see [`config-and-settings.md`](config-and-settings.md) §1.4).
 
@@ -180,7 +204,7 @@ Precedent for profiles: [Airflow's official Compose](https://airflow.apache.org/
 - Pre-flight in order: extra installed? → Docker daemon reachable? → required ports free?
 - Resolve the packaged compose via `importlib.resources` (no copy to disk - option Y, §2.1)
 - Pulls images on first invocation (slow; stream per-image progress to terminal; rerun-safe - see §4.2 step 3). The README must call this out as a one-off ~5 GB download (Argilla + Postgres + Elasticsearch + Redis) so users on metered/slow networks know what to expect on the first `up`.
-- Health-polls Argilla's `/api/v1/status` endpoint with a timeout
+- Health-polls Argilla's `/api/v1/status` endpoint with a timeout. The endpoint is unauthenticated and returns `{version, search_engine, memory}`; it awaits `search_engine.info()` inline, so a degraded or unreachable search backend surfaces here as a non-200 rather than requiring a separate check.
 - On success: prints Argilla URL and next-step hint
 
 Most of the core parts of this UX are already implemented.
@@ -245,7 +269,7 @@ The question is whether `annotation` needs a separate install artefact. For v0.1
 
 | Option | What it is | SOTA precedent | Our cost | Verdict |
 |---|---|---|---|---|
-| **A. No script (docs only) - *chosen for v0.1*** | Docs snippet: `pip install 'pragmata[annotation]' && pragmata annotation up` | Every Tier-1 PyPI-distributed Docker-wrapping tool surveyed ([Supabase](https://supabase.com/docs/guides/local-development/cli/getting-started), [Airbyte abctl](https://docs.airbyte.com/using-airbyte/getting-started/oss-quickstart), [Prefect](https://docs.prefect.io/3.0/get-started/install), [Dagster](https://docs.dagster.io/getting-started/install), [MLflow](https://mlflow.org/docs/latest/tracking.html)) | None | **Adopt** |
+| **A. No script (docs only) - *chosen for v0.1*** | Docs snippet: `pip install 'pragmata[annotation]' && pragmata annotation up` | Every Tier-1 Docker-stack-wrapping tool surveyed ([Supabase](https://supabase.com/docs/guides/local-development/cli/getting-started), [Airbyte abctl](https://docs.airbyte.com/using-airbyte/getting-started/oss-quickstart), [Prefect](https://docs.prefect.io/3.0/get-started/install), [Dagster](https://docs.dagster.io/getting-started/install), [Airflow Compose](https://airflow.apache.org/docs/apache-airflow/stable/howto/docker-compose/index.html)) | None | **Adopt** |
 | **B. `scripts/bootstrap-annotation.sh` in repo** | Static shell file checked into git, linked from docs | [Docker convenience script](https://github.com/docker/docker-install), [rustup](https://rustup.rs/), [nvm](https://github.com/nvm-sh/nvm#installing-and-updating) | Maintenance drift - every CLI flag change invalidates it. Docker's own convenience installer is [not recommended for production](https://docs.docker.com/engine/install/ubuntu/#install-using-the-convenience-script) for exactly this reason | **Skip** |
 
 > **Proposed `annotation up` sequence (to implement):**
@@ -255,7 +279,7 @@ The question is whether `annotation` needs a separate install artefact. For v0.1
 >
 >    **Why not `--pull always`** (which is what the Makefile uses)? `--pull always` re-contacts the registry on every `up` even for pinned tags that haven't changed. The Makefile's contributor-facing use case wants that (developers sometimes hand-edit the compose or bump tags locally and want a guaranteed re-pull on `make docker-up`); the end-user CLI doesn't (registry round-trips on every invocation are pure latency cost since we own the tag bump cadence via `pip install -U`). Asymmetry is intentional: contributors and end users have different needs here. **Why not pragmata-side digest tracking?** Reinvents `--pull missing`, and introduces a sync-failure mode where our sentinel can disagree with the actual Docker daemon state (after `docker image prune`, `DOCKER_HOST` switch, etc.). Compose already tracks "do I have this image locally"; we let it.
 > 4. `docker compose up -d` with resolved profile (§2.3).
-> 5. Poll `GET /api/v1/status` until 200 or timeout (default 120 s). Stream a progress indicator. (`/api/v1/status` is unauthenticated and probes the search-engine connection - preferable to the auth-gated `/api/v1/me` the current dev compose uses.)
+> 5. Poll `GET /api/v1/status` until 200 or timeout (default 120 s). Stream a progress indicator. (`/api/v1/status` is unauthenticated and returns `{version, search_engine, memory}`; because it awaits `search_engine.info()` inline, a 200 implies the search backend is up too. Preferable to the auth-gated `/api/v1/me` the current dev compose uses, which depends on a matching API key on the client side.)
 > 6. Print Argilla URL (`http://localhost:6900` by default) and next-step hint. Credentials are not printed. For dev defaults see [`deploy/annotation/.env.dev.example`](../../deploy/annotation/.env.dev.example); for production, set `ARGILLA_USERNAME`, `ARGILLA_PASSWORD`, `ARGILLA_API_KEY` in the environment before running `up` (the shipped compose reads them directly, no `PRAGMATA_*` wrapper).
 > 7. Print next-step hint: `pragmata annotation setup --users <path>`.
 
