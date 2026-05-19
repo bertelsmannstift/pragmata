@@ -341,8 +341,8 @@ The shipped compose binds Argilla to `127.0.0.1:6900` (loopback only) as a safet
 - The host's firewall / network security group must allow inbound `:443` (proxy) and block direct `:6900` access from outside the host.
 
 We deliberately do *not* in v0.1:
-- Ship a CLI flag for the bind address (`--bind 0.0.0.0`). A flag invites operators to expose plain-HTTP Argilla on a public IP, which is the failure mode the loopback default exists to prevent. Trigger to revisit: 3+ unique requests for direct binding without a reverse proxy. The escape hatch today is editing a contributor override or running raw `docker compose` against the shipped file with a `ports:` override.
-- Ship a Caddy / Traefik sidecar profile. Real implementation work (TLS lifecycle, hostname config, optional basic-auth layer) for a path the operator can stand up in 5 lines themselves. Trigger to revisit: an operator who wants pragmata to manage their TLS / cert renewal.
+- Ship a CLI flag for the bind address (`--bind 0.0.0.0`). A flag invites operators to expose plain-HTTP Argilla on a public IP, which is the failure mode the loopback default exists to prevent. 
+- Ship a Caddy / Traefik sidecar profile. Real implementation work (TLS lifecycle, hostname config, optional basic-auth layer) for a path the operator can stand up in 5 lines themselves. 
 - Ship a `--port` flag or `PRAGMATA_ANNOTATION_ARGILLA_PORT` env var that changes the bind port. The shipped compose binds to `:6900` unconditionally in v0.1. (See "Client URL ↔ server port" below.)
 
 **Client URL ↔ server port (compat note for [`config-and-settings.md`](config-and-settings.md) §1.4).** PR 162 lists `PRAGMATA_ANNOTATION_ARGILLA_URL` as an example client-side setting - this is what the SDK and `pragmata annotation setup` / `import` / `export` use to *reach* a running Argilla. The shipped compose's `:6900` bind is independent: `pragmata annotation up` does not read `PRAGMATA_ANNOTATION_ARGILLA_URL` and will not rebind to a different port if that var is set. In v0.1 it is the operator's responsibility to keep these in sync; the practical contract is:
