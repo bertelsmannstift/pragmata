@@ -2,16 +2,16 @@
   {
     "username": "annotator-1",
     "role": "annotator",
-    "workspaces": ["topic-retrieval", "topic-grounding"]
+    "workspaces": ["retrieval", "grounding"]
   },
   {
     "username": "annotator-2",
     "role": "annotator",
-    "workspaces": ["topic-generation"]
+    "workspaces": ["generation"]
   },
   {
     "username": "team-lead",
     "role": "owner",
-    "workspaces": ["topic-retrieval", "topic-grounding", "topic-generation"]
+    "workspaces": ["retrieval", "grounding", "generation"]
   }
 ]
