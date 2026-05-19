@@ -29,3 +29,12 @@ venv/
 .env.*
 !.env.example
 !.env.*.example
+
+# Transitional: ignore operator data that historically lived under
+# deploy/annotation/ before the contributor-only stance landed. These
+# rules are a safety net so a stray `git add .` can't commit real
+# annotator data while the operator migrates files out of the repo.
+# Drop these rules once the directories are gone.
+deploy/annotation/input_records/
+deploy/annotation/ws_setup_configs/
+deploy/annotation/users.json
