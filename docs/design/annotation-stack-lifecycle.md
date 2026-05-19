@@ -71,6 +71,8 @@ Ships as package data inside the installed package at `src/pragmata/annotation/d
 
 Image tags are pinned in the shipped compose and treated as package-owned. `pip install -U pragmata` ships a new compose with new tags - users automatically pick it up on next `up` (no drift, no warning needed under option Y).
 
+**Packaging contract:** `docker-compose.yml` must be explicitly declared as package data so it is included in both wheel and sdist artifacts — non-Python files are excluded by default in most build backends. For hatchling: `[tool.hatch.build.targets.wheel] packages = ["src/pragmata"]` picks it up automatically if the file lives under the `src/pragmata/annotation/` package directory (hatchling includes all files under declared package roots). Verify with `pip install --dry-run` or inspect the wheel contents. A packaging test asserting `importlib.resources.files("pragmata.annotation").joinpath("docker-compose.yml").is_file()` from an installed package (not in-tree) is a follow-up task — catches wheel/sdist divergence that in-tree tests miss.
+
 ### 2.3 Profiles / bundles (the flag surface for external backing services)
 
 Explicitly supports **Docker Compose profiles + external backing service URLs**. We use Compose's built-in `profiles` feature. Profile names carry forward from the current dev compose unchanged: `all-bundled`, `external-pg`, `external-es`.
@@ -175,7 +177,7 @@ The question is whether `annotation` needs a separate install artefact. For v0.1
 > 2. Resolve compose file via `importlib.resources` (in-memory path, no copy to disk).
 > 3. `docker compose pull` - only on first run or after `pip install -U` (detect by comparing pinned image digests vs locally cached). Log clearly; this is the slow step.
 > 4. `docker compose up -d` with resolved profile (§2.3).
-> 5. Poll `GET /api/v1/health` until 200 or timeout (default 120 s). Stream a progress indicator.
+> 5. Poll `GET /api/v1/status` until 200 or timeout (default 120 s). Stream a progress indicator. (Argilla v2 exposes `/api/v1/status`, not `/api/v1/health`.)
 > 6. On first-run only: generate a random `argilla` admin password, inject via env, print URL + credentials to stdout. Subsequent `up` calls skip this step - stack is already configured.
 > 7. Print next-step hint: `pragmata annotation setup --users <path>`.
 
