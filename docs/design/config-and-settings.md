@@ -30,12 +30,13 @@ pip install pragmata                     # bare install - CLI skeleton only
 pip install pragmata[annotation]         
 pip install pragmata[querygen]           
 pip install pragmata[eval]               
-pip install pragmata[full]               # all runtime capabilities (= annotation + querygen + eval)
+pip install pragmata[full]               # all tools (= annotation + querygen + eval)
+pip install pragmata[everything]         # full + every optional LLM provider
 ```
 
 Extras capture heavy, optional, provider-specific, or runtime-sensitive dependencies (e.g. `argilla` SDK, `langchain`, provider clients). Tool ownership alone does not justify an extra: lightweight shared dependencies that support a first-class capability across tools can stay regular core deps; each extra is audited dependency-by-dependency, not by blanket "if querygen-only → extra."
 
-`pragmata[full]` is a convenience alias that pulls in every per-tool extra. Users who want all runtime capabilities (typical of researchers running the end-to-end pipeline) get them in one install rather than enumerating each extra. Equivalent to `pip install pragmata[annotation,querygen,eval]`.
+**Two-tier convenience aliases.** `pragmata[full]` bundles every per-tool extra (annotation + querygen + eval) - typical of researchers running the end-to-end pipeline who want all tools in one install. It does **not** include LLM provider extras: Mistral works out of the box (core dep), and users on other providers add one extra explicitly (`pip install "pragmata[full,openai]"`) rather than pulling in 5+ unused provider SDKs. `pragmata[everything]` is the kitchen-sink alias for users who genuinely want every code path callable (CI matrices, exploratory environments) - equals `[full]` plus all provider extras.
 
 ### Lazy imports at the package boundary
 
