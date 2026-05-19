@@ -9,8 +9,8 @@ from dataclasses import dataclass, field
 
 import argilla as rg
 
-from pragmata.core.annotation.argilla_ops import apply_suffix, create_user, create_workspace
-from pragmata.core.annotation.argilla_task_definitions import DATASET_NAMES
+from pragmata.core.annotation.argilla_ops import create_user, create_workspace
+from pragmata.core.annotation.argilla_task_definitions import dataset_name
 from pragmata.core.settings.annotation_settings import AnnotationSettings, UserSpec
 
 logger = logging.getLogger(__name__)
@@ -96,18 +96,22 @@ def teardown_resources(
     Ordering: datasets first (Argilla requires workspace to be empty before deletion).
     Missing resources are silently skipped. User accounts are not touched.
     """
-    for ws_base, tasks in settings.workspace_dataset_map.items():
+    for ws_base, task_overlaps in settings.workspace_dataset_map.items():
         workspace = client.workspaces(ws_base)
         if workspace is None:
             logger.info("Workspace %r not found — skipping", ws_base)
             continue
 
-        for task in tasks:
-            ds_name = apply_suffix(DATASET_NAMES[task], settings.dataset_id)
-            dataset = client.datasets(ds_name, workspace=ws_base)
-            if dataset is not None:
-                dataset.delete()
-                logger.info("Deleted dataset %r from workspace %r", ds_name, ws_base)
+        for task, overlap in task_overlaps.items():
+            purposes_present = [False]  # production always exists
+            if overlap.calibration_min_submitted is not None:
+                purposes_present.append(True)
+            for calibration in purposes_present:
+                ds_name = dataset_name(task, calibration=calibration, dataset_id=settings.dataset_id)
+                dataset = client.datasets(ds_name, workspace=ws_base)
+                if dataset is not None:
+                    dataset.delete()
+                    logger.info("Deleted dataset %r from workspace %r", ds_name, ws_base)
 
         if not settings.dataset_id:
             for user in list(workspace.users):

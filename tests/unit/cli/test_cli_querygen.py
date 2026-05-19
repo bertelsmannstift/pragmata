@@ -45,6 +45,8 @@ def test_querygen_gen_queries_help_available() -> None:
     assert "Prepare a synthetic query generation run." in output
     assert "--domains" in output
     assert "--run-id" in output
+    assert "--planning-model-kwargs" in output
+    assert "--realization-model-kwargs" in output
 
 
 def test_querygen_cli_delegates_to_public_api(monkeypatch) -> None:
@@ -67,8 +69,10 @@ def test_querygen_cli_delegates_to_public_api(monkeypatch) -> None:
             "policy analyst",
             "--run-id",
             "custom-run",
-            "--model-kwargs",
-            '{"temperature": 0.2}',
+            "--planning-model-kwargs",
+            '{"reasoning": {"effort": "medium"}}',
+            "--realization-model-kwargs",
+            '{"reasoning": {"effort": "low"}}',
         ],
     )
 
@@ -76,7 +80,8 @@ def test_querygen_cli_delegates_to_public_api(monkeypatch) -> None:
     assert captured["domains"] == ["public administration"]
     assert captured["roles"] == "policy analyst"
     assert captured["run_id"] == "custom-run"
-    assert captured["model_kwargs"] == {"temperature": 0.2}
+    assert captured["planning_model_kwargs"] == {"reasoning": {"effort": "medium"}}
+    assert captured["realization_model_kwargs"] == {"reasoning": {"effort": "low"}}
 
 
 def test_querygen_cli_maps_omitted_options_to_unset(monkeypatch) -> None:
@@ -108,7 +113,8 @@ def test_querygen_cli_maps_omitted_options_to_unset(monkeypatch) -> None:
         "planning_model",
         "realization_model",
         "base_url",
-        "model_kwargs",
+        "planning_model_kwargs",
+        "realization_model_kwargs",
     }
 
     assert result.exit_code == 0

@@ -1,6 +1,8 @@
 """Structured output contracts for LLM stage 1 query planning."""
 
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Annotated
+
+from pydantic import BaseModel, ConfigDict, Field, create_model
 
 
 class QueryBlueprint(BaseModel):
@@ -66,4 +68,24 @@ class QueryBlueprintList(BaseModel):
     candidates: list[QueryBlueprint] = Field(
         ...,
         description="List of structured candidate query blueprints.",
+    )
+
+
+def make_query_blueprint_list_schema(
+    expected_length: int,
+) -> type[QueryBlueprintList]:
+    """Build a planning output schema constrained to one exact batch length."""
+    candidate_list_type = Annotated[
+        list[QueryBlueprint],
+        Field(
+            min_length=expected_length,
+            max_length=expected_length,
+            description=f"List of {expected_length} structured candidate query blueprints.",
+        ),
+    ]
+
+    return create_model(
+        f"QueryBlueprintListLen{expected_length}",
+        __base__=QueryBlueprintList,
+        candidates=(candidate_list_type, ...),
     )
