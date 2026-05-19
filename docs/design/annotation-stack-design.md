@@ -1,4 +1,4 @@
-# Annotation Stack Lifecycle
+# Annotation Stack Design
 
 Status: Draft
 
