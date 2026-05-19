@@ -51,10 +51,12 @@ End users (`pragmata annotation up`) only ever touch the shipped (package-data) 
 
 This rename is the only env-var rewriting the shipped compose does. It's intentionally minimal - anything else is pass-through.
 
+> **`ARGILLA_API_KEY` is dual-purpose.** The same env var that sets the *server's bootstrap* API key here is the *client's* API key that the Argilla SDK reads when `pragmata annotation setup` / `import` / `export` talk to the running server (see [`config-and-settings.md`](config-and-settings.md) §1.5). The two values must match; in the happy path the operator exports `ARGILLA_API_KEY` once and both planes pick it up. Rotation is not just a value change - the server keeps the bootstrap key it was first started with, so the only supported rotation path in v0.1 is `pragmata annotation down --volumes` followed by `up` with the new value, then re-`setup`. Document this in the operator notes; don't ship a key-rotation verb until a campaign actually needs one.
+
 **Resource caps and restart policy (shipped baseline).** The current dev compose sets `restart: unless-stopped` on every service and constrains only Elasticsearch heap (`ES_JAVA_OPTS: -Xms512m -Xmx512m`). The shipped compose tightens both. Mechanisms and policies, not values - the concrete numbers are an implementation concern to be set against measured `docker stats` peak RSS for a realistic-size annotation campaign, not chosen here:
 
 - **Per-service memory caps via Compose `deploy.resources.limits.memory`** (honoured by `docker compose` in non-swarm mode since v1.27). Caps apply per service, not stack-wide. Policy: stay under the 4 GB Docker Desktop default on macOS so first-run on an unmodified laptop install doesn't OOM; leave Elasticsearch headroom for OS file cache (~50% of its cgroup limit, with `ES_JAVA_OPTS=-Xms… -Xmx…` set to the matching heap size). No CPU pinning - scheduling on single-host CLI deployments isn't worth the surface. Concrete numbers TBD when the shipped compose is created; benchmark with `docker stats` against a representative dataset before pinning.
-- **`restart:` policy via Compose variable substitution.** Shipped compose writes `restart: ${PRAGMATA_RESTART_POLICY:-on-failure}`; Compose substitutes from the host env at file-load time, no pragmata-side code reads the var. Default `on-failure` keeps containers self-healing within a session but does not survive reboot - sidesteps the laptop footgun where `unless-stopped` brings a multi-GB stack back up on every login for users who installed via `pipx` for one-off use. Operators who want always-on behaviour (dedicated annotation VM) export `PRAGMATA_RESTART_POLICY=unless-stopped` before `up`. A future CLI flag `--restart-policy <…>` could set this env var before invoking compose, for parity with `--external-postgres` - but not in v0.1; the env-var path covers the use case.
+- **`restart:` policy via Compose variable substitution.** Shipped compose writes `restart: ${PRAGMATA_ANNOTATION_RESTART_POLICY:-on-failure}`; Compose substitutes from the host env at file-load time, no pragmata-side code reads the var. The `PRAGMATA_ANNOTATION_` prefix follows the per-tool env-var convention in [`config-and-settings.md`](config-and-settings.md) §1.4 (`PRAGMATA_<TOOL>_<KEY>`); the var is consumed by Compose substitution rather than by pragmata's Python settings resolver, which is the right hand-off given the variable's purpose is to flow into the compose `restart:` field, not into a pragmata model. Default `on-failure` keeps containers self-healing within a session but does not survive reboot - sidesteps the laptop footgun where `unless-stopped` brings a multi-GB stack back up on every login for users who installed via `pipx` for one-off use. Operators who want always-on behaviour (dedicated annotation VM) export `PRAGMATA_ANNOTATION_RESTART_POLICY=unless-stopped` before `up`. A future CLI flag `--restart-policy <…>` could set this env var before invoking compose, for parity with `--external-postgres` - but not in v0.1; the env-var path covers the use case.
 - **Override path for both.** The contributor dev override (`docker-compose.dev.override.yml`) restores `restart: unless-stopped` and removes memory caps - contributors hitting a constrained Argilla while writing tests is the exact failure mode the override exists to prevent.
 
 >Concrete cap values are deliberately not in this doc. They depend on the campaign dataset (query × chunk count for Task 1, answer × context count for Task 2 etc.) and on which Argilla version we pin. Set them when creating the shipped compose by running `make test-stack` against a representative dataset, reading steady-state RSS from `docker stats`, and bumping each service's cap to ~1.5× observed peak. The mechanism (Compose `deploy.resources.limits.memory`) and the policy (laptop-safe ceiling, ES file-cache headroom, no CPU pinning) are the design commitments here.
@@ -249,6 +251,71 @@ Named Docker volumes (`pragmata_annotation_argilladata`, `_postgresdata`, `_elas
 
 **Failure-mode warning for the README:** explicitly call out that ephemeral-disk Docker configurations *will* lose data on deallocation. Don't assume operators read Docker daemon docs.
 
+### 3.5 Python API surface for `up` / `down`
+
+The CLI is a thin wrapper over a Python API, matching [`config-and-settings.md`](config-and-settings.md) §2's contract ("Public API signatures accept tool-specific settings as kwargs with `UNSET` defaults … CLI commands are thin wrappers over the API"). The same pattern that backs [`api/annotation_setup.py`](../../src/pragmata/api/annotation_setup.py) extends to `up` / `down`:
+
+```python
+# src/pragmata/api/annotation_stack.py (proposed)
+from pragmata.core.settings.settings_base import UNSET, Unset
+
+def up(
+    *,
+    external_postgres: str | Unset = UNSET,
+    external_elastic: str | Unset = UNSET,
+    external_redis: str | Unset = UNSET,
+    profile: str | Unset = UNSET,             # explicit override; normally derived from the external_* kwargs
+    pull: str | Unset = UNSET,                # "missing" (default) | "always" | "never"
+    health_timeout_seconds: int | Unset = UNSET,  # default 120
+    config_path: str | Path | Unset = UNSET,
+) -> StackUpResult:
+    """Start the annotation stack. Idempotent; safe to re-invoke on a running stack."""
+    ...
+
+def down(
+    *,
+    volumes: bool = False,                    # if True, also removes named volumes (destructive)
+    config_path: str | Path | Unset = UNSET,
+) -> StackDownResult:
+    """Stop the annotation stack. With volumes=True, also wipes persistent data."""
+    ...
+```
+
+**Implementation shape (not a contract, but worth pinning):** the API function resolves settings via the standard `AnnotationStackSettings.resolve(...)` chain (§1.4 of the config doc), builds the `docker compose` argv (`docker compose --file <importlib-resolved path> --project-name pragmata_annotation up -d ...`), invokes it via `subprocess.run`, captures and surfaces upstream Docker errors with the failure-mode taxonomy in §6, then health-polls and returns a `StackUpResult` (Argilla URL, image-pull summary, time-to-healthy). No Docker SDK dependency - subprocess is what the existing dev Makefile already uses and what every surveyed Python wrapper (Prefect, Dagster, Airbyte for the dev path) does too. The Docker SDK would buy nothing here and adds a heavy non-essential dep.
+
+**CLI mirror:**
+
+```python
+# src/pragmata/cli/commands/annotation.py (proposed extension)
+@annotation_app.command("up")
+def up_command(
+    external_postgres: str | None = typer.Option(None, "--external-postgres"),
+    external_elastic: str | None = typer.Option(None, "--external-elastic"),
+    external_redis: str | None = typer.Option(None, "--external-redis"),
+    config: str | None = _config_opt,
+) -> None:
+    from pragmata import annotation
+    result = annotation.up(
+        external_postgres=UNSET if external_postgres is None else external_postgres,
+        external_elastic=UNSET if external_elastic is None else external_elastic,
+        external_redis=UNSET if external_redis is None else external_redis,
+        config_path=UNSET if config is None else config,
+    )
+    typer.echo(f"Argilla ready at {result.url}")
+```
+
+This means programmatic use is supported on day one:
+
+```python
+from pragmata import annotation
+annotation.up(external_postgres="postgresql://user:pass@db.internal/argilla")
+annotation.setup(users=[...])
+# ... import / export / iaa ...
+annotation.down()
+```
+
+The settings resolution chain (`flag > env > config_path > project config > user config > defaults`) applies *unmodified* to `up` / `down` kwargs that go through the pragmata-side resolver. The one exception is settings consumed by Compose substitution at file-load time (currently only `PRAGMATA_ANNOTATION_RESTART_POLICY`) - those are env-only and bypass the resolver, see §1.
+
 ## 4. Prod bootstrap / unattended install
 
 **Decision for v0.1: no shipped script. Document the two-line install (`pip install 'pragmata[annotation]' && pragmata annotation up`) in the README.**
@@ -300,6 +367,13 @@ The shipped compose binds Argilla to `127.0.0.1:6900` (loopback only) as a safet
 We deliberately do *not* in v0.1:
 - Ship a CLI flag for the bind address (`--bind 0.0.0.0`). A flag invites operators to expose plain-HTTP Argilla on a public IP, which is the failure mode the loopback default exists to prevent. Trigger to revisit: 3+ unique requests for direct binding without a reverse proxy. The escape hatch today is editing a contributor override or running raw `docker compose` against the shipped file with a `ports:` override.
 - Ship a Caddy / Traefik sidecar profile. Real implementation work (TLS lifecycle, hostname config, optional basic-auth layer) for a path the operator can stand up in 5 lines themselves. Trigger to revisit: an operator who wants pragmata to manage their TLS / cert renewal.
+- Ship a `--port` flag or `PRAGMATA_ANNOTATION_ARGILLA_PORT` env var that changes the bind port. The shipped compose binds to `:6900` unconditionally in v0.1. (See "Client URL ↔ server port" below.)
+
+**Client URL ↔ server port (compat note for [`config-and-settings.md`](config-and-settings.md) §1.4).** PR 162 lists `PRAGMATA_ANNOTATION_ARGILLA_URL` as an example client-side setting - this is what the SDK and `pragmata annotation setup` / `import` / `export` use to *reach* a running Argilla. The shipped compose's `:6900` bind is independent: `pragmata annotation up` does not read `PRAGMATA_ANNOTATION_ARGILLA_URL` and will not rebind to a different port if that var is set. In v0.1 it is the operator's responsibility to keep these in sync; the practical contract is:
+
+- Default everywhere is `http://localhost:6900` - leave both unset and everything works.
+- If you set `PRAGMATA_ANNOTATION_ARGILLA_URL` to a non-default URL (e.g. talking to a remote Argilla, or running behind a reverse proxy), `up` is not the right command - you're connecting to an existing server, skip `up` entirely and go straight to `setup`.
+- A future `--port` flag (and matching `PRAGMATA_ANNOTATION_ARGILLA_PORT`) would close the loop by letting both planes share one knob; deferred until concrete demand exists.
 
 The README's prod-install section must distinguish these two cases explicitly, not present the two-line install as a complete prod story.
 
