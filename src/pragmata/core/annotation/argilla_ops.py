@@ -13,11 +13,6 @@ logger = logging.getLogger(__name__)
 _PASSWORD_CHARS = string.ascii_letters + string.digits + "!@#$%"
 
 
-def apply_suffix(name: str, suffix: str) -> str:
-    """Append suffix with underscore separator; return name unchanged if suffix is empty."""
-    return f"{name}_{suffix}" if suffix else name
-
-
 def generate_password(length: int = 16) -> str:
     """Random password from alphanumeric + special characters."""
     return "".join(secrets.choice(_PASSWORD_CHARS) for _ in range(length))

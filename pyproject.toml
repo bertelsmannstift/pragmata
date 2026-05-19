@@ -3,7 +3,7 @@ name = "pragmata"
 version = "0.0.1"
 description = "Evidence-grounded evaluation framework for RAG systems with synthetic query generation, structured annotation, and model-assisted label inference for scalable scoring."
 authors =[
-  { name = "Sascha Göbel", email = "goebel@hertie-school.org" },
+  { name = "Sascha Göbel", email = "sascha.goebel@tuta.com" },
   { name = "Henry Baker", email =  "h.baker@hertie-school.org" },
   { name = "Luis Fernando Ramírez Ruiz" },
 ]
@@ -12,28 +12,34 @@ license = { file = "LICENSE.md" }
 requires-python = ">=3.12"
 
 dependencies = [
-    "typer>=0.9",
-    "pydantic>=2.0,<3.0",
-    "pyyaml>=6.0",
-    "langchain>=1.0.8",
-    "langchain-mistralai",
-    "numpy",
+    "typer>=0.9,<1.0",
+    "pydantic>=2.13,<3.0",
+    "pyyaml>=6.0,<7.0",
+    "langchain>=1.0.8,<2.0",
+    "langchain-mistralai>=1.1,<2.0",
+    "numpy>=2.3,<3.0",
 ]
 
 [project.optional-dependencies]
-test = ["pytest>=9.0", "argilla>=2.0,<3.0"]
-lint = ["ruff>=0.14",]
+test = [
+    "pytest>=9.0,<10.0",
+    "argilla>=2.0,<3.0",
+]
+lint = ["ruff>=0.14,<1.0",]
 type = [
-    "mypy>=1.19",
+    "mypy>=1.19,<2.0",
     "types-PyYAML",
 ]
 annotation = ["argilla>=2.0,<3.0",]
-querygen = ["sentence-transformers>=3.0"]
-cohere = ["langchain-cohere"]
-deepseek = ["langchain-deepseek"]
-openai = ["langchain-openai"]
-anthropic = ["langchain-anthropic"]
-google-genai = ["langchain-google-genai"]
+querygen = ["sentence-transformers>=3.0,<6.0",]
+eval = []
+cohere = ["langchain-cohere>=0.5,<1.0"]
+deepseek = ["langchain-deepseek>=1.0,<2.0"]
+openai = ["langchain-openai>=1.2,<2.0"]
+anthropic = ["langchain-anthropic>=1.4,<2.0"]
+google-genai = ["langchain-google-genai>=4.2,<5.0"]
+full = ["pragmata[annotation,querygen,eval]"]
+everything = ["pragmata[full,cohere,deepseek,openai,anthropic,google-genai]"]
 dev  = ["pragmata[test,lint,type,annotation,querygen]"]
 
 [project.scripts]
@@ -61,13 +67,14 @@ target-version = "py312"
 select = ["E", "F", "I", "D"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**/*.py" = ["D100", "D101", "D102", "D103"]
+"tests/**/*.py" = ["D100", "D101", "D102", "D103", "D107"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
 ignore-var-parameters = true
 
 [tool.mypy]
+files = ["src/pragmata"]
 python_version = "3.12"
 strict = true
 ignore_missing_imports = true

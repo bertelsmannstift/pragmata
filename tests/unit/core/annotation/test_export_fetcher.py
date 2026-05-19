@@ -8,6 +8,7 @@ from uuid import UUID
 
 import pytest
 
+from pragmata.core.annotation.argilla_task_definitions import dataset_name
 from pragmata.core.annotation.export_fetcher import build_user_lookup, fetch_task
 from pragmata.core.schemas.annotation_export import (
     GenerationAnnotation,
@@ -15,7 +16,7 @@ from pragmata.core.schemas.annotation_export import (
     RetrievalAnnotation,
 )
 from pragmata.core.schemas.annotation_task import Task
-from pragmata.core.settings.annotation_settings import AnnotationSettings
+from pragmata.core.settings.annotation_settings import AnnotationSettings, TaskOverlap
 
 # ---------------------------------------------------------------------------
 # Mock helpers
@@ -23,7 +24,15 @@ from pragmata.core.settings.annotation_settings import AnnotationSettings
 
 _UID1 = UUID("00000000-0000-0000-0000-000000000001")
 _UID2 = UUID("00000000-0000-0000-0000-000000000002")
-_SETTINGS = AnnotationSettings()
+
+_SETTINGS = AnnotationSettings(
+    calibration_fraction=0.0,
+    workspace_dataset_map={
+        "retrieval": {Task.RETRIEVAL: TaskOverlap(calibration_min_submitted=None)},
+        "grounding": {Task.GROUNDING: TaskOverlap(calibration_min_submitted=None)},
+        "generation": {Task.GENERATION: TaskOverlap(calibration_min_submitted=None)},
+    },
+)
 
 
 def _make_response(question_name: str, value: Any, user_id: UUID, status: str = "submitted") -> MagicMock:
@@ -110,6 +119,21 @@ def _mock_client_with_records(records: list[MagicMock]) -> MagicMock:
     dataset = MagicMock()
     dataset.records.return_value = iter(records)
     client.datasets.return_value = dataset
+    return client
+
+
+def _mock_client_with_records_by_name(records_by_name: dict[str, list[MagicMock]]) -> MagicMock:
+    """Return different records per dataset name; unknown names return None."""
+    client = MagicMock()
+
+    def _datasets(name, **_kwargs):
+        if name not in records_by_name:
+            return None
+        ds = MagicMock()
+        ds.records.return_value = iter(records_by_name[name])
+        return ds
+
+    client.datasets.side_effect = _datasets
     return client
 
 
@@ -340,6 +364,34 @@ class TestFetchTask:
         assert model.response_status == "submitted"
         assert model.discard_reason is None
         assert model.discard_notes is None
+
+    def test_calibration_enabled_fetches_both_datasets_and_tags_rows(self) -> None:
+        settings = AnnotationSettings(
+            workspace_dataset_map={
+                "retrieval": {Task.RETRIEVAL: TaskOverlap(calibration_min_submitted=3)},
+                "grounding": {Task.GROUNDING: TaskOverlap(calibration_min_submitted=3)},
+                "generation": {Task.GENERATION: TaskOverlap(calibration_min_submitted=3)},
+            },
+        )
+        prod_record = _make_record(
+            fields=_RETRIEVAL_FIELDS,
+            metadata=_BASE_METADATA,
+            responses=_retrieval_responses(_UID1),
+        )
+        cal_record = _make_record(
+            fields=_RETRIEVAL_FIELDS,
+            metadata={**_BASE_METADATA, "record_uuid": "cal-uuid"},
+            responses=_retrieval_responses(_UID2),
+        )
+        prod_name = dataset_name(Task.RETRIEVAL, calibration=False)
+        cal_name = dataset_name(Task.RETRIEVAL, calibration=True)
+        client = _mock_client_with_records_by_name({prod_name: [prod_record], cal_name: [cal_record]})
+
+        rows = fetch_task(client, settings, Task.RETRIEVAL, {_UID1: "alice", _UID2: "bob"}, include_discarded=False)
+
+        assert len(rows) == 2
+        calibration_flags = {row.annotator_id: row.calibration for row, _ in rows}
+        assert calibration_flags == {"alice": False, "bob": True}
 
     def test_submitted_only_query_when_include_discarded_false(self) -> None:
         client = _mock_client_with_records([])
