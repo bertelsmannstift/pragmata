@@ -4,13 +4,13 @@ Status: Draft
 Related:
 - ADR-0007 (packaging & invocation surface)
 - ADR-0012 (install & bootstrap UX) [draft]
-- [`annotation-bootstrap.md`](annotation-bootstrap.md) - annotation-only stack lifecycle, compose distribution, prod bootstrap
+- [`annotation-stack-lifecycle.md`](annotation-stack-lifecycle.md) - annotation-only stack lifecycle, compose distribution, prod bootstrap
 
 ## Purpose
 
 How the Python/CLI entrypoints accept settings, resolve config, and present errors. Applies uniformly to all three packaged tools (`annotation`,§ `querygen`, `eval`).
 
-Annotation-specific stack lifecycle (Docker, compose, `up`/`down`, prod bootstrap) is in [`annotation-bootstrap.md`](annotation-bootstrap.md).
+Annotation-specific stack lifecycle (Docker, compose, `up`/`down`, prod bootstrap) is in [`annotation-stack-lifecycle.md`](annotation-stack-lifecycle.md).
 
 ## Guiding principles
 
@@ -254,12 +254,12 @@ From issue #39, already implemented:
 
 **CLI <-> API coupling.** CLI commands are thin wrappers over the API - flags land as kwargs with `UNSET` for un-passed; [ADR-0007](../decisions/0007-packaging-invocation-surface.md).
 
-**External-service wiring.** Users should be able to pass anything relevant for the client, including external service URLs (e.g. an external Postgres connection string) - the annotation infra layer surfaces these as flags too (see [`annotation-bootstrap.md`](annotation-bootstrap.md) §2.3 for `--external-postgres`, `--external-elastic`). The API entrypoint accepts them as kwargs; CLI surfaces them as flags; env-var and config-file fallbacks work the same way as for every other setting.
+**External-service wiring.** Users should be able to pass anything relevant for the client, including external service URLs (e.g. an external Postgres connection string) - the annotation infra layer surfaces these as flags too (see [`annotation-stack-lifecycle.md`](annotation-stack-lifecycle.md) §2.3 for `--external-postgres`, `--external-elastic`). The API entrypoint accepts them as kwargs; CLI surfaces them as flags; env-var and config-file fallbacks work the same way as for every other setting.
 
 ## 3. CLI surface
 
 - `annotation setup` keeps its existing semantics: provisioning Argilla workspaces/users against a running server. Headless-flag-driven, not a config wizard.
-- `annotation` adds stack lifecycle verbs (`up`/`down`) because it orchestrates Docker - other tools don't. See [`annotation-bootstrap.md`](annotation-bootstrap.md).
+- `annotation` adds stack lifecycle verbs (`up`/`down`) because it orchestrates Docker - other tools don't. See [`annotation-stack-lifecycle.md`](annotation-stack-lifecycle.md).
 - `querygen` and `eval` have no `setup` verb. Credentials and provider selection flow through args/env/config like every other setting; no per-tool setup proliferation.
 
 Full surface for v0.1:
@@ -287,7 +287,7 @@ pragmata eval run (tbc)
 Naming rationale:
 
 - `setup` / `teardown` - kept as-is. Provisioning/de-provisioning verbs against an already-running Argilla server. Analogue: `aws iam create-user`, `kubectl create namespace`. Headless and flag-driven; not interactive.
-- `up`/`down` - Docker stack lifecycle. `docker compose up` inheritance is clear. Chosen over `start`/`stop` (supabase) because `up` preserves the Compose mental model. See [`annotation-bootstrap.md`](annotation-bootstrap.md).
+- `up`/`down` - Docker stack lifecycle. `docker compose up` inheritance is clear. Chosen over `start`/`stop` (supabase) because `up` preserves the Compose mental model. See [`annotation-stack-lifecycle.md`](annotation-stack-lifecycle.md).
 - No `pragmata init`, no global setup, no per-tool config wizards. Settings flow: kwargs/flags + env + config (§1.4).
 
 ### 3.1 Headless by default
@@ -313,7 +313,7 @@ Error: pragmata.annotation requires the 'annotation' extra.
 
 Per principle 4, "not configured" is not itself a failure mode - defaults always resolve.
 
-Annotation has additional infra-specific failure modes (Docker daemon, stack-up, port conflicts, image-pull failure, etc.) - see [`annotation-bootstrap.md`](annotation-bootstrap.md) §5.
+Annotation has additional infra-specific failure modes (Docker daemon, stack-up, port conflicts, image-pull failure, etc.) - see [`annotation-stack-lifecycle.md`](annotation-stack-lifecycle.md) §5.
 
 ## 5. Codebase baseline
 
@@ -327,5 +327,5 @@ Annotation has additional infra-specific failure modes (Docker daemon, stack-up,
 ## References
 
 - [ADR-0007 - Packaging & invocation surface](../decisions/0007-packaging-invocation-surface.md)
-- [`annotation-bootstrap.md`](annotation-bootstrap.md) - annotation-only stack lifecycle
+- [`annotation-stack-lifecycle.md`](annotation-stack-lifecycle.md) - annotation-only stack lifecycle
 - Precedent CLIs: [`gh auth login`](https://cli.github.com/manual/gh_auth_login), [Supabase CLI](https://supabase.com/docs/reference/cli/introduction), [`dbt init`](https://docs.getdbt.com/reference/commands/init), [AWS CLI config](https://docs.aws.amazon.com/cli/v1/userguide/cli-configure-files.html), [gcloud properties](https://docs.cloud.google.com/sdk/docs/properties), [platformdirs](https://platformdirs.readthedocs.io/)
