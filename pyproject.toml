@@ -39,6 +39,7 @@ openai = ["langchain-openai>=1.2,<2.0"]
 anthropic = ["langchain-anthropic>=1.4,<2.0"]
 google-genai = ["langchain-google-genai>=4.2,<5.0"]
 full = ["pragmata[annotation,querygen,eval]"]
+everything = ["pragmata[full,cohere,deepseek,openai,anthropic,google-genai]"]
 dev  = ["pragmata[test,lint,type,annotation,querygen]"]
 
 [project.scripts]
