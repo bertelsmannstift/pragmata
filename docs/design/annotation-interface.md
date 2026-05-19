@@ -13,23 +13,21 @@ Web-based annotation UI for labelling RAG chatbot outputs across three annotatio
 
 ## Architecture
 
->**NB:** this workflow depends on further decisions to be made re: CLI commands and low-config setup; this represents the latest thinking but is subject to further changes.
-
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │  One-time setup:                                             │
-│    docker compose up                — start Argilla stack    │
-│    pragmata annotation init      — configure Argilla      │
-│                   (workspaces, dataset schemas, users)       │
+│    pragmata annotation up          — start Argilla stack     │
+│    pragmata annotation setup       — configure Argilla       │
+│                  (workspaces, dataset schemas, users)        │
 │                                                              │
 │  UI access (annotation):                                     │
 │    1. Browser URL  — direct navigation to Argilla instance   │
-│    2. Python API   — pragmata.annotation.open()           │
-│    3. CLI          — pragmata annotation open             │
+│    2. Python API   — pragmata.annotation.open()              │
+│    3. CLI          — pragmata annotation open                │
 │                                                              │
 │  Data management:                                            │
-│    Python API  — pragmata.annotation.import/export()      │
-│    CLI         — pragmata annotation import/export        │
+│    Python API  — pragmata.annotation.import/export()         │
+│    CLI         — pragmata annotation import/export           │
 └──────────────────────────────────────────────────────────────┘
                           ▼
           ┌───────────────────────┐
@@ -44,13 +42,13 @@ Web-based annotation UI for labelling RAG chatbot outputs across three annotatio
 
 **Installation:** `pip install pragmata[annotation]`
 
-**`pragmata annotation init`** configures the Argilla application (workspaces, dataset schemas, users). Annotation happens in browser via Argilla web UI. Python API and CLI handle setup, data management, and opening the UI.
+**`pragmata annotation setup`** configures the Argilla application (workspaces, dataset schemas, users). Annotation happens in browser via Argilla web UI. Python API and CLI handle setup, data management, and opening the UI.
 
-**NB:** as above, exact command names (`init` vs `setup`), flag design, workflow and zero-config default behaviour (guided wizard vs auto-detect) remain open design questions. 
+Docker stack lifecycle (`pragmata annotation up` / `down`) is separate from Argilla provisioning (`setup`) and runs first; see [`annotation-stack-lifecycle.md`](annotation-stack-lifecycle.md) for the stack design.
 
->Docker lifecycle is separate:
->- **Local:** — connects to local Docker Compose instance
->- **Hosted:** — connects to remote Argilla instance
+>Connection modes:
+>- **Local:** connects to local stack started via `pragmata annotation up`
+>- **Hosted:** connects to remote Argilla instance
 >- **Cloud:** out of scope
 
 **Package structure:**
@@ -199,25 +197,21 @@ Hidden questions persist discard data on the discarded response so it is availab
 
 ## Setup & Usage
 
->**NB:** this workflow depends on upstream pending decisions re: (i) low-config setup research and (ii) CLI commands; this represents placeholder workflow. **TODO**: Update/cross ref when upstream decisions confirmed.
-
-
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  First-time setup:                                          │
-│    pragmata init              — scaffold all config files│
-│    docker compose up -d          — start Argilla stack      │
-│    pragmata annotation setup  — provision Argilla        │
+│    pragmata annotation up         — start Argilla stack     │
+│    pragmata annotation setup      — provision Argilla       │
 │                 (workspaces, dataset schemas, users)        │
 │                                                             │
 │  UI access (annotation):                                    │
 │    1. Browser URL  — direct navigation to Argilla instance  │
-│    2. Python API   — pragmata.annotation.open()          │
-│    3. CLI          — pragmata annotation open            │
+│    2. Python API   — pragmata.annotation.open()             │
+│    3. CLI          — pragmata annotation open               │
 │                                                             │
 │  Data management:                                           │
-│    Python API  — pragmata.annotation.import/export()     │
-│    CLI         — pragmata annotation import/export       │
+│    Python API  — pragmata.annotation.import/export()        │
+│    CLI         — pragmata annotation import/export          │
 └─────────────────────────────────────────────────────────────┘
                      ▼
           ┌───────────────────────┐
@@ -230,16 +224,17 @@ Hidden questions persist discard data on the discarded response so it is availab
           └───────────────────────┘
 ```
 
-**Installation:** `pip install pragmata[annotation]`
+**Installation:** `pip install 'pragmata[annotation]'`
 
-**`pragmata annotation setup`** configures the Argilla application (workspaces, dataset schemas, users). Docker lifecycle is separate (`docker compose up`):
-- **Local:** `--local` — connects to local Docker Compose instance
-- **Hosted:** `--hosted --url <argilla_api_url>` — connects to remote Argilla instance; writes `~/.pragmata/config.yaml`
+**`pragmata annotation setup`** configures the Argilla application (workspaces, dataset schemas, users). Docker stack lifecycle is separate and runs first via `pragmata annotation up` (see [`annotation-stack-lifecycle.md`](annotation-stack-lifecycle.md)). Connection modes:
+- **Local:** `--local` - connects to local stack started via `pragmata annotation up`
+- **Hosted:** `--hosted --url <argilla_api_url>` - connects to remote Argilla instance
 - **Cloud:** out of scope
 
 **Package structure:**
-- `/apps/annotation/` — Docker Compose configs for Argilla stack
-- `src/pragmata/api/annotation/` — SDK wrappers for import/export/fetch
+- `deploy/annotation/` - contributor dev compose override + `.env.dev.example` (for the cloned-repo dev workflow only)
+- `src/pragmata/annotation/docker-compose.yml` - shipped runtime compose (resolved via `importlib.resources`; see [`annotation-stack-lifecycle.md`](annotation-stack-lifecycle.md))
+- `src/pragmata/api/annotation/` - SDK wrappers for import/export/fetch
 
 **Usage:** Annotation happens in browser via Argilla web UI. Python API and CLI handle setup, data management, and opening the UI.
 
