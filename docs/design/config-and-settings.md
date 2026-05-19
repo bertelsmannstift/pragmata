@@ -30,9 +30,12 @@ pip install pragmata                     # bare install - CLI skeleton only
 pip install pragmata[annotation]         
 pip install pragmata[querygen]           
 pip install pragmata[eval]               
+pip install pragmata[full]               # all runtime capabilities (= annotation + querygen + eval)
 ```
 
 Extras capture heavy, optional, provider-specific, or runtime-sensitive dependencies (e.g. `argilla` SDK, `langchain`, provider clients). Tool ownership alone does not justify an extra: lightweight shared dependencies that support a first-class capability across tools can stay regular core deps; each extra is audited dependency-by-dependency, not by blanket "if querygen-only → extra."
+
+`pragmata[full]` is a convenience alias that pulls in every per-tool extra. Users who want all runtime capabilities (typical of researchers running the end-to-end pipeline) get them in one install rather than enumerating each extra. Equivalent to `pip install pragmata[annotation,querygen,eval]`.
 
 ### Lazy imports at the package boundary
 
