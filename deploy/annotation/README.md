@@ -5,8 +5,10 @@
 > README — the supported path is `pip install 'pragmata[annotation]'`
 > then `pragmata annotation up` (CLI lifecycle, forthcoming per
 > [`docs/design/annotation-stack-lifecycle.md`](../../docs/design/annotation-stack-lifecycle.md)).
-> Operator-facing input schemas (annotator roster, record format) live in
-> [`examples/annotation/`](../../examples/annotation/README.md).
+> Operator-facing input schemas (annotator roster, record format) ship
+> as package data under
+> [`src/pragmata/annotation/examples/`](../../src/pragmata/annotation/examples/README.md);
+> pip-installed users resolve them via `importlib.resources`.
 
 This directory holds the contributor-only artefacts needed to run the
 Argilla annotation stack in dev: the Docker Compose definition, the
@@ -45,18 +47,19 @@ environment before running the CLI's eventual `pragmata annotation up`.
 ## Smoke-testing your changes
 
 Once the stack is up, the simplest end-to-end check uses the example
-fixtures from [`examples/annotation/`](../../examples/annotation/):
+fixtures shipped as package data at
+[`src/pragmata/annotation/examples/`](../../src/pragmata/annotation/examples/README.md):
 
 ```bash
-pragmata annotation setup --users examples/annotation/users.example.json
-pragmata annotation import examples/annotation/topic.example.jsonl --dataset-id smoke
+pragmata annotation setup --users src/pragmata/annotation/examples/users.example.json
+pragmata annotation import src/pragmata/annotation/examples/topic.example.jsonl --dataset-id smoke
 pragmata annotation export --dataset-id smoke
 pragmata annotation teardown --dataset-id smoke
 ```
 
 Zero-config: `setup` provisions the built-in three-workspace topology
 (`retrieval`, `grounding`, `generation`). See
-[`examples/annotation/README.md`](../../examples/annotation/README.md)
+[`src/pragmata/annotation/examples/README.md`](../../src/pragmata/annotation/examples/README.md)
 for the full operator-facing schemas and how to deviate from defaults.
 
 ## Adding a new UI locale
