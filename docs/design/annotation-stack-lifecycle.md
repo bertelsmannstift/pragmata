@@ -178,7 +178,7 @@ The question is whether `annotation` needs a separate install artefact. For v0.1
 > 3. `docker compose pull` - only on first run or after `pip install -U` (detect by comparing pinned image digests vs locally cached). Log clearly; this is the slow step.
 > 4. `docker compose up -d` with resolved profile (§2.3).
 > 5. Poll `GET /api/v1/status` until 200 or timeout (default 120 s). Stream a progress indicator. (Argilla v2 exposes `/api/v1/status`, not `/api/v1/health`.)
-> 6. On first-run only: generate a random `argilla` admin password, inject via env, print URL + credentials to stdout. Subsequent `up` calls skip this step - stack is already configured.
+> 6. Print Argilla URL (`http://localhost:6900` by default). Admin credentials are static defaults documented in the README — not printed by `up`.
 > 7. Print next-step hint: `pragmata annotation setup --users <path>`.
 
 
