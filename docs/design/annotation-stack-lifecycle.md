@@ -14,7 +14,7 @@ Shared concerns (config resolution, settings precedence, secrets, generic CLI er
 
 ## Guiding principle (annotation-specific)
 
-**Dev tooling ≠ production tooling.** The `Makefile` is dev-only; the prod install path goes through the CLI (`pragmata annotation up`). They share the same shipped compose file but apply different overrides.
+**Dev tooling ≠ production tooling.** The `Makefile` is dev-only; the prod install path goes through the CLI (`pragmata annotation up`). They share the same shipped compose file but apply different overrides:
 
 > The `Makefile` targets (`docker-up`, `docker-down`, `test-stack`) bind to `deploy/annotation/docker-compose.dev.yml` and assume a cloned repo + `make` (= non-starter for Windows, PyPI installs, and unattended/prod environments).
 >
@@ -32,19 +32,28 @@ The runtime compose file ships as **package data under `src/pragmata/annotation/
 
 All services bundled by default (zero-config principle, see [`config-and-settings.md`](config-and-settings.md) principle 4). Each backing service (postgres/elasticsearch/redis) is opt-out-able via a Compose profile (§2.3).
 
-**Single shipped compose file, not a dev/prod pair.** Surveyed PyPI-distributed Docker-wrapping tools (Supabase, Airbyte `abctl`, Airflow, Dagster, Prefect, MLflow) all converge on **one shipped compose artefact**; nobody ships parallel `docker-compose.prod.yml` + `docker-compose.dev.yml` (as forces users to answer "which one do I run?" before doing anything). The split here is:
+**Single shipped compose file, not a dev/prod pair.** Surveyed PyPI-distributed Docker-wrapping tools (Supabase, Airbyte `abctl`, Airflow, Dagster, Prefect, MLflow) all converge on **one shipped compose artefact**; nobody ships parallel `docker-compose.prod.yml` + `docker-compose.dev.yml` (as forces users to answer "which one do I run?" before doing anything). The split here:
 
 - **Shipped (package data):** `src/pragmata/annotation/docker-compose.yml` - production-first: pinned tags, env-driven credentials (no hardcoded defaults), sensible resource defaults, localhost-only port bindings. This is the file `pragmata annotation up` resolves at runtime.
 - **Contributor dev (cloned repo):** `deploy/annotation/docker-compose.dev.override.yml` (proposed - does not exist yet) - layered on top of the shipped file via Makefile targets using `docker compose -f ... -f ...`. Typical contents: well-known default creds (`argilla`/`1234`), stdout logging, looser health-check timing, exposed debug ports.
 
 End users (`pragmata annotation up`) only ever touch the shipped (package-data) file via CLI flags. The dev override is exclusively for contributors working in a cloned repo.
 
-**Prod credential injection.** The shipped compose reads `ARGILLA_USERNAME`, `ARGILLA_PASSWORD`, `ARGILLA_API_KEY` (and backing-service vars) directly from the environment — no pragmata-owned wrapper. Operators set these in their shell, CI environment, or a `.env` file they own before running `pragmata annotation up`. If unset, Argilla starts without creating a user (Argilla's own behaviour — it skips user creation when `USERNAME`/`PASSWORD` are absent). Dev defaults are in [`deploy/annotation/.env.dev.example`](../../deploy/annotation/.env.dev.example); contributors copy this to `.env` and the Makefile picks it up. End users never touch that file.
+**Prod credential injection.** The shipped compose reads `ARGILLA_USERNAME`, `ARGILLA_PASSWORD`, `ARGILLA_API_KEY` (and backing-service vars) directly from the environment (no pragmata-owned wrapper). Operators set these in their shell, CI environment, or a `.env` file they own before running `pragmata annotation up`. If unset, Argilla starts without creating a user (Argilla's own behaviour: it skips user creation when `USERNAME`/`PASSWORD` are absent). Dev defaults are in [`deploy/annotation/.env.dev.example`](../../deploy/annotation/.env.dev.example); contributors copy this to `.env` and the Makefile picks it up. End users never touch that file.
 
->Migration steps from today's single `deploy/annotation/docker-compose.dev.yml`:
->  1. Extract prod-safe defaults into `src/pragmata/annotation/docker-compose.yml` as package data (the new SSOT for runtime)
+>**Migration from today's single `deploy/annotation/docker-compose.dev.yml`:**
+>
+>| File | Action | Role after migration |
+>|---|---|---|
+>| `deploy/annotation/docker-compose.dev.yml` | **Delete** (replaced by the two files below) | n/a |
+>| `src/pragmata/annotation/docker-compose.yml` | **Create** as package data | Prod-first shipped file; `pragmata annotation up` reads this at runtime via `importlib.resources` |
+>| `deploy/annotation/docker-compose.dev.override.yml` | **Create** | Dev-only overrides; layered on top of the shipped file by Makefile targets via `docker compose -f ... -f ...` |
+>
+>Steps:
+>  1. Extract prod-safe defaults from `docker-compose.dev.yml` into `src/pragmata/annotation/docker-compose.yml` (the new SSOT for runtime)
 >  2. Strip dev-only overrides into `deploy/annotation/docker-compose.dev.override.yml`
 >  3. Update Makefile targets to stack both via `docker compose -f ... -f ...`
+>  4. Delete `deploy/annotation/docker-compose.dev.yml`
 
 ## 2. Compose file distribution
 
@@ -56,16 +65,16 @@ Three options were considered:
 
 | Option | What it is | Default-path UX | Power-user UX | Upgrade drift | SOTA precedent |
 |---|---|---|---|---|---|
-| **Y. Locked (compose stays inside package) - *recommended*** | Resolve via `importlib.resources` at runtime; user never sees the YAML. Overrides only via CLI flags / `config.yaml` / env vars we expose. | Zero-config | Customisation surface = `--external-postgres`, `--external-elastic`, port flags, etc. (§2.3) - sufficient for v0.1 | None - we own the file | [Supabase CLI](https://github.com/supabase/cli) (went further: constructs the project programmatically in Go, no compose file at all) |
+| **Y. Locked (compose stays inside package, recommended)** | Resolve via `importlib.resources` at runtime; user never sees the YAML. Overrides only via CLI flags / `config.yaml` / env vars we expose. | Zero-config | Customisation surface = `--external-postgres`, `--external-elastic`, port flags, etc. (§2.3) - sufficient for v0.1 | None - we own the file | [Supabase CLI](https://github.com/supabase/cli) (went further: constructs the project programmatically in Go, no compose file at all) |
 | **X. User-editable (default copy, drift-flagged)** | First `up` copies packaged YAML → user config dir. User may edit. On subsequent `up`, drift is flagged. | Zero-config: first-run user never touches YAML | Standard Docker mental model: edit the YAML | Real - flagged, user resolves manually | [dbt `profiles.yml`](https://docs.getdbt.com/docs/core/connect-data-platform/profiles.yml), [VS Code `settings.json`](https://code.visualstudio.com/docs/getstarted/settings) |
 | **Z. Eject** | Start with Y; `pragmata annotation eject` copies compose out and pragmata then uses the ejected copy, warning the user they own it from there | Zero-config | Explicit escape hatch, clean managed-vs-owned contract | None for non-ejected users; ejected users own drift | [create-react-app `eject`](https://create-react-app.dev/docs/available-scripts#npm-run-eject), [Expo eject-to-bare-workflow](https://docs.expo.dev/archive/customizing/) |
 
 **Recommendation: Y for v0.1.** Users should not have to understand or edit Docker Compose YAML on the supported paths. The customisation surface that matters - external Postgres/Elasticsearch URLs, port bindings, image tags - is exposed through CLI flags / env / config (§2.3). If that surface is sufficient (and for v0.1 it is), keeping the compose file package-owned avoids drift, simplifies upgrades, and prevents feature-creep where every Compose field becomes a CLI flag.
 
-- **X** creates an ownership/drift problem on day one and makes the happy path Docker-centric. Reserve user-owned compose for an explicit advanced escape hatch (i.e. option Z), not the default.
-- **Z** is a clean future escape hatch. Document the pattern, but do **not** build the `eject` verb until concrete demand materialises.
+- **X** creates an ownership/drift problem on day one; it makes the happy path Docker-centric. Reserve user-owned compose for an explicit advanced escape hatch (i.e. option Z), not the default.
+- **Z** is a clean future escape hatch; document the pattern, but do **not** build the `eject` verb until concrete demand materialises.
 
->Related rejected patterns: generate compose from a template at install time (two sources of truth, drifts on upgrade); remote URL fetch (breaks offline installs, trust boundary). Supabase [issue #2435](https://github.com/supabase/cli/issues/2435) documents the specific pain of user-editable compose + CLI tight version coupling - option Y avoids the problem entirely.
+>Related rejected patterns: generate compose from a template at install time (two sources of truth, drifts on upgrade); remote URL fetch (breaks offline installs, trust boundary). Supabase [issue #2435](https://github.com/supabase/cli/issues/2435) documents the specific pain of user-editable compose + CLI tight version coupling: option Y avoids the problem entirely.
 
 ### 2.2 Distribution mechanism (how pkg'd YAML travels)
 
@@ -73,7 +82,13 @@ Ships as package data inside the installed package at `src/pragmata/annotation/d
 
 Image tags are pinned in the shipped compose and treated as package-owned. `pip install -U pragmata` ships a new compose with new tags - users automatically pick it up on next `up` (no drift, no warning needed under option Y).
 
-**Packaging contract:** `docker-compose.yml` must be explicitly declared as package data so it is included in both wheel and sdist artifacts — non-Python files are excluded by default in most build backends. For hatchling: `[tool.hatch.build.targets.wheel] packages = ["src/pragmata"]` picks it up automatically if the file lives under the `src/pragmata/annotation/` package directory (hatchling includes all files under declared package roots). Verify with `pip install --dry-run` or inspect the wheel contents. A packaging test asserting `importlib.resources.files("pragmata.annotation").joinpath("docker-compose.yml").is_file()` from an installed package (not in-tree) is a follow-up task — catches wheel/sdist divergence that in-tree tests miss.
+**Packaging contract:** `docker-compose.yml` must be confirmed as package data in both wheel and sdist. Unlike setuptools (which excludes non-Python files by default), hatchling includes all files under declared package roots by default, so `[tool.hatch.build.targets.wheel] packages = ["src/pragmata"]` should be sufficient if the file lives under `src/pragmata/annotation/`. Verify by inspecting the built wheel before shipping:
+
+```
+unzip -l dist/*.whl | grep docker-compose
+```
+
+A packaging test asserting `importlib.resources.files("pragmata.annotation").joinpath("docker-compose.yml").is_file()` from an *installed* package (not in-tree) is a follow-up task. This is the only check that catches wheel/sdist divergence that in-tree tests miss.
 
 ### 2.3 Profiles / bundles (the flag surface for external backing services)
 
@@ -163,7 +178,7 @@ pragmata ships three tools. Only `annotation` has any bootstrap beyond `pip inst
 
 - `querygen`: `pip install 'pragmata[querygen]' && export OPENAI_API_KEY=...` - two-line README
 - `eval`: same as `querygen`
-- `annotation`: real sequence (install → wait for Docker → pull images → start stack → poll health → print creds stdout)
+- `annotation`: real sequence (install → wait for Docker → pull images → start stack → poll health → print URL + next-step hint)
 
 The question is whether `annotation` needs a separate install artefact. For v0.1, no.
 
@@ -180,7 +195,7 @@ The question is whether `annotation` needs a separate install artefact. For v0.1
 > 3. `docker compose pull` - only on first run or after `pip install -U` (detect by comparing pinned image digests vs locally cached). Log clearly; this is the slow step.
 > 4. `docker compose up -d` with resolved profile (§2.3).
 > 5. Poll `GET /api/v1/status` until 200 or timeout (default 120 s). Stream a progress indicator. (Argilla v2 exposes `/api/v1/status`, not `/api/v1/health`.)
-> 6. Print Argilla URL (`http://localhost:6900` by default) and next-step hint. Credentials are not printed — for dev defaults see [`deploy/annotation/.env.dev.example`](../../deploy/annotation/.env.dev.example); for production, set `ARGILLA_USERNAME`, `ARGILLA_PASSWORD`, `ARGILLA_API_KEY` in the environment before running `up` (the shipped compose reads them directly — no `PRAGMATA_*` wrapper).
+> 6. Print Argilla URL (`http://localhost:6900` by default) and next-step hint. Credentials are not printed. For dev defaults see [`deploy/annotation/.env.dev.example`](../../deploy/annotation/.env.dev.example); for production, set `ARGILLA_USERNAME`, `ARGILLA_PASSWORD`, `ARGILLA_API_KEY` in the environment before running `up` (the shipped compose reads them directly, no `PRAGMATA_*` wrapper).
 > 7. Print next-step hint: `pragmata annotation setup --users <path>`.
 
 
