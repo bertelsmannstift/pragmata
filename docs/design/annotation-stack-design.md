@@ -126,19 +126,7 @@ include = [
 unzip -l dist/*.whl | grep docker-compose
 ```
 
-A packaging smoke test exercises the shipped file *alone* from an installed wheel (not in-tree, no dev override layered on top). Assertion scope is deliberately minimal - file resolves + YAML parses, nothing more:
-
-```python
-import yaml
-from importlib.resources import files
-
-def test_shipped_compose_is_packaged():
-    path = files("pragmata.annotation").joinpath("docker-compose.yml")
-    assert path.is_file()
-    yaml.safe_load(path.read_text())  # raises if malformed
-```
-
-Behavioural correctness (does Argilla actually come up against the shipped compose) is *not* this test's job - that belongs to the dev-override integration tests, which run against the same shipped file with credentials layered on. The packaging test exists for one purpose: catch wheel / sdist divergence that no in-tree test can see. This is the only check that detects "the compose file silently dropped from the wheel after a `force-include` / `exclude` refactor" before users hit it.
+A packaging smoke test exercises the shipped file *alone* from an installed wheel (not in-tree, no dev override layered on top). Assertion scope is deliberately minimal - file resolves + YAML parses, nothing more -> catch wheel / sdist divergence that no in-tree test can see.
 
 ### 2.3 Profiles / bundles (the flag surface for external backing services)
 
