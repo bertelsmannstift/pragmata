@@ -25,10 +25,10 @@ SOTA across CLIs that wrap a container stack - whether the CLI is PyPI-distribut
 
 - **Install is side-effect free.** `pip install 'pragmata[annotation]'` installs the package and bundles the compose file; it doesn't start containers, pull images, write user config, or modify Docker daemon state. Install and "do anything" are separate steps. (Installers that pull images or start daemons at install time break CI, container builds, and exploratory venv workflows.)
 - **First-run bootstrap is an idempotent single command.** One verb (`pragmata annotation up`) gets you a running stack from a clean machine. Re-running it on an already-running stack is a no-op + health check, not a "did I run init yet?" decision the user has to track.
-- **Upgrade is the #1 pain point - and we mostly sidestep it** (see [§3.2](#32-upgrade)). Surveyed tools fail upgrade three ways: user-edited compose drifts from shipped; image tags fall out of sync with CLI version; persistent volumes carry old schema into new containers. Our locked-compose model (option Y) eliminates the first two - the file is package-owned, so `pip install -U` upgrades CLI and compose atomically with no drift. Argilla's own schema migrations between majors remain an upstream concern we don't shield users from.
+- **Upgrade is the #1 pain point.** Surveyed tools fail it three ways: user-edited compose drifts from shipped; image tags drift from CLI version; persistent volumes carry old schema into new containers. Locked compose (option Y) eliminates the first two; the third is upstream's concern. See [§3.2](#32-upgrade).
 - **Dev ≠ prod, by artefact.** The contributor workflow (cloned repo, `make`, well-known dev credentials in `.env.dev.example`, exposed debug ports, looser health-check timing) and the end-user workflow (PyPI install, `pragmata annotation up`, env-injected credentials, localhost-only ports, production-tight defaults) run *different file pairs*, not the same file with "remember to change these in prod" comments. The shipped compose is the prod baseline; the dev override layers contributor-only conveniences on top.
 
-**Test boundary.** Integration tests (`make test-stack`, `tests/integration/`) run against `(shipped + dev-override)` - matching what contributors hit locally, with dev credentials. A separate packaging smoke test exercises the shipped file *alone* from an installed wheel (no override layered on top), asserting only that `importlib.resources` resolves the file and that the YAML parses. This is the only test that catches wheel / sdist divergence (e.g. the compose file silently dropped from `[tool.hatch.build.targets.wheel]` after a refactor). Two test paths, deliberately: the dev-override path covers behavioural correctness against real credentials; the shipped-only smoke test covers the packaging contract. SOTA doesn't converge here (Airflow and Argilla test against their dev compose because there's no separate shipped artefact; Supabase / Airbyte test against the locked artefact because that's the only one) - pragmata's two-artefact model means we need both, but the packaging test is intentionally minimal (~20 lines) to keep the cost down.
+**Test boundary.** Two test paths, deliberately: integration tests (`make test-stack`, `tests/integration/`) run against `(shipped + dev-override)` to cover behavioural correctness; a separate packaging smoke test runs the shipped file alone from an installed wheel to cover the packaging contract. SOTA doesn't converge here (Airflow / Argilla test only their dev compose because there's no separate shipped artefact; Supabase / Airbyte test only the locked artefact because that's the only one) - pragmata's two-artefact model needs both. Mechanics and assertion scope in §2.2.
 
 ## 1. Stack composition
 
@@ -101,9 +101,7 @@ Three options were considered:
 
 ### 2.2 Distribution mechanism (how pkg'd YAML travels)
 
-Ships as package data inside the installed package at `src/pragmata/annotation/docker-compose.yml`, resolved at runtime via `importlib.resources.files("pragmata.annotation") / "docker-compose.yml"` + `as_file()`. Same mechanism already in use for [`core/annotation/collapsible_field.html`](../../src/pragmata/core/annotation/collapsible_field.html).
-
-Image tags are pinned in the shipped compose and treated as package-owned. `pip install -U pragmata` ships a new compose with new tags - users automatically pick it up on next `up` (no drift, no warning needed under option Y).
+Resolved at runtime via `importlib.resources.files("pragmata.annotation") / "docker-compose.yml"` + `as_file()`. Same mechanism already in use for [`core/annotation/collapsible_field.html`](../../src/pragmata/core/annotation/collapsible_field.html). Image tags are pinned in the shipped compose and treated as package-owned; upgrade flow in §3.2.
 
 **Packaging contract (proposed - not yet configured):** `docker-compose.yml` must be confirmed as package data in both wheel and sdist. Today `pyproject.toml` declares `build-backend = "hatchling.build"` but has no explicit `[tool.hatch.build.targets.wheel]` block; hatchling's `src`-layout default picks up `src/pragmata/` automatically, and *does* by default include non-`.py` files under package directories - but that default is the failure mode we want to guard against (it depends on file-pattern defaults that have shifted between hatchling versions and that can be silently overridden by a future `include`/`exclude` line). The explicit contract pins both *which package roots are shipped* and *which non-Python artefacts must accompany them*:
 
@@ -204,12 +202,7 @@ Precedent for profiles: [Airflow's official Compose](https://airflow.apache.org/
 
 **`pragmata annotation up` is the first-run command. No separate `init`. `annotation setup` stays as Argilla provisioning (see [`config-and-settings.md`](config-and-settings.md) §3), invoked after the stack is up.**
 
-`up` does:
-- Pre-flight in order: extra installed? → Docker daemon reachable? → required ports free?
-- Resolve the packaged compose via `importlib.resources` (no copy to disk - option Y, §2.1)
-- Pulls images on first invocation (slow; stream per-image progress to terminal; rerun-safe - see §4.2 step 3). The README must call this out as a one-off ~5 GB download (Argilla + Postgres + Elasticsearch + Redis) so users on metered/slow networks know what to expect on the first `up`.
-- Health-polls Argilla's `/api/v1/status` endpoint with a timeout. The endpoint is unauthenticated and returns `{version, search_engine, memory}`; it awaits `search_engine.info()` inline, so a degraded or unreachable search backend surfaces here as a non-200 rather than requiring a separate check.
-- On success: prints Argilla URL and next-step hint
+`up` runs the sequence in §4.2: pre-flight → resolve packaged compose → `--pull missing` → start → health-poll `/api/v1/status` → print URL + next-step hint. The README must flag the first-run image pull as a one-off ~5 GB download (Argilla + Postgres + Elasticsearch + Redis) so users on metered/slow networks know what to expect.
 
 Most of the core parts of this UX are already implemented.
 
@@ -217,13 +210,12 @@ Precedent for "idempotent single command, safe to re-run": `abctl local install`
 
 ### 3.2 Upgrade
 
-**`pip install -U pragmata` is the sole upgrade primitive. The compose file is package-owned (option Y, §2.1), so upgrades pick up the new file automatically with no drift to manage.**
+**`pip install -U pragmata` is the sole upgrade primitive.**
 
-- Named Docker volumes with a deterministic prefix (`pragmata_annotation_*`) persist data across container recreation
-- New compose ships with new image tags - `pragmata annotation up` after upgrade picks up the new file via `importlib.resources`. No drift detection / warning / `reset-compose` verb needed (we own the file)
-- For destructive Argilla schema migrations between majors, document the backup step; pragmata does not protect users from upstream-breaking changes
+- Named Docker volumes (`pragmata_annotation_*`) persist data across container recreation; next `up` resolves the upgraded compose via `importlib.resources` and picks up the new pinned tags. No drift detection / warning / `reset-compose` verb needed (we own the file).
+- For destructive Argilla schema migrations between majors, document the backup step; pragmata does not protect users from upstream-breaking changes.
 
->NB: Airbyte's `abctl local install` is idempotent and designed to fix Compose upgrade brittleness ([Airbyte discussion #40599](https://github.com/airbytehq/airbyte/discussions/40599)). We don't need that machinery - our locked compose model sidesteps the brittleness.
+>NB: Airbyte's `abctl local install` is idempotent and designed to fix Compose upgrade brittleness ([Airbyte discussion #40599](https://github.com/airbytehq/airbyte/discussions/40599)). We don't need that machinery - locked compose sidesteps it.
 
 ### 3.3 Uninstall
 
@@ -322,7 +314,7 @@ The settings resolution chain (`flag > env > config_path > project config > user
 
 The two-line install works identically across pip, `pipx install 'pragmata[annotation]'`, and `uv tool install 'pragmata[annotation]'` - in all three cases the `pragmata` entry point ends up on PATH and `annotation up` resolves the packaged compose the same way. No installer-specific branching in the docs is needed; just show `pip` as the default and mention pipx/uv work the same.
 
-**Scope of "prod" for the two-line install: single-host, single-operator (or co-located annotators on the same machine).** Argilla binds to `127.0.0.1:6900` by the shipped compose's defaults, so the stack is only reachable from the host running `annotation up`. For multi-annotator deployments where annotators sit on different machines, the two-line install is *not* sufficient on its own and must be combined with a reverse proxy - see §4.3.
+**Scope of "prod" for the two-line install: single-host, single-operator (or co-located annotators on the same machine).** Multi-annotator across machines needs a reverse proxy on top - see §4.3.
 
 ### 4.1 Scope
 
@@ -354,7 +346,7 @@ The question is whether `annotation` needs a separate install artefact. For v0.1
 
 ### 4.3 Production deployment beyond single-host
 
-The shipped compose binds Argilla to `127.0.0.1:6900` (loopback only) as a safety default - a service bound to `0.0.0.0` on a cloud VM is immediately reachable from the public internet, and Argilla's built-in auth (username / password / API key over plain HTTP) is not designed for that exposure. Two deployment shapes follow from that default:
+The shipped compose binds Argilla to `127.0.0.1:6900` (loopback only) as a safety default - a service bound to `0.0.0.0` on a cloud VM is immediately reachable from the public internet, and Argilla's plain-HTTP auth is not designed for that exposure. Two deployment shapes follow:
 
 **Single-host (in scope for the two-line install).** Operator runs `pragmata annotation up` on a machine; annotators sit on the same machine and hit `http://localhost:6900` in their browsers. Works out of the box. Common for solo research workflows, demos, single-annotator pilot studies.
 
@@ -416,9 +408,9 @@ Beyond these, `annotation up` must also handle:
 
 | Area | Implemented today | Proposed in this doc |
 |---|---|---|
-| **Docker stack lifecycle (`up`/`down`)** | Not implemented - only Makefile targets (`docker-up`, `docker-down`, etc.) that read [`deploy/annotation/docker-compose.dev.yml`](../../deploy/annotation/docker-compose.dev.yml) | Add `pragmata annotation up` / `down` CLI commands |
-| **Compose file distribution** | Dev-only file in `deploy/`; **not shipped** in the installed wheel | Ship `src/pragmata/annotation/docker-compose.yml` as package data, locked (option Y, §2.1) - resolved at runtime via `importlib.resources`, never copied to disk. Dev override stays in `deploy/` for contributors only |
-| **Package data** | `importlib.resources` already used for [`core/annotation/collapsible_field.html`](../../src/pragmata/core/annotation/collapsible_field.html) | Same mechanism for the compose file |
+| **Docker stack lifecycle (`up`/`down`)** | Not implemented - only Makefile targets (`docker-up`, `docker-down`, etc.) that read [`deploy/annotation/docker-compose.dev.yml`](../../deploy/annotation/docker-compose.dev.yml) | Add `pragmata annotation up` / `down` CLI commands (§3, §3.5) |
+| **Compose file distribution** | Dev-only file in `deploy/`; **not shipped** in the installed wheel | Ship as package data + contributor dev override (§1, §2.1, §2.2) |
+| **Package data** | `importlib.resources` already used for [`core/annotation/collapsible_field.html`](../../src/pragmata/core/annotation/collapsible_field.html) | Same mechanism for the compose file (§2.2) |
 
 ## References
 
