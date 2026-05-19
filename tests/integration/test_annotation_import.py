@@ -20,6 +20,7 @@ _DATASET_ID = "testimport"
 _CREDS: dict[str, str] = {"api_url": _API_URL, "api_key": _API_KEY}
 
 _SETTINGS = AnnotationSettings(dataset_id=_DATASET_ID)
+_DEFAULT_SETTINGS = AnnotationSettings()
 
 
 def _make_raw(n_chunks: int = 2, *, language: str | None = "de") -> dict:
@@ -49,16 +50,14 @@ def clean_environment(client: rg.Argilla):
     Orphan datasets from earlier runs are purged first — Argilla blocks
     workspace deletion while any dataset is linked.
     """
-    teardown_resources(client, _SETTINGS)
-    for ws_base in AnnotationSettings().workspace_dataset_map:
+    for ws_base in _DEFAULT_SETTINGS.workspace_dataset_map:
         purge_workspace_datasets(client, ws_base)
-    teardown_resources(client, AnnotationSettings())
+    teardown_resources(client, _DEFAULT_SETTINGS)
     setup_workspaces(client, _SETTINGS)
     yield
-    teardown_resources(client, _SETTINGS)
-    for ws_base in AnnotationSettings().workspace_dataset_map:
+    for ws_base in _DEFAULT_SETTINGS.workspace_dataset_map:
         purge_workspace_datasets(client, ws_base)
-    teardown_resources(client, AnnotationSettings())
+    teardown_resources(client, _DEFAULT_SETTINGS)
 
 
 @pytest.fixture()
