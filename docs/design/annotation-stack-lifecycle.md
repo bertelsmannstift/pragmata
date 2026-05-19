@@ -39,6 +39,8 @@ All services bundled by default (zero-config principle, see [`config-and-setting
 
 End users (`pragmata annotation up`) only ever touch the shipped (package-data) file via CLI flags. The dev override is exclusively for contributors working in a cloned repo.
 
+**Prod credential injection.** The shipped compose reads `ARGILLA_USERNAME`, `ARGILLA_PASSWORD`, `ARGILLA_API_KEY` (and backing-service vars) directly from the environment — no pragmata-owned wrapper. Operators set these in their shell, CI environment, or a `.env` file they own before running `pragmata annotation up`. If unset, Argilla starts without creating a user (Argilla's own behaviour — it skips user creation when `USERNAME`/`PASSWORD` are absent). Dev defaults are in [`deploy/annotation/.env.dev.example`](../../deploy/annotation/.env.dev.example); contributors copy this to `.env` and the Makefile picks it up. End users never touch that file.
+
 >Migration steps from today's single `deploy/annotation/docker-compose.dev.yml`:
 >  1. Extract prod-safe defaults into `src/pragmata/annotation/docker-compose.yml` as package data (the new SSOT for runtime)
 >  2. Strip dev-only overrides into `deploy/annotation/docker-compose.dev.override.yml`
@@ -128,7 +130,7 @@ Precedent for profiles: [Airflow's official Compose](https://airflow.apache.org/
 - Resolve the packaged compose via `importlib.resources` (no copy to disk - option Y, §2.1)
 - Pulls images on first invocation (slow; log clearly - make this prominent in docs)
 - Health-polls Argilla's health endpoint with a timeout
-- On success: prints URL, default API key, print creds (once) and next command
+- On success: prints Argilla URL and next-step hint
 
 Most of the core parts of this UX are already implemented.
 
@@ -178,7 +180,7 @@ The question is whether `annotation` needs a separate install artefact. For v0.1
 > 3. `docker compose pull` - only on first run or after `pip install -U` (detect by comparing pinned image digests vs locally cached). Log clearly; this is the slow step.
 > 4. `docker compose up -d` with resolved profile (§2.3).
 > 5. Poll `GET /api/v1/status` until 200 or timeout (default 120 s). Stream a progress indicator. (Argilla v2 exposes `/api/v1/status`, not `/api/v1/health`.)
-> 6. Print Argilla URL (`http://localhost:6900` by default). Admin credentials are static defaults documented in the README — not printed by `up`.
+> 6. Print Argilla URL (`http://localhost:6900` by default) and next-step hint. Credentials are not printed — for dev defaults see [`deploy/annotation/.env.dev.example`](../../deploy/annotation/.env.dev.example); for production, set `ARGILLA_USERNAME`, `ARGILLA_PASSWORD`, `ARGILLA_API_KEY` in the environment before running `up` (the shipped compose reads them directly — no `PRAGMATA_*` wrapper).
 > 7. Print next-step hint: `pragmata annotation setup --users <path>`.
 
 
