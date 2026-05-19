@@ -49,9 +49,7 @@ Failure modes must be distinguished:
 | **Extra not installed** | `pip install pragmata` (bare) -> user calls `pragmata annotation ...` | "Install with: `pip install pragmata[annotation]`" |
 | **Docker missing (annotation only)** | Has extra -> no Docker daemon | "Docker is required for `pragmata annotation`. Install Docker" |
 
-Under the zero-config principle, "installed but unconfigured" is **not** a normal failure mode - defaults are sufficient and resolution is consistent on every run.
-
-> **New dependdencies proposed in this doc**
+> **New dependencies proposed in this doc**
 >
 > | Package | Where it goes | Why | Notes |
 > |---|---|---|---|
@@ -59,7 +57,7 @@ Under the zero-config principle, "installed but unconfigured" is **not** a norma
 >
 > **`platformdirs`** - resolves config/cache/data dirs correctly across Linux/macOS/Windows from a single call, so we don't hardcode `~/.config/` (Linux-only). Full rationale and precedent in §1.1.
 >
-> Not planned: **`questionary`** (or any interactive prompt library). There is no general config wizard (principle 5) and no per-tool interactive setup flow for querygen/eval. `pragmata annotation setup` (Argilla provisioning) is headless-flag-driven and stays that way.
+> Not planned: **`questionary`** (or any interactive prompt library) - see principles 5 and 6.
 
 ---
 
@@ -290,14 +288,12 @@ Naming rationale:
 
 ### 3.1 Headless by default
 
-All commands - including `annotation setup` (Argilla provisioning) - are non-interactive: required values come from flags, env vars, or config. Missing required values fail fast with a clear error that names the missing setting and the flag/env var that supplies it.
+Per principle 5, all commands - including `annotation setup` - are non-interactive: missing required values fail fast with a clear error naming the missing setting and the flag/env var that supplies it. No TTY-dependent branching, no `--no-prompt` mode flag.
 
 ```
 pragmata annotation setup --url http://... --api-key ...   # headless, no prompts
 pragmata annotation setup --url http://...                 # missing api-key → fail fast with clear error
 ```
-
-No prompts, TTY-dependent branching, or `--no-prompt` mode flag (none needed - nothing prompts). Same behaviour in interactive shells, CI, and Python API callers.
 
 ## 4. First-use error UX
 
@@ -311,7 +307,7 @@ Error: pragmata.annotation requires the 'annotation' extra.
   Install with: pip install 'pragmata[annotation]'
 ```
 
-Under zero-config (principle 4), "annotation is not configured" is **not** a failure mode - defaults always resolve to a working config.
+Per principle 4, "not configured" is not itself a failure mode - defaults always resolve.
 
 Annotation has additional infra-specific failure modes (Docker daemon, stack-up, port conflicts, image-pull failure, etc.) - see [`annotation-bootstrap.md`](annotation-bootstrap.md) §5.
 
