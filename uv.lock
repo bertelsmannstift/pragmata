@@ -2155,6 +2155,19 @@ dev = [
     { name = "sentence-transformers" },
     { name = "types-pyyaml" },
 ]
+everything = [
+    { name = "argilla" },
+    { name = "langchain-anthropic" },
+    { name = "langchain-cohere" },
+    { name = "langchain-deepseek" },
+    { name = "langchain-google-genai" },
+    { name = "langchain-openai" },
+    { name = "sentence-transformers" },
+]
+full = [
+    { name = "argilla" },
+    { name = "sentence-transformers" },
+]
 google-genai = [
     { name = "langchain-google-genai" },
 ]
@@ -2189,6 +2202,8 @@ requires-dist = [
     { name = "langchain-openai", marker = "extra == 'openai'", specifier = ">=1.2,<2.0" },
     { name = "mypy", marker = "extra == 'type'", specifier = ">=1.19,<2.0" },
     { name = "numpy", specifier = ">=2.3,<3.0" },
+    { name = "pragmata", extras = ["annotation", "querygen", "eval"], marker = "extra == 'full'" },
+    { name = "pragmata", extras = ["full", "cohere", "deepseek", "openai", "anthropic", "google-genai"], marker = "extra == 'everything'" },
     { name = "pragmata", extras = ["test", "lint", "type", "annotation", "querygen"], marker = "extra == 'dev'" },
     { name = "pydantic", specifier = ">=2.13,<3.0" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=9.0,<10.0" },
@@ -2198,7 +2213,7 @@ requires-dist = [
     { name = "typer", specifier = ">=0.9,<1.0" },
     { name = "types-pyyaml", marker = "extra == 'type'" },
 ]
-provides-extras = ["test", "lint", "type", "annotation", "querygen", "cohere", "deepseek", "openai", "anthropic", "google-genai", "dev"]
+provides-extras = ["test", "lint", "type", "annotation", "querygen", "eval", "cohere", "deepseek", "openai", "anthropic", "google-genai", "full", "everything", "dev"]
 
 [[package]]
 name = "propcache"
