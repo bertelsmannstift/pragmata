@@ -76,6 +76,40 @@ class TestAnnotationSettingsResolve:
             AnnotationSettings(dataset_id=bad)
 
 
+class TestCalibrationTopologyValidator:
+    def _disabled_topology(self) -> dict:
+        from pragmata.core.schemas.annotation_task import Task
+
+        return {
+            "retrieval": {Task.RETRIEVAL: TaskOverlap(calibration_min_submitted=None)},
+            "grounding": {Task.GROUNDING: TaskOverlap(calibration_min_submitted=None)},
+            "generation": {Task.GENERATION: TaskOverlap(calibration_min_submitted=None)},
+        }
+
+    def test_zero_fraction_with_disabled_calibration_ok(self):
+        AnnotationSettings(calibration_fraction=0.0, workspace_dataset_map=self._disabled_topology())
+
+    def test_positive_fraction_with_disabled_calibration_rejected(self):
+        with pytest.raises(ValidationError, match="topology has no calibration dataset"):
+            AnnotationSettings(calibration_fraction=0.1, workspace_dataset_map=self._disabled_topology())
+
+    def test_positive_fraction_with_at_least_one_enabled_task_ok(self):
+        from pragmata.core.schemas.annotation_task import Task
+
+        topology = self._disabled_topology()
+        topology["retrieval"][Task.RETRIEVAL] = TaskOverlap(calibration_min_submitted=3)
+        # Mixed: retrieval calibrated, grounding/generation not -> still rejected
+        # because the validator checks every task, not "any task".
+        with pytest.raises(ValidationError, match="topology has no calibration dataset"):
+            AnnotationSettings(calibration_fraction=0.1, workspace_dataset_map=topology)
+
+    def test_fraction_out_of_range_rejected(self):
+        with pytest.raises(ValidationError):
+            AnnotationSettings(calibration_fraction=1.5)
+        with pytest.raises(ValidationError):
+            AnnotationSettings(calibration_fraction=-0.1)
+
+
 class TestArgillaSettings:
     def test_defaults_to_none_api_url(self):
         s = AnnotationSettings()

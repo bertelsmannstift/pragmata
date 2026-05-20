@@ -102,8 +102,11 @@ def teardown_resources(
             logger.info("Workspace %r not found — skipping", ws_base)
             continue
 
-        for task in task_overlaps:
-            for calibration in (False, True):
+        for task, overlap in task_overlaps.items():
+            purposes_present = [False]  # production always exists
+            if overlap.calibration_min_submitted is not None:
+                purposes_present.append(True)
+            for calibration in purposes_present:
                 ds_name = dataset_name(task, calibration=calibration, dataset_id=settings.dataset_id)
                 dataset = client.datasets(ds_name, workspace=ws_base)
                 if dataset is not None:
