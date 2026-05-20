@@ -16,7 +16,7 @@ from typing import ClassVar, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, NonNegativeInt, PositiveInt, model_validator
 
-from pragmata.core.schemas.annotation_task import Task
+from pragmata.core.schemas.annotation_task import Locale, Task
 from pragmata.core.settings.settings_base import INHERIT, Inherit, ResolveSettings
 from pragmata.core.types import SafePathSegment
 
@@ -36,6 +36,7 @@ class TaskSettings(BaseModel):
 
     production_min_submitted: PositiveInt | Inherit = INHERIT
     calibration_min_submitted: PositiveInt | None | Inherit = INHERIT
+    locale: Locale | Inherit = INHERIT
 
 
 class WorkspaceSettings(BaseModel):
@@ -50,6 +51,7 @@ class WorkspaceSettings(BaseModel):
 
     production_min_submitted: PositiveInt | Inherit = INHERIT
     calibration_min_submitted: PositiveInt | None | Inherit = INHERIT
+    locale: Locale | Inherit = INHERIT
     tasks: dict[Task, TaskSettings]
 
 
@@ -59,6 +61,7 @@ class ResolvedTaskSettings:
 
     production_min_submitted: int
     calibration_min_submitted: int | None
+    locale: Locale
 
 
 class AnnotationSettings(ResolveSettings):
@@ -76,6 +79,7 @@ class AnnotationSettings(ResolveSettings):
     dataset_id: SafePathSegment = ""
     production_min_submitted: PositiveInt = 1
     calibration_min_submitted: PositiveInt | None = 3
+    locale: Locale = Locale.EN
     calibration_fraction: float = Field(0.1, ge=0.0, le=1.0)
     calibration_partition_seed: NonNegativeInt = 0
     include_discarded: bool = False
@@ -90,6 +94,7 @@ class AnnotationSettings(ResolveSettings):
     _INHERITED_FIELDS: ClassVar[tuple[str, ...]] = (
         "production_min_submitted",
         "calibration_min_submitted",
+        "locale",
     )
 
     def resolved_task(self, workspace_name: str, task: Task) -> ResolvedTaskSettings:
