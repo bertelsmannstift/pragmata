@@ -48,6 +48,10 @@ def setup_command(
     )
     typer.echo(f"Workspaces created: {len(result.created_workspaces)}, skipped: {len(result.skipped_workspaces)}")
     typer.echo(f"Users created: {len(result.created_users)}, skipped: {len(result.skipped_users)}")
+    if result.generated_passwords:
+        typer.echo("\nGenerated passwords (shown once — record them now):")
+        for username, password in result.generated_passwords.items():
+            typer.echo(f"  {username}: {password}")
 
 
 @annotation_app.command("teardown")
