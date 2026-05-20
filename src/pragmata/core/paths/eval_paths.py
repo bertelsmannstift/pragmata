@@ -56,7 +56,7 @@ def resolve_eval_score_paths(
         tool_root=tool_root,
         score_dir=score_dir,
         retrieval_scores_json=score_dir / "retrieval_scores.json",
-        grounding_scores_json=score_dir / " grounding_scores.json",
+        grounding_scores_json=score_dir / "grounding_scores.json",
         generation_scores_json=score_dir / "generation_scores.json",
         scores_meta_json=score_dir / "scores_meta.json",
     )
