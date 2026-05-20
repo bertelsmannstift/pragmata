@@ -2,8 +2,8 @@
 
 Settings are organised into three scopes — deployment (``AnnotationSettings``),
 workspace (``WorkspaceSettings``), task (``TaskSettings``). The inheritable
-fields (``production_min_submitted``, ``calibration_min_submitted``) may be set
-at any scope; child scopes default to ``INHERIT``. Models hold the **specified**
+fields (``production_min_submitted``, ``calibration_min_submitted``, ``locale``)
+may be set at any scope; child scopes default to ``INHERIT``. Models hold the **specified**
 values exactly as given (``INHERIT`` survives validation, raw inputs round-trip
 losslessly through ``model_dump()``). ``resolved_task(workspace_name, task)``
 returns the **computed** values after walking task → workspace → deployment —
@@ -16,7 +16,7 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, NonNegativeInt, PositiveInt, model_validator
 
-from pragmata.core.schemas.annotation_task import Task
+from pragmata.core.schemas.annotation_task import Locale, Task
 from pragmata.core.settings.settings_base import INHERIT, Inherit, ResolveSettings
 from pragmata.core.types import SafePathSegment
 
@@ -36,6 +36,7 @@ class TaskSettings(BaseModel):
 
     production_min_submitted: PositiveInt | Inherit = INHERIT
     calibration_min_submitted: PositiveInt | None | Inherit = INHERIT
+    locale: Locale | Inherit = INHERIT
 
 
 class WorkspaceSettings(BaseModel):
@@ -50,6 +51,7 @@ class WorkspaceSettings(BaseModel):
 
     production_min_submitted: PositiveInt | Inherit = INHERIT
     calibration_min_submitted: PositiveInt | None | Inherit = INHERIT
+    locale: Locale | Inherit = INHERIT
     tasks: dict[Task, TaskSettings]
 
 
@@ -59,6 +61,7 @@ class ResolvedTaskSettings:
 
     production_min_submitted: int
     calibration_min_submitted: int | None
+    locale: Locale
 
 
 class AnnotationSettings(ResolveSettings):
@@ -76,6 +79,9 @@ class AnnotationSettings(ResolveSettings):
             dataset, or ``None`` to disable calibration for that scope. Default
             3 covers Krippendorff alpha plus pairwise Cohen kappa for IAA.
             Inherited by workspaces/tasks.
+        locale: Display locale for Argilla dataset strings (titles, guidelines,
+            label option text). Inherited by workspaces/tasks. Identities and
+            label values remain stable across locales so exports merge cleanly.
         calibration_fraction: Fraction of records routed to a separate
             calibration dataset for IAA (0.0 disables; deployment-level only).
     """
@@ -85,6 +91,7 @@ class AnnotationSettings(ResolveSettings):
     dataset_id: SafePathSegment = ""
     production_min_submitted: PositiveInt = 1
     calibration_min_submitted: PositiveInt | None = 3
+    locale: Locale = Locale.EN
     calibration_fraction: float = Field(0.1, ge=0.0, le=1.0)
     calibration_partition_seed: NonNegativeInt = 0
     include_discarded: bool = False
@@ -118,9 +125,16 @@ class AnnotationSettings(ResolveSettings):
         if isinstance(calibration, Inherit):
             calibration = self.calibration_min_submitted
 
+        locale = ts.locale
+        if isinstance(locale, Inherit):
+            locale = ws.locale
+        if isinstance(locale, Inherit):
+            locale = self.locale
+
         return ResolvedTaskSettings(
             production_min_submitted=production,
             calibration_min_submitted=calibration,
+            locale=locale,
         )
 
     @model_validator(mode="after")
