@@ -26,6 +26,16 @@ _YES_NO_QUESTIONS_BY_TASK: dict[Task, list[str]] = {
     Task.GENERATION: ["proper_action", "response_on_topic", "helpful", "incomplete", "unsafe_content"],
 }
 
+DISCARD_WIDGET_KEYS: tuple[str, ...] = (
+    "panel_summary",
+    "panel_help",
+    "reason_label",
+    "reason_placeholder",
+    "notes_label",
+    "notes_placeholder",
+    "button_label",
+)
+
 
 def load_catalog(path: Path) -> Catalog:
     """Build a Catalog from a YAML translation file.
@@ -49,11 +59,14 @@ def load_catalog(path: Path) -> Catalog:
     labels = data["labels"]
     yes_display, no_display = labels["yes_display"], labels["no_display"]
     discard_reasons: dict[str, str] = labels["discard_reasons"]
+    widget: dict[str, str] = data["widget"]
     for task, question_names in _YES_NO_QUESTIONS_BY_TASK.items():
         for question in question_names:
             catalog[(task, "label", f"{question}.yes")] = yes_display
             catalog[(task, "label", f"{question}.no")] = no_display
         for reason in DiscardReason:
             catalog[(task, "label", f"discard_reason.{reason.value}")] = discard_reasons[reason.value]
+        for key in DISCARD_WIDGET_KEYS:
+            catalog[(task, "widget", f"discard.{key}")] = widget[key]
 
     return catalog

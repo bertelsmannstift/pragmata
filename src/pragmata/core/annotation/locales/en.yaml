@@ -70,3 +70,14 @@ labels:
     invalid_or_unrealistic: Invalid or unrealistic record
     unclear: Unclear query/context/answer relationship
     outside_reviewer_expertise: Outside reviewer expertise
+
+widget:
+  panel_summary: Discard this record
+  panel_help: >-
+    Use this if the record is unsuitable for annotation (e.g. invalid,
+    unclear, or outside your expertise).
+  reason_label: "Reason:"
+  reason_placeholder: "— select —"
+  notes_label: "Optional notes:"
+  notes_placeholder: Any extra context (optional)
+  button_label: Discard
