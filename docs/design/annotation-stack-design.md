@@ -109,13 +109,13 @@ packages = ["src/pragmata"]
 "src/pragmata/annotation/docker-compose.yml" = "pragmata/annotation/docker-compose.yml"
 ```
 
-`packages` pins the wheel root explicitly so the shipped layout doesn't depend on hatchling's src-layout autodetection. `force-include` is reserved for the compose file alone, because it's the locked shipped infrastructure artefact whose presence is part of the user-facing stack contract. Other non-Python resources that live under `src/pragmata` are also picked up by the package-tree default (the sdist also relies on hatchling's default: everything not VCS-ignored, plus `pyproject.toml` / README / LICENSE always), but these are not the explicit concern of ours, not to be tested for. The packaging smoke test below would be the actual regression guard. Once configured, the built wheel can be verified manually with:
+`packages` pins the wheel root explicitly so the shipped layout doesn't depend on hatchling's src-layout autodetection. `force-include` is reserved for the compose file alone, because it's the locked shipped infrastructure artefact whose presence is part of the user-facing stack contract. Other non-Python resources under `src/pragmata` (e.g. `collapsible_field.html`) rely on hatchling's package-tree default; the sdist also relies on hatchling's default (everything not VCS-ignored, plus `pyproject.toml` / README / LICENSE always). These defaults are not in scope for the smoke test below, which is the explicit regression guard for the compose contract. Once configured, the built wheel can be verified manually with:
 
 ```
 unzip -l dist/*.whl | grep docker-compose
 ```
 
-A packaging smoke test (not yet built) would exercise the installed wheel end-to-end (not in-tree, no dev override). Intended scope: build + install the package, resolve `pragmata/annotation/docker-compose.yml` via `importlib.resources`, parse as YAML. Deliberately narrow to compose only, since compose is the part of the contract that can silently drift without breaking in-tree tests; other internal resources (e.g. `collapsible_field.html`) rely on hatchling's package-tree default and are out of scope for the smoke test.
+A packaging smoke test (not yet built) would exercise an installed wheel (not in-tree, no dev override): build + install, resolve `pragmata/annotation/docker-compose.yml` via `importlib.resources`, parse as YAML. Compose is the part of the contract that can silently drift past in-tree tests.
 
 ### 2.3 Profiles / bundles (the flag surface for external backing services)
 
