@@ -39,11 +39,11 @@ def clean_slate(client: rg.Argilla):
     Orphan datasets from earlier runs are purged first — Argilla blocks
     workspace deletion while any dataset is linked.
     """
-    for ws_base in _DEFAULT_SETTINGS.workspace_dataset_map:
+    for ws_base in _DEFAULT_SETTINGS.workspaces:
         purge_workspace_datasets(client, ws_base)
     teardown_resources(client, _DEFAULT_SETTINGS)
     yield
-    for ws_base in _DEFAULT_SETTINGS.workspace_dataset_map:
+    for ws_base in _DEFAULT_SETTINGS.workspaces:
         purge_workspace_datasets(client, ws_base)
     teardown_resources(client, _DEFAULT_SETTINGS)
 

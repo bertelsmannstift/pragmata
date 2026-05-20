@@ -490,8 +490,14 @@ class TestExportMetaSidecar:
 class TestResolveCalibrationEnabled:
     def test_raises_when_task_missing_from_topology(self) -> None:
         from pragmata.core.annotation.export_runner import _resolve_calibration_enabled
-        from pragmata.core.settings.annotation_settings import AnnotationSettings, TaskOverlap
+        from pragmata.core.settings.annotation_settings import (
+            AnnotationSettings,
+            TaskSettings,
+            WorkspaceSettings,
+        )
 
-        settings = AnnotationSettings(workspace_dataset_map={"retrieval": {Task.RETRIEVAL: TaskOverlap()}})
+        settings = AnnotationSettings(
+            workspaces={"retrieval": WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings()})},
+        )
         with pytest.raises(ValueError, match="grounding"):
             _resolve_calibration_enabled(settings, [Task.RETRIEVAL, Task.GROUNDING])

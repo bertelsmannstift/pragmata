@@ -52,12 +52,12 @@ def clean_environment(client: rg.Argilla):
     the scoped datasets) get removed.
     """
     full_teardown_settings = _SETTINGS.model_copy(update={"dataset_id": ""})
-    for ws_base in _SETTINGS.workspace_dataset_map:
+    for ws_base in _SETTINGS.workspaces:
         purge_workspace_datasets(client, ws_base)
     teardown_resources(client, full_teardown_settings)
     setup_workspaces(client, _SETTINGS)
     yield
-    for ws_base in _SETTINGS.workspace_dataset_map:
+    for ws_base in _SETTINGS.workspaces:
         purge_workspace_datasets(client, ws_base)
     teardown_resources(client, full_teardown_settings)
 
