@@ -229,14 +229,20 @@ class TestDatasetNames:
         assert DATASET_NAMES[Task.GENERATION] == "generation"
 
 
-class TestDiscardFlowHtmlEnumSync:
-    """Guard against drift between DiscardReason enum and discard_flow.html options."""
+class TestDiscardFlowI18nPayload:
+    """Guard against drift between DiscardReason enum and the discard widget payload.
 
-    def test_html_option_values_match_enum(self):
-        import re
-        from importlib.resources import files
+    Option values are now injected via the i18n JSON baked into the rendered
+    ``discard_flow.html`` template at build time, not hardcoded in the HTML.
+    """
 
-        html = files("pragmata.core.annotation").joinpath("discard_flow.html").read_text(encoding="utf-8")
-        option_values = set(re.findall(r'<option value="([^"]+)"', html))
-        option_values.discard("")  # ignore placeholder "-- select --" option
-        assert option_values == {r.value for r in DiscardReason}
+    def test_rendered_template_contains_all_enum_values(self):
+        # Option values are injected via the i18n JSON payload at build time,
+        # not hardcoded in the HTML — assert each DiscardReason.value appears
+        # in the rendered output of the discard CustomField.
+        discard_field = next(f for f in _RETRIEVAL.fields if f.name == "discard_flow")
+        rendered = discard_field.template
+        for reason in DiscardReason:
+            assert f'"value": "{reason.value}"' in rendered, (
+                f"DiscardReason.{reason.name} value {reason.value!r} missing from rendered widget"
+            )

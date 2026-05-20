@@ -18,14 +18,24 @@ dataset creation time.
 """
 
 import functools
+import json
 from importlib.resources import files
 from string import Template
+from typing import Any
 
 import argilla as rg
 
-from pragmata.core.annotation.locales.registry import get_catalog
+from pragmata.core.annotation.locales.registry import CATALOGS, get_catalog
+from pragmata.core.annotation.locales.structure import DISCARD_WIDGET_KEYS
 from pragmata.core.annotation.locales.types import Catalog
 from pragmata.core.schemas.annotation_task import DiscardReason, Locale, Task
+
+
+class _DiscardTemplate(Template):
+    """``string.Template`` with ``@@`` delimiter — JS body uses ``$nuxt``/``$i18n``."""
+
+    delimiter = "@@"
+
 
 DATASET_NAMES: dict[Task, str] = {
     Task.RETRIEVAL: "retrieval",
@@ -86,6 +96,42 @@ def _discard_questions(task: Task, catalog: Catalog) -> list[rg.LabelQuestion | 
     ]
 
 
+def _discard_i18n_payload_for_locale(loc: Locale, task: Task) -> dict[str, Any]:
+    """Per-locale block of strings the discard widget JS reads at runtime.
+
+    Includes the widget's own chrome strings, the discard-reason option
+    list (value + display text), and the two helper-question titles the
+    widget uses for ``aria-label`` matching when scoping the native
+    Argilla cards it hides.
+    """
+    catalog = CATALOGS[loc]
+    payload: dict[str, Any] = {key: catalog[(task, "widget", f"discard.{key}")] for key in DISCARD_WIDGET_KEYS}
+    payload["discard_reason_title"] = catalog[(task, "question", "discard_reason")]
+    payload["discard_notes_title"] = catalog[(task, "question", "discard_notes")]
+    payload["reason_options"] = [
+        {"value": r.value, "text": catalog[(task, "label", f"discard_reason.{r.value}")]} for r in DiscardReason
+    ]
+    return payload
+
+
+def _render_discard_template(template_text: str, task: Task, dataset_locale: Locale) -> str:
+    """Substitute the all-locales i18n payload into ``discard_flow.html``.
+
+    The widget JS picks the active locale at runtime (Argilla's chrome
+    locale, with a fallback chain), so we ship every supported locale's
+    strings, ordering ``SUPPORTED_LOCALES`` with the dataset's creation
+    locale first. That ordering is consulted when probing Argilla's
+    ``aria-label`` attributes for the hidden helper-question cards.
+    """
+    locales_in_order = [dataset_locale] + [loc for loc in Locale if loc is not dataset_locale]
+    i18n_payload = {loc.value: _discard_i18n_payload_for_locale(loc, task) for loc in locales_in_order}
+    return _DiscardTemplate(template_text).substitute(
+        I18N_JSON=json.dumps(i18n_payload, ensure_ascii=False),
+        SUPPORTED_LOCALES_JSON=json.dumps([loc.value for loc in locales_in_order]),
+        DEFAULT_LOCALE_JSON=json.dumps(dataset_locale.value),
+    )
+
+
 @functools.cache
 def build_task_settings(locale: Locale = Locale.EN) -> dict[Task, rg.Settings]:
     """Build Argilla Settings for each annotation task, in the given locale.
@@ -104,7 +150,7 @@ def build_task_settings(locale: Locale = Locale.EN) -> dict[Task, rg.Settings]:
         return rg.CustomField(
             name="discard_flow",
             title=catalog[(task, "field", "discard_flow")],
-            template=discard_template,
+            template=_render_discard_template(discard_template, task, locale),
             advanced_mode=True,
             required=False,
         )

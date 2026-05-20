@@ -1,8 +1,8 @@
 """Locale-specific display strings for Argilla dataset titles, questions, guidelines.
 
 Catalogs are keyed by ``(task, kind, name)`` where ``kind`` is one of
-``"field"``, ``"question"``, ``"guidelines"``, ``"label"``, ``"widget"``.
-Identities (``name=``) and label values are not translated — only display text.
+``"field"``, ``"question"``, ``"guidelines"``. Identities (``name=``) and label
+values are not translated — only display text.
 
 Adding a locale:
 1. Create ``<locale>.py`` in this package exporting ``CATALOG: Catalog``,

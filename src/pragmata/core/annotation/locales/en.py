@@ -12,50 +12,14 @@ Catalog structure:
   ``"<question_name>.<label_value>"`` — the label *value* (e.g. ``"yes"``,
   ``"no"``, ``DiscardReason.UNCLEAR.value``) is the machine identifier
   that lands in exports, while the catalog value is what annotators see.
+- ``"widget"`` entries hold the chrome strings inside the injected discard
+  HTML widget. All locales ship inside every rendered widget so the JS can
+  react to Argilla's live chrome-locale toggle.
 """
 
+from pragmata.core.annotation.locales.structure import build_programmatic_entries
 from pragmata.core.annotation.locales.types import Catalog
 from pragmata.core.schemas.annotation_task import DiscardReason, Task
-
-_YES_NO_QUESTIONS_BY_TASK: dict[Task, list[str]] = {
-    Task.RETRIEVAL: ["topically_relevant", "evidence_sufficient", "misleading"],
-    Task.GROUNDING: [
-        "support_present",
-        "unsupported_claim_present",
-        "contradicted_claim_present",
-        "source_cited",
-        "fabricated_source",
-    ],
-    Task.GENERATION: ["proper_action", "response_on_topic", "helpful", "incomplete", "unsafe_content"],
-}
-
-_DISCARD_REASON_LABELS: dict[str, str] = {
-    DiscardReason.INVALID_OR_UNREALISTIC.value: "Invalid or unrealistic record",
-    DiscardReason.UNCLEAR.value: "Unclear query/context/answer relationship",
-    DiscardReason.OUTSIDE_REVIEWER_EXPERTISE.value: "Outside reviewer expertise",
-}
-
-
-def _build_programmatic_entries() -> Catalog:
-    """Generate label-display entries.
-
-    Done programmatically because:
-    - Every LabelQuestion in EN shares the same yes/no displays.
-    - Every task shares the same discard-reason displays.
-
-    Spelling these out by hand triples the file length with no information
-    gain. Per-locale overrides can still be applied by editing the final
-    CATALOG dict.
-    """
-    entries: Catalog = {}
-    for task, question_names in _YES_NO_QUESTIONS_BY_TASK.items():
-        for question in question_names:
-            entries[(task, "label", f"{question}.yes")] = "Yes"
-            entries[(task, "label", f"{question}.no")] = "No"
-        for reason_value, display in _DISCARD_REASON_LABELS.items():
-            entries[(task, "label", f"discard_reason.{reason_value}")] = display
-    return entries
-
 
 CATALOG: Catalog = {
     # ------------------- RETRIEVAL -------------------
@@ -114,6 +78,26 @@ CATALOG: Catalog = {
     (Task.GENERATION, "question", "discard_reason"): "Discard reason",
     (Task.GENERATION, "question", "discard_notes"): "Discard notes (optional)",
     (Task.GENERATION, "guidelines", ""): "Generation. TODO: Revisit after first annotation iteration.",
-    # ------------------- LABELS (programmatic) ------------------
-    **_build_programmatic_entries(),
+    # ------------------- LABELS + WIDGET (programmatic) ------------------
+    **build_programmatic_entries(
+        yes_display="Yes",
+        no_display="No",
+        discard_reason_displays={
+            DiscardReason.INVALID_OR_UNREALISTIC.value: "Invalid or unrealistic record",
+            DiscardReason.UNCLEAR.value: "Unclear query/context/answer relationship",
+            DiscardReason.OUTSIDE_REVIEWER_EXPERTISE.value: "Outside reviewer expertise",
+        },
+        discard_widget_displays={
+            "panel_summary": "Discard this record",
+            "panel_help": (
+                "Use this if the record is unsuitable for annotation "
+                "(e.g. invalid, unclear, or outside your expertise)."
+            ),
+            "reason_label": "Reason:",
+            "reason_placeholder": "— select —",
+            "notes_label": "Optional notes:",
+            "notes_placeholder": "Any extra context (optional)",
+            "button_label": "Discard",
+        },
+    ),
 }
