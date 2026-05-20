@@ -24,6 +24,37 @@ UNSET: Final[_UnsetType] = _UnsetType()
 type Unset = _UnsetType
 
 
+class _InheritType:
+    """Sentinel type meaning 'inherit from parent scope' on nested settings models.
+
+    Used as the field value on nested cascade-field defaults (e.g. on
+    ``WorkspaceSettings``/``TaskSettings``) to mark "no override at this scope —
+    use the parent scope's value".
+
+    Distinct from ``Unset``/``UNSET``: ``Unset`` marks "kwarg not provided" in
+    ``ResolveSettings.resolve()`` overrides and is stripped by ``prune_unset``
+    *before* ``model_validate``. ``Inherit`` persists through Pydantic validation
+    and is replaced with the parent-scope value by the ``_propagate_cascade``
+    validator on ``AnnotationSettings``.
+    """
+
+    __slots__ = ()
+
+    _instance: "_InheritType | None" = None
+
+    def __new__(cls) -> "_InheritType":
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
+    def __repr__(self) -> str:
+        return "INHERIT"
+
+
+INHERIT: Final[_InheritType] = _InheritType()
+type Inherit = _InheritType
+
+
 API_KEY_ENV_VARS: Final[dict[str, str]] = {
     "mistralai": "MISTRAL_API_KEY",
     "cohere": "COHERE_API_KEY",
