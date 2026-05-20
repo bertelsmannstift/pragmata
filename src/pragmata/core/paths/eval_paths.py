@@ -14,9 +14,9 @@ class EvalPaths:
     Attributes:
         tool_root: Root directory for the eval tool.
         score_dir: Root directory for a specific eval score run.
-        scores_retrieval_json: Output path for retrieval score metrics.
-        scores_grounding_json: Output path for grounding score metrics.
-        scores_generation_json: Output path for generation score metrics.
+        retrieval_scores_json: Output path for retrieval score metrics.
+        grounding_scores_json: Output path for grounding score metrics.
+        generation_scores_json: Output path for generation score metrics.
         scores_meta_json: Output path for score run metadata.
     """
 
@@ -58,5 +58,5 @@ def resolve_eval_score_paths(
         retrieval_scores_json=score_dir / "retrieval_scores.json",
         grounding_scores_json=score_dir / "grounding_scores.json",
         generation_scores_json=score_dir / "generation_scores.json",
-        scores_meta_json=score_dir / "scores_meta.json",
+        scores_meta_json=score_dir / "scores.meta.json",
     )
