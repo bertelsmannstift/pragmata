@@ -24,3 +24,4 @@ Design documents focus on (this is guidance, not a required section template):
 - [Package Contracts](infra-package-contracts.md) — Contract layer layout: canonical types, schemas, path conventions, and config
 - [Packaging and Invocation Surface](packaging-invocation-surface.md) — Package structure, module boundaries, and invocation bindings
 - [Config and Settings](config-and-settings.md) — Shared config resolution, precedence, secrets, CLI surface, and first-use error UX across all three tools
+- [Annotation Stack Design](annotation-stack-design.md) — Annotation-only stack composition, compose distribution, lifecycle, prod bootstrap, cross-platform runtime, and infra error UX
