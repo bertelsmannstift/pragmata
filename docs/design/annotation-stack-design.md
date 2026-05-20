@@ -109,10 +109,10 @@ packages = ["src/pragmata"]
 "src/pragmata/annotation/docker-compose.yml" = "pragmata/annotation/docker-compose.yml"
 ```
 
-`packages` pins the wheel root explicitly so the shipped layout doesn't depend on hatchling's src-layout autodetection. `force-include` is reserved for the compose file alone, because it's the locked shipped infrastructure artefact whose presence is part of the user-facing stack contract - listing every internal package resource here would turn `pyproject.toml` into a second manifest of resource paths. Other non-Python resources (e.g. `core/annotation/collapsible_field.html`) live under `src/pragmata` and are picked up by the package-tree default; the sdist also relies on hatchling's default (everything not VCS-ignored, plus `pyproject.toml` / README / LICENSE always). The packaging smoke test below is the actual regression guard. Verify a built wheel manually with:
+`packages` pins the wheel root explicitly so the shipped layout doesn't depend on hatchling's src-layout autodetection. `force-include` is reserved for the compose file alone, because it's the locked shipped infrastructure artefact whose presence is part of the user-facing stack contract. Other non-Python resources live under `src/pragmata` and are picked up by the package-tree default; the sdist also relies on hatchling's default (everything not VCS-ignored, plus `pyproject.toml` / README / LICENSE always). The packaging smoke test below is the actual regression guard. Verify a built wheel manually with:
 
 ```
-unzip -l dist/*.whl | grep -E "docker-compose|collapsible_field"
+unzip -l dist/*.whl | grep docker-compose
 ```
 
 A packaging smoke test exercises the installed wheel end-to-end (not in-tree, no dev override). It builds + installs the package, resolves `pragmata/annotation/docker-compose.yml` via `importlib.resources` and parses it as YAML, and also resolves every runtime template the annotation code loads (currently `pragmata/core/annotation/collapsible_field.html`). That keeps the regression contract on the *resolution path the runtime actually uses*, so future internal resources are covered automatically without re-listing them in `pyproject.toml`.
