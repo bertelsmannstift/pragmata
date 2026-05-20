@@ -4,7 +4,7 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from pragmata.core.schemas.annotation_task import Task
+from pragmata.core.schemas.annotation_task import Locale, Task
 from pragmata.core.settings.annotation_settings import (
     AnnotationSettings,
     ArgillaSettings,
@@ -243,6 +243,45 @@ class TestInheritancePropagation:
         assert s.workspaces["empty"].tasks == {}
         # Workspace-level field still inherits from annotation.
         assert s.workspaces["empty"].production_min_submitted == 1
+
+    def test_locale_workspace_inherits_from_annotation(self):
+        s = AnnotationSettings(
+            locale=Locale.DE,
+            workspaces={"r": WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings()})},
+        )
+        assert s.workspaces["r"].locale is Locale.DE
+
+    def test_locale_task_inherits_from_workspace(self):
+        s = AnnotationSettings(
+            workspaces={
+                "r": WorkspaceSettings(
+                    locale=Locale.DE,
+                    tasks={Task.RETRIEVAL: TaskSettings()},
+                ),
+            },
+        )
+        assert s.workspaces["r"].tasks[Task.RETRIEVAL].locale is Locale.DE
+
+    def test_locale_respects_explicit_task_override(self):
+        s = AnnotationSettings(
+            locale=Locale.EN,
+            workspaces={
+                "r": WorkspaceSettings(
+                    locale=Locale.DE,
+                    tasks={Task.RETRIEVAL: TaskSettings(locale=Locale.EN)},
+                ),
+            },
+        )
+        assert s.workspaces["r"].locale is Locale.DE
+        assert s.workspaces["r"].tasks[Task.RETRIEVAL].locale is Locale.EN
+
+    def test_locale_default_cascades_to_tasks(self):
+        # No explicit overrides: deployment default EN propagates everywhere.
+        s = AnnotationSettings(
+            workspaces={"r": WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings()})},
+        )
+        assert s.workspaces["r"].locale is Locale.EN
+        assert s.workspaces["r"].tasks[Task.RETRIEVAL].locale is Locale.EN
 
 
 class TestTaskUniquenessValidator:
