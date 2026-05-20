@@ -12,7 +12,7 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import argilla as rg
 from argilla.records._dataset_records import RecordErrorHandling  # no public re-export in argilla v2; pinned to ==2.6.0
@@ -26,7 +26,6 @@ from pragmata.core.schemas.annotation_import import (
 )
 from pragmata.core.schemas.annotation_task import Task
 from pragmata.core.settings.annotation_settings import AnnotationSettings, TaskSettings
-from pragmata.core.settings.settings_base import _InheritType
 
 logger = logging.getLogger(__name__)
 
@@ -346,20 +345,16 @@ def fan_out_records(
             logger.warning("Task %r not in workspaces topology - skipping", task)
             continue
         ws_base, task_settings = binding
-        # Cascade fields are concrete post-_propagate_cascade; narrow for type-checkers.
-        assert not isinstance(task_settings.calibration_min_submitted, _InheritType)
-        assert not isinstance(task_settings.production_min_submitted, _InheritType)
         if calibration:
             if task_settings.calibration_min_submitted is None:
-                # Defensive: should not happen because assign_partitions only
-                # assigns calibration when topology supports it. Surface as an
-                # error rather than silently route to production.
+                # assign_partitions only assigns calibration when topology supports
+                # it; surfacing as an error rather than silently routing to production.
                 raise RuntimeError(
                     f"Task {task.value} has calibration records assigned but topology disables calibration"
                 )
-            min_submitted = task_settings.calibration_min_submitted
+            min_submitted = cast(int, task_settings.calibration_min_submitted)
         else:
-            min_submitted = task_settings.production_min_submitted
+            min_submitted = cast(int, task_settings.production_min_submitted)
         dataset = _ensure_dataset(
             client,
             task=task,

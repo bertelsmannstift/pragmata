@@ -46,7 +46,7 @@ class TestAnnotationSettingsDefaults:
 
 
 class TestTaskSettingsDefaults:
-    """``TaskSettings`` is default-free for cascade fields (INHERIT)."""
+    """``TaskSettings`` is default-free for inherited fields (INHERIT)."""
 
     def test_production_default_inherit(self):
         t = TaskSettings()
@@ -70,7 +70,7 @@ class TestTaskSettingsDefaults:
 
 
 class TestWorkspaceSettingsDefaults:
-    """``WorkspaceSettings`` is default-free for cascade fields (INHERIT)."""
+    """``WorkspaceSettings`` is default-free for inherited fields (INHERIT)."""
 
     def test_production_default_inherit(self):
         w = WorkspaceSettings(tasks={})
@@ -123,7 +123,7 @@ class TestCalibrationTopologyValidator:
         AnnotationSettings(calibration_fraction=0.0, workspaces=_disabled_topology())
 
     def test_positive_fraction_with_disabled_calibration_rejected(self):
-        with pytest.raises(ValidationError, match=r"\(workspace, task\) pairs"):
+        with pytest.raises(ValidationError, match=r"workspace/task pairs"):
             AnnotationSettings(calibration_fraction=0.1, workspaces=_disabled_topology())
 
     def test_positive_fraction_with_one_enabled_task_still_rejected(self):
@@ -131,23 +131,23 @@ class TestCalibrationTopologyValidator:
         topology["retrieval"] = WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings(calibration_min_submitted=3)})
         # Mixed: retrieval calibrated, grounding/generation not - still rejected
         # because the validator checks every task, not "any task".
-        with pytest.raises(ValidationError, match=r"\(workspace, task\) pairs"):
+        with pytest.raises(ValidationError, match=r"workspace/task pairs"):
             AnnotationSettings(calibration_fraction=0.1, workspaces=topology)
 
     def test_error_message_reports_workspace_task_pairs(self):
         with pytest.raises(ValidationError) as excinfo:
             AnnotationSettings(calibration_fraction=0.1, workspaces=_disabled_topology())
         msg = str(excinfo.value)
-        assert "('retrieval', 'retrieval')" in msg
-        assert "('grounding', 'grounding')" in msg
-        assert "('generation', 'generation')" in msg
+        assert "retrieval/retrieval" in msg
+        assert "grounding/grounding" in msg
+        assert "generation/generation" in msg
 
-    def test_per_workspace_task_cascade(self):
-        """Workspace-level calibration_min_submitted=None cascades to its inheriting tasks.
+    def test_per_workspace_task_inheritance(self):
+        """Workspace-level calibration_min_submitted=None is inherited by its tasks.
 
-        With calibration_fraction>0, the topology validator (running after the
-        cascade) sees the propagated None on each task and reports them by
-        (workspace, task) pair.
+        With calibration_fraction>0, the topology validator (running after
+        inheritance propagation) sees the propagated None on each task and
+        reports them by workspace/task pair.
         """
         workspaces = {
             "retrieval": WorkspaceSettings(
@@ -157,7 +157,7 @@ class TestCalibrationTopologyValidator:
             "grounding": WorkspaceSettings(tasks={Task.GROUNDING: TaskSettings()}),
             "generation": WorkspaceSettings(tasks={Task.GENERATION: TaskSettings()}),
         }
-        with pytest.raises(ValidationError, match=r"\('retrieval', 'retrieval'\)"):
+        with pytest.raises(ValidationError, match=r"retrieval/retrieval"):
             AnnotationSettings(calibration_fraction=0.1, workspaces=workspaces)
 
     def test_fraction_out_of_range_rejected(self):
@@ -167,8 +167,8 @@ class TestCalibrationTopologyValidator:
             AnnotationSettings(calibration_fraction=-0.1)
 
 
-class TestCascadePropagation:
-    """``_propagate_cascade`` replaces INHERIT with the parent-scope value."""
+class TestInheritancePropagation:
+    """``_propagate_inheritance`` replaces INHERIT with the parent-scope value."""
 
     def test_workspace_inherits_from_annotation(self):
         s = AnnotationSettings(
@@ -223,7 +223,7 @@ class TestCascadePropagation:
         )
         assert s.workspaces["r"].tasks[Task.RETRIEVAL].calibration_min_submitted is None
 
-    def test_workspace_disable_cascades_to_inheriting_tasks(self):
+    def test_workspace_disable_inherited_by_tasks(self):
         s = AnnotationSettings(
             calibration_fraction=0.0,
             workspaces={
@@ -236,7 +236,7 @@ class TestCascadePropagation:
         assert s.workspaces["r"].tasks[Task.RETRIEVAL].calibration_min_submitted is None
 
     def test_empty_tasks_dict_no_op(self):
-        # An empty tasks dict must not crash the cascade walk.
+        # An empty tasks dict must not crash the inheritance walk.
         s = AnnotationSettings(
             workspaces={"empty": WorkspaceSettings(tasks={})},
         )
@@ -257,21 +257,15 @@ class TestTaskUniquenessValidator:
 
 
 class TestValidatorOrdering:
-    """``_propagate_cascade`` must run before ``_check_calibration_topology``.
+    """``_propagate_inheritance`` must run before ``_check_calibration_topology``.
 
-    Construct settings where the topology check would FAIL if it saw the
-    pre-cascade ``INHERIT`` placeholder on task fields. Under correct
-    ordering, the cascade resolves the workspace-level ``None`` into each
-    task's ``calibration_min_submitted`` first, then the topology check
-    sees the concrete ``None`` and raises with a (workspace, task) pair.
-
-    If the topology validator ran first (pre-cascade), it would see
-    ``INHERIT`` on tasks - not ``None`` - and silently accept the config,
-    which would be wrong.
+    Without correct ordering, the topology check would see ``INHERIT`` on task
+    fields instead of the inherited concrete ``None`` and silently accept a
+    config that should fail.
     """
 
     def test_propagation_runs_before_topology_check(self):
-        with pytest.raises(ValidationError, match=r"\('r', 'retrieval'\)"):
+        with pytest.raises(ValidationError, match=r"r/retrieval"):
             AnnotationSettings(
                 calibration_fraction=0.1,
                 workspaces={
@@ -294,7 +288,7 @@ class TestValidatorOrdering:
 class TestYamlRoundtrip:
     """Documented non-goal: sparse YAML inputs become concrete in ``model_dump()``."""
 
-    def test_model_dump_is_post_cascade_lossy(self):
+    def test_model_dump_post_inheritance_is_lossy(self):
         data = yaml.safe_load(
             "production_min_submitted: 4\ncalibration_fraction: 0.0\nworkspaces: {r: {tasks: {retrieval: {}}}}\n"
         )

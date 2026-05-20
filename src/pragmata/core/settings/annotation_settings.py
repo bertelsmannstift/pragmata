@@ -1,4 +1,12 @@
-"""Operational settings for annotation (workspace topology, distribution)."""
+"""Operational settings for annotation (workspace topology, distribution).
+
+Settings are organised into three scopes — deployment (``AnnotationSettings``),
+workspace (``WorkspaceSettings``), task (``TaskSettings``). Fields listed in
+``AnnotationSettings._INHERITED_FIELDS`` may be set at any scope; child scopes
+default to ``INHERIT`` and adopt the nearest non-inherited ancestor value at
+materialisation. CSS-style inheritance: explicit override at any scope wins;
+otherwise look upward.
+"""
 
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -19,22 +27,15 @@ class ArgillaSettings(BaseModel):
     api_url: str | None = None
 
 
+def _inherit(child: BaseModel, parent: BaseModel, fields: tuple[str, ...]) -> None:
+    """Replace ``INHERIT`` placeholders on ``child`` with the matching ``parent`` values."""
+    for name in fields:
+        if isinstance(getattr(child, name), _InheritType):
+            setattr(child, name, getattr(parent, name))
+
+
 class TaskSettings(BaseModel):
-    """Per-task overrides.
-
-    Default-free for cascade fields: every cascade field defaults to ``INHERIT``,
-    meaning "no override at this scope — use the parent (workspace) value."
-    Concrete opinionated defaults live exclusively on ``AnnotationSettings``;
-    this class only carries values an admin has explicitly overridden at task
-    scope.
-
-    Attributes:
-        production_min_submitted: Argilla ``min_submitted`` for the production
-            dataset, or ``INHERIT`` to use the workspace/deployment value.
-        calibration_min_submitted: Argilla ``min_submitted`` for the calibration
-            dataset, ``None`` to explicitly disable calibration for this task,
-            or ``INHERIT`` to use the workspace/deployment value.
-    """
+    """Per-task overrides; inherited fields default to ``INHERIT`` (use workspace value)."""
 
     model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
 
@@ -43,22 +44,11 @@ class TaskSettings(BaseModel):
 
 
 class WorkspaceSettings(BaseModel):
-    """Per-workspace overrides.
+    """Per-workspace overrides plus the workspace's ``tasks`` mapping.
 
-    Default-free for cascade fields: every cascade field defaults to ``INHERIT``,
-    meaning "no override at this scope — use the parent (deployment) value."
-    Concrete opinionated defaults live exclusively on ``AnnotationSettings``;
-    this class only carries values an admin has explicitly overridden at
-    workspace scope, plus the 1-to-N ``tasks`` mapping.
-
-    Attributes:
-        production_min_submitted: Workspace-level override for production
-            ``min_submitted``, or ``INHERIT`` to use the deployment value.
-        calibration_min_submitted: Workspace-level override for calibration
-            ``min_submitted``, ``None`` to explicitly disable calibration for
-            tasks that inherit, or ``INHERIT`` to use the deployment value.
-        tasks: Mapping of tasks owned by this workspace to their per-task
-            overrides.
+    Inherited fields default to ``INHERIT`` (use deployment value). ``None`` on
+    ``calibration_min_submitted`` explicitly disables calibration for any task
+    that inherits from this workspace.
     """
 
     model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
@@ -71,13 +61,11 @@ class WorkspaceSettings(BaseModel):
 class AnnotationSettings(ResolveSettings):
     """Configurable runtime settings for annotation (setup, import, export).
 
-    Controls workspace topology and per-task overlap thresholds. Carries
-    opinionated deployment-level defaults for cascade fields; per-workspace and
-    per-task overrides live on ``WorkspaceSettings``/``TaskSettings`` and are
-    propagated downward by ``_propagate_cascade`` at materialisation.
-
-    Task definitions (Argilla rg.Settings per task) are hardcoded — see
-    core/annotation/argilla_task_definitions.py.
+    Controls workspace topology and per-task overlap thresholds. Deployment-level
+    fields in ``_INHERITED_FIELDS`` are inherited by workspaces and tasks unless
+    overridden — see module docstring for the inheritance model. Task definitions
+    (Argilla ``rg.Settings`` per task) are hardcoded; see
+    ``core/annotation/argilla_task_definitions.py``.
     """
 
     argilla: ArgillaSettings = Field(default_factory=ArgillaSettings)
@@ -96,21 +84,17 @@ class AnnotationSettings(ResolveSettings):
         }
     )
 
-    _CASCADE_FIELDS: ClassVar[tuple[str, ...]] = (
+    _INHERITED_FIELDS: ClassVar[tuple[str, ...]] = (
         "production_min_submitted",
         "calibration_min_submitted",
     )
 
     @model_validator(mode="after")
-    def _propagate_cascade(self) -> Self:
+    def _propagate_inheritance(self) -> Self:
         for ws in self.workspaces.values():
-            for field_name in self._CASCADE_FIELDS:
-                if isinstance(getattr(ws, field_name), _InheritType):
-                    setattr(ws, field_name, getattr(self, field_name))
-            for task_settings in ws.tasks.values():
-                for field_name in self._CASCADE_FIELDS:
-                    if isinstance(getattr(task_settings, field_name), _InheritType):
-                        setattr(task_settings, field_name, getattr(ws, field_name))
+            _inherit(ws, self, self._INHERITED_FIELDS)
+            for task in ws.tasks.values():
+                _inherit(task, ws, self._INHERITED_FIELDS)
         return self
 
     @model_validator(mode="after")
@@ -130,15 +114,16 @@ class AnnotationSettings(ResolveSettings):
     def _check_calibration_topology(self) -> Self:
         if self.calibration_fraction <= 0.0:
             return self
-        missing: list[tuple[str, str]] = []
-        for ws_name, ws in self.workspaces.items():
-            for task, task_settings in ws.tasks.items():
-                if task_settings.calibration_min_submitted is None:
-                    missing.append((ws_name, task.value))
+        missing = [
+            f"{ws_name}/{task.value}"
+            for ws_name, ws in self.workspaces.items()
+            for task, ts in ws.tasks.items()
+            if ts.calibration_min_submitted is None
+        ]
         if missing:
             raise ValueError(
                 f"calibration_fraction={self.calibration_fraction} > 0 but these "
-                f"(workspace, task) pairs disable calibration: {missing}. "
+                f"workspace/task pairs disable calibration: {', '.join(missing)}. "
                 f"Either set calibration_fraction=0.0 or enable calibration at "
                 f"the appropriate scope."
             )

@@ -222,7 +222,7 @@ def test_records_carry_calibration_metadata_to_argilla(client: rg.Argilla, base_
 
 
 class TestPerWorkspaceMinSubmitted:
-    """Cascade carve-out reaches the live Argilla dataset's distribution config."""
+    """Inherited carve-out reaches the live Argilla dataset's distribution config."""
 
     def test_workspace_carve_out_creates_correct_dataset_min_submitted(
         self, client: rg.Argilla, base_dir: Path
@@ -231,7 +231,7 @@ class TestPerWorkspaceMinSubmitted:
 
         Deployment default is 1; the retrieval workspace overrides to 2; the
         retrieval task carves out 4. The created Argilla dataset's
-        ``distribution.min_submitted`` must reflect the cascaded value (4).
+        ``distribution.min_submitted`` must reflect the inherited value (4).
         """
         auto_id = "testcarveout"
         carved_settings = AnnotationSettings(

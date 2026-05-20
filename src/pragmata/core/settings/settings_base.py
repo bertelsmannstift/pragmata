@@ -29,7 +29,7 @@ class _InheritType:
 
     Distinct from ``Unset``: ``Unset`` is stripped pre-validation by
     ``prune_unset``; ``Inherit`` persists through validation and is replaced
-    with the parent-scope value by ``_propagate_cascade`` on
+    with the parent-scope value by ``_propagate_inheritance`` on
     ``AnnotationSettings``.
     """
 
