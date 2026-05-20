@@ -99,7 +99,7 @@ Three options were considered:
 
 Resolved at runtime via `importlib.resources.files("pragmata.annotation") / "docker-compose.yml"` + `as_file()`. Same mechanism already in use for [`core/annotation/collapsible_field.html`](../../src/pragmata/core/annotation/collapsible_field.html). Image tags are pinned in the shipped compose and treated as package-owned; upgrade flow in §3.2.
 
-**Packaging contract (proposed - not yet configured):** `docker-compose.yml` must be confirmed as package data in both wheel and sdist. Today `pyproject.toml` declares `build-backend = "hatchling.build"` but has no explicit `[tool.hatch.build.targets.wheel]` block; hatchling's `src`-layout default picks up `src/pragmata/` automatically, and *does* by default include non-`.py` files under package directories - but that default is the failure mode we want to guard against (it depends on file-pattern defaults that have shifted between hatchling versions and that can be silently overridden by a future `include`/`exclude` line). The explicit contract pins both *which package roots are shipped* and *which non-Python artefacts must accompany them*:
+**Packaging contract (proposed - not yet configured):** `docker-compose.yml` must be confirmed as package data in both wheel and sdist. Today `pyproject.toml` declares `build-backend = "hatchling.build"` but has no explicit `[tool.hatch.build.targets.wheel]` block. Two things pin down:
 
 ```toml
 [tool.hatch.build.targets.wheel]
@@ -107,26 +107,15 @@ packages = ["src/pragmata"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "src/pragmata/annotation/docker-compose.yml" = "pragmata/annotation/docker-compose.yml"
-"src/pragmata/core/annotation/collapsible_field.html" = "pragmata/core/annotation/collapsible_field.html"
-
-[tool.hatch.build.targets.sdist]
-include = [
-  "src/pragmata/**/*.py",
-  "src/pragmata/**/*.yml",
-  "src/pragmata/**/*.html",
-  "pyproject.toml",
-  "README.md",
-  "LICENSE.md",
-]
 ```
 
-`force-include` is the explicit guard: it lists the non-Python artefacts the wheel *must* contain by path, so a future `exclude` rule or layout refactor cannot silently drop them without a corresponding edit to this block. Verify by inspecting the built wheel before shipping:
+`packages` pins the wheel root explicitly so the shipped layout doesn't depend on hatchling's src-layout autodetection. `force-include` is reserved for the compose file alone, because it's the locked shipped infrastructure artefact whose presence is part of the user-facing stack contract - listing every internal package resource here would turn `pyproject.toml` into a second manifest of resource paths. Other non-Python resources (e.g. `core/annotation/collapsible_field.html`) live under `src/pragmata` and are picked up by the package-tree default; the sdist also relies on hatchling's default (everything not VCS-ignored, plus `pyproject.toml` / README / LICENSE always). The packaging smoke test below is the actual regression guard. Verify a built wheel manually with:
 
 ```
-unzip -l dist/*.whl | grep docker-compose
+unzip -l dist/*.whl | grep -E "docker-compose|collapsible_field"
 ```
 
-A packaging smoke test exercises the shipped file *alone* from an installed wheel (not in-tree, no dev override layered on top). Assertion scope is deliberately minimal - file resolves + YAML parses, nothing more -> catch wheel / sdist divergence that no in-tree test can see.
+A packaging smoke test exercises the installed wheel end-to-end (not in-tree, no dev override). It builds + installs the package, resolves `pragmata/annotation/docker-compose.yml` via `importlib.resources` and parses it as YAML, and also resolves every runtime template the annotation code loads (currently `pragmata/core/annotation/collapsible_field.html`). That keeps the regression contract on the *resolution path the runtime actually uses*, so future internal resources are covered automatically without re-listing them in `pyproject.toml`.
 
 ### 2.3 Profiles / bundles (the flag surface for external backing services)
 
