@@ -39,9 +39,7 @@ def gen_queries_command(
         None, "--formats", help="Requested format(s) for the query. Accepts a string or JSON list."
     ),
     base_dir: str | None = typer.Option(None, "--base-dir", help="Workspace base directory. Accepts a path string."),
-    config_path: str | None = typer.Option(
-        None, "--config-path", help="Path to the config file. Accepts a path string."
-    ),
+    config_path: str | None = typer.Option(None, "--config", help="Path to the config file. Accepts a path string."),
     n_queries: int | None = typer.Option(
         None, "--n-queries", help="Number of queries to generate. Accepts an integer."
     ),
