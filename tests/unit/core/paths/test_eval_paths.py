@@ -33,7 +33,7 @@ def test_resolve_eval_score_paths_returns_expected_bundle(
         retrieval_scores_json=expected_score_dir / "retrieval_scores.json",
         grounding_scores_json=expected_score_dir / "grounding_scores.json",
         generation_scores_json=expected_score_dir / "generation_scores.json",
-        scores_meta_json=expected_score_dir / "scores_meta.json",
+        scores_meta_json=expected_score_dir / "scores.meta.json",
     )
 
 
