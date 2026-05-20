@@ -1,7 +1,5 @@
 """Unit tests for AnnotationSettings and UserSpec."""
 
-from pathlib import Path
-
 import pytest
 import yaml
 from pydantic import ValidationError
@@ -137,17 +135,12 @@ class TestCalibrationTopologyValidator:
             AnnotationSettings(calibration_fraction=0.1, workspaces=topology)
 
     def test_error_message_reports_workspace_task_pairs(self):
-        topology = _disabled_topology()
-        try:
-            AnnotationSettings(calibration_fraction=0.1, workspaces=topology)
-        except ValidationError as err:
-            msg = str(err)
-            # New format: list of (workspace, task) tuples.
-            assert "('retrieval', 'retrieval')" in msg
-            assert "('grounding', 'grounding')" in msg
-            assert "('generation', 'generation')" in msg
-        else:
-            pytest.fail("expected ValidationError")
+        with pytest.raises(ValidationError) as excinfo:
+            AnnotationSettings(calibration_fraction=0.1, workspaces=_disabled_topology())
+        msg = str(excinfo.value)
+        assert "('retrieval', 'retrieval')" in msg
+        assert "('grounding', 'grounding')" in msg
+        assert "('generation', 'generation')" in msg
 
     def test_per_workspace_task_cascade(self):
         """Workspace-level calibration_min_submitted=None cascades to its inheriting tasks.
@@ -299,30 +292,13 @@ class TestValidatorOrdering:
 
 
 class TestYamlRoundtrip:
-    """Documented non-goal: YAML round-trip is lossy.
+    """Documented non-goal: sparse YAML inputs become concrete in ``model_dump()``."""
 
-    A sparse YAML config (workspaces/tasks with INHERIT fields) dumps back
-    as fully concrete (post-cascade) values. ``model_dump()`` reports
-    propagated values, not the original sparse markers. The codebase reads
-    YAML but never writes it, so this is acceptable.
-    """
-
-    def test_lossy_propagation(self, tmp_path: Path):
-        sparse_yaml = (
-            "production_min_submitted: 4\n"
-            "calibration_fraction: 0.0\n"
-            "workspaces:\n"
-            "  r:\n"
-            "    tasks:\n"
-            "      retrieval: {}\n"
+    def test_model_dump_is_post_cascade_lossy(self):
+        data = yaml.safe_load(
+            "production_min_submitted: 4\ncalibration_fraction: 0.0\nworkspaces: {r: {tasks: {retrieval: {}}}}\n"
         )
-        path = tmp_path / "config.yaml"
-        path.write_text(sparse_yaml)
-        data = yaml.safe_load(path.read_text())
-        s = AnnotationSettings(**data)
-
-        dumped = s.model_dump()
-        # Round-trip is lossy: sparse INHERIT inputs become concrete in the dump.
+        dumped = AnnotationSettings(**data).model_dump()
         assert dumped["workspaces"]["r"]["production_min_submitted"] == 4
         assert dumped["workspaces"]["r"]["tasks"]["retrieval"]["production_min_submitted"] == 4
 
