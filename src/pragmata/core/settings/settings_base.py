@@ -25,30 +25,21 @@ type Unset = _UnsetType
 
 
 class _InheritType:
-    """Sentinel type meaning 'inherit from parent scope' on nested settings models.
+    """Sentinel meaning 'inherit from parent scope' on nested settings models.
 
-    Used as the field value on nested cascade-field defaults (e.g. on
-    ``WorkspaceSettings``/``TaskSettings``) to mark "no override at this scope —
-    use the parent scope's value".
-
-    Distinct from ``Unset``/``UNSET``: ``Unset`` marks "kwarg not provided" in
-    ``ResolveSettings.resolve()`` overrides and is stripped by ``prune_unset``
-    *before* ``model_validate``. ``Inherit`` persists through Pydantic validation
-    and is replaced with the parent-scope value by the ``_propagate_cascade``
-    validator on ``AnnotationSettings``.
+    Distinct from ``Unset``: ``Unset`` is stripped pre-validation by
+    ``prune_unset``; ``Inherit`` persists through validation and is replaced
+    with the parent-scope value by ``_propagate_cascade`` on
+    ``AnnotationSettings``.
     """
 
     __slots__ = ()
 
-    _instance: "_InheritType | None" = None
-
-    def __new__(cls) -> "_InheritType":
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-        return cls._instance
-
     def __repr__(self) -> str:
         return "INHERIT"
+
+    def __bool__(self) -> bool:
+        raise TypeError("INHERIT has no truth value. Use `isinstance(x, _InheritType)`.")
 
 
 INHERIT: Final[_InheritType] = _InheritType()
