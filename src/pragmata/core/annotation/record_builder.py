@@ -19,12 +19,13 @@ from argilla.records._dataset_records import RecordErrorHandling  # no public re
 
 from pragmata.core.annotation.argilla_ops import create_dataset
 from pragmata.core.annotation.argilla_task_definitions import build_task_settings, dataset_name
+from pragmata.core.annotation.locales.registry import CATALOGS
 from pragmata.core.schemas.annotation_import import (
     PartitionManifest,
     PartitionManifestEntry,
     QueryResponsePair,
 )
-from pragmata.core.schemas.annotation_task import Task
+from pragmata.core.schemas.annotation_task import Locale, Task
 from pragmata.core.settings.annotation_settings import AnnotationSettings, TaskSettings
 
 logger = logging.getLogger(__name__)
@@ -277,6 +278,39 @@ def _build_batches(
     return batches
 
 
+def _detect_dataset_locale(dataset: rg.Dataset, task: Task) -> Locale | None:
+    """Infer an existing Argilla dataset's creation locale from its label displays.
+
+    Inspects the first ``LabelQuestion``'s option list (value→display text from
+    ``_model.settings.options``) and matches the display text against each
+    per-locale catalog to identify the locale used at dataset creation. Returns
+    ``None`` if no locale matches — e.g. when the dataset was provisioned
+    outside pragmata or used a custom catalog.
+
+    Label *values* are locale-invariant, so this lookup keys by display text
+    on the catalog side. We use ``_model.settings.options`` rather than the
+    public ``.labels`` because the latter is lossy (returns option keys only).
+    """
+    for question in dataset.settings.questions:
+        if not isinstance(question, rg.LabelQuestion):
+            continue
+        try:
+            options = question._model.settings.options
+        except AttributeError:
+            return None
+        existing_displays = {opt["value"]: opt["text"] for opt in options}
+        for loc, catalog in CATALOGS.items():
+            expected = {
+                value: catalog[(task, "label", f"{question.name}.{value}")]
+                for value in existing_displays
+                if (task, "label", f"{question.name}.{value}") in catalog
+            }
+            if expected and expected == existing_displays:
+                return loc
+        return None
+    return None
+
+
 def _ensure_dataset(
     client: rg.Argilla,
     *,
@@ -286,8 +320,15 @@ def _ensure_dataset(
     ws_base: str,
     dataset_id: str,
     task_settings_map: dict[Task, rg.Settings],
+    locale: Locale,
 ) -> rg.Dataset:
-    """Resolve or create the Argilla dataset for a (task, purpose) pair."""
+    """Resolve or create the Argilla dataset for a (task, purpose) pair.
+
+    When an existing dataset is found, its creation locale is probed against
+    the configured ``locale``. A mismatch is logged as a warning and the
+    import proceeds — label *values* are locale-invariant so data integrity
+    is preserved (only display text differs).
+    """
     ds_name = dataset_name(task, calibration=calibration, dataset_id=dataset_id)
     workspace = client.workspaces(ws_base)
     if workspace is None:
@@ -303,6 +344,18 @@ def _ensure_dataset(
     dataset, ds_created = create_dataset(client, ds_name, ws_base, task_cfg)
     if ds_created:
         logger.info("Auto-created dataset %r in workspace %r", ds_name, ws_base)
+    else:
+        existing_locale = _detect_dataset_locale(dataset, task)
+        if existing_locale is not None and existing_locale is not locale:
+            logger.warning(
+                "Locale mismatch on dataset %r (workspace %r): existing dataset was created "
+                "with locale=%r but this import uses locale=%r. Appending records (label "
+                "values are locale-invariant; only display text differs).",
+                ds_name,
+                ws_base,
+                existing_locale.value,
+                locale.value,
+            )
     return dataset
 
 
@@ -332,7 +385,6 @@ def fan_out_records(
         the api layer.
     """
     task_to_ws = _invert_workspace_map(settings)
-    task_settings_map = build_task_settings()
     batches = _build_batches(records, assignments)
 
     dataset_counts: dict[str, int] = {}
@@ -355,6 +407,8 @@ def fan_out_records(
             min_submitted = cast(int, task_settings.calibration_min_submitted)
         else:
             min_submitted = cast(int, task_settings.production_min_submitted)
+        locale = cast(Locale, task_settings.locale)
+        task_settings_map = build_task_settings(locale)
         dataset = _ensure_dataset(
             client,
             task=task,
@@ -363,6 +417,7 @@ def fan_out_records(
             ws_base=ws_base,
             dataset_id=settings.dataset_id,
             task_settings_map=task_settings_map,
+            locale=locale,
         )
         dataset.records.log(rg_records, on_error=RecordErrorHandling.WARN)
         ds_name = dataset.name
