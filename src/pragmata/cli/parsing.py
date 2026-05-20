@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 from pragmata.api import UNSET
 
 if TYPE_CHECKING:
-    from pragmata.annotation import Task, UserSpec
+    from pragmata.annotation import Locale, Task, UserSpec
 
 
 def parse_cli_value(value: str | None) -> Any:
@@ -49,6 +49,13 @@ def parse_tasks(raw: str | None) -> "list[Task] | None":
     if raw is None:
         return None
     return [Task(item.strip()) for item in raw.split(",")]
+
+
+def parse_locale(raw: str) -> "Locale":
+    """Parse a locale string (e.g. ``en``, ``de``) into a Locale enum."""
+    from pragmata.annotation import Locale
+
+    return Locale(raw.strip())
 
 
 def parse_user_specs(path: str | None) -> "list[UserSpec] | None":
