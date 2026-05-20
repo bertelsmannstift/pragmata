@@ -11,7 +11,6 @@ on:
 permissions:
   contents: read
   pull-requests: write
-  issues: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
@@ -26,7 +25,7 @@ jobs:
       - name: Apply type labels
         uses: actions/labeler@v6
         with:
-          sync-labels: true
+          sync-labels: false
 
       - name: Apply size label
         if: github.event.action != 'edited'
