@@ -6,7 +6,7 @@ from typing import ClassVar, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, NonNegativeInt, PositiveInt, model_validator
 
-from pragmata.core.schemas.annotation_task import Task
+from pragmata.core.schemas.annotation_task import Locale, Task
 from pragmata.core.settings.settings_base import INHERIT, Inherit, ResolveSettings, _InheritType
 from pragmata.core.types import SafePathSegment
 
@@ -34,12 +34,15 @@ class TaskSettings(BaseModel):
         calibration_min_submitted: Argilla ``min_submitted`` for the calibration
             dataset, ``None`` to explicitly disable calibration for this task,
             or ``INHERIT`` to use the workspace/deployment value.
+        locale: UI locale for Argilla dataset titles/questions/guidelines, or
+            ``INHERIT`` to use the workspace/deployment value.
     """
 
     model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
 
     production_min_submitted: PositiveInt | Inherit = INHERIT
     calibration_min_submitted: PositiveInt | None | Inherit = INHERIT
+    locale: Locale | Inherit = INHERIT
 
 
 class WorkspaceSettings(BaseModel):
@@ -57,6 +60,8 @@ class WorkspaceSettings(BaseModel):
         calibration_min_submitted: Workspace-level override for calibration
             ``min_submitted``, ``None`` to explicitly disable calibration for
             tasks that inherit, or ``INHERIT`` to use the deployment value.
+        locale: Workspace-level override for UI locale, or ``INHERIT`` to use
+            the deployment value.
         tasks: Mapping of tasks owned by this workspace to their per-task
             overrides.
     """
@@ -65,6 +70,7 @@ class WorkspaceSettings(BaseModel):
 
     production_min_submitted: PositiveInt | Inherit = INHERIT
     calibration_min_submitted: PositiveInt | None | Inherit = INHERIT
+    locale: Locale | Inherit = INHERIT
     tasks: dict[Task, TaskSettings]
 
 
@@ -85,6 +91,7 @@ class AnnotationSettings(ResolveSettings):
     dataset_id: SafePathSegment = ""
     production_min_submitted: PositiveInt = 1
     calibration_min_submitted: PositiveInt | None = 3
+    locale: Locale = Locale.EN
     calibration_fraction: float = Field(0.1, ge=0.0, le=1.0)
     calibration_partition_seed: NonNegativeInt = 0
     include_discarded: bool = False
@@ -99,6 +106,7 @@ class AnnotationSettings(ResolveSettings):
     _CASCADE_FIELDS: ClassVar[tuple[str, ...]] = (
         "production_min_submitted",
         "calibration_min_submitted",
+        "locale",
     )
 
     @model_validator(mode="after")
