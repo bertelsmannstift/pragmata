@@ -25,7 +25,8 @@ from pragmata.core.schemas.annotation_import import (
     QueryResponsePair,
 )
 from pragmata.core.schemas.annotation_task import Task
-from pragmata.core.settings.annotation_settings import AnnotationSettings, TaskOverlap
+from pragmata.core.settings.annotation_settings import AnnotationSettings, TaskSettings
+from pragmata.core.settings.settings_base import _InheritType
 
 logger = logging.getLogger(__name__)
 
@@ -151,13 +152,13 @@ def build_generation_record(pair: QueryResponsePair, record_uuid: str) -> rg.Rec
 
 
 def _invert_workspace_map(
-    workspace_dataset_map: dict[str, dict[Task, TaskOverlap]],
-) -> dict[Task, tuple[str, TaskOverlap]]:
-    """Invert workspace_dataset_map to task → (workspace_base, overlap)."""
-    task_to_ws: dict[Task, tuple[str, TaskOverlap]] = {}
-    for ws_base, task_overlaps in workspace_dataset_map.items():
-        for task, overlap in task_overlaps.items():
-            task_to_ws[task] = (ws_base, overlap)
+    settings: AnnotationSettings,
+) -> dict[Task, tuple[str, TaskSettings]]:
+    """Invert workspaces topology to task → (workspace_base, task_settings)."""
+    task_to_ws: dict[Task, tuple[str, TaskSettings]] = {}
+    for ws_base, ws in settings.workspaces.items():
+        for task, task_settings in ws.tasks.items():
+            task_to_ws[task] = (ws_base, task_settings)
     return task_to_ws
 
 
@@ -331,7 +332,7 @@ def fan_out_records(
         vs production totals are computable from ``assignments`` and stay in
         the api layer.
     """
-    task_to_ws = _invert_workspace_map(settings.workspace_dataset_map)
+    task_to_ws = _invert_workspace_map(settings)
     task_settings_map = build_task_settings()
     batches = _build_batches(records, assignments)
 
@@ -342,20 +343,23 @@ def fan_out_records(
             continue
         binding = task_to_ws.get(task)
         if binding is None:
-            logger.warning("Task %r not in workspace_dataset_map - skipping", task)
+            logger.warning("Task %r not in workspaces topology - skipping", task)
             continue
-        ws_base, overlap = binding
+        ws_base, task_settings = binding
+        # Cascade fields are concrete post-_propagate_cascade; narrow for type-checkers.
+        assert not isinstance(task_settings.calibration_min_submitted, _InheritType)
+        assert not isinstance(task_settings.production_min_submitted, _InheritType)
         if calibration:
-            if overlap.calibration_min_submitted is None:
+            if task_settings.calibration_min_submitted is None:
                 # Defensive: should not happen because assign_partitions only
                 # assigns calibration when topology supports it. Surface as an
                 # error rather than silently route to production.
                 raise RuntimeError(
                     f"Task {task.value} has calibration records assigned but topology disables calibration"
                 )
-            min_submitted = overlap.calibration_min_submitted
+            min_submitted = task_settings.calibration_min_submitted
         else:
-            min_submitted = overlap.production_min_submitted
+            min_submitted = task_settings.production_min_submitted
         dataset = _ensure_dataset(
             client,
             task=task,

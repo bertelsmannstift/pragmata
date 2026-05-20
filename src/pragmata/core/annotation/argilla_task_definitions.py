@@ -6,7 +6,7 @@ core/settings/). They encode the annotation protocol (fields, questions, labels)
 and are hardcoded per ADR-0009.
 
 Distribution (min_submitted) is intentionally omitted — it is an operational
-setting controlled by AnnotationSettings.workspace_dataset_map and applied at
+setting controlled by AnnotationSettings.workspaces and applied at
 dataset creation time.
 """
 

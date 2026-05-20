@@ -53,7 +53,7 @@ def setup_workspaces(
 ) -> SetupResult:
     """Create all workspaces idempotently per settings topology."""
     result = SetupResult()
-    for ws_base in settings.workspace_dataset_map:
+    for ws_base in settings.workspaces:
         workspace, created = create_workspace(client, ws_base)
         (result.created_workspaces if created else result.skipped_workspaces).append(ws_base)
     return result
@@ -96,15 +96,15 @@ def teardown_resources(
     Ordering: datasets first (Argilla requires workspace to be empty before deletion).
     Missing resources are silently skipped. User accounts are not touched.
     """
-    for ws_base, task_overlaps in settings.workspace_dataset_map.items():
+    for ws_base, ws_settings in settings.workspaces.items():
         workspace = client.workspaces(ws_base)
         if workspace is None:
             logger.info("Workspace %r not found — skipping", ws_base)
             continue
 
-        for task, overlap in task_overlaps.items():
+        for task, task_settings in ws_settings.tasks.items():
             purposes_present = [False]  # production always exists
-            if overlap.calibration_min_submitted is not None:
+            if task_settings.calibration_min_submitted is not None:
                 purposes_present.append(True)
             for calibration in purposes_present:
                 ds_name = dataset_name(task, calibration=calibration, dataset_id=settings.dataset_id)

@@ -2,12 +2,12 @@
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal, Self
+from typing import ClassVar, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, NonNegativeInt, PositiveInt, model_validator
 
 from pragmata.core.schemas.annotation_task import Task
-from pragmata.core.settings.settings_base import ResolveSettings
+from pragmata.core.settings.settings_base import INHERIT, Inherit, ResolveSettings, _InheritType
 from pragmata.core.types import SafePathSegment
 
 
@@ -19,31 +19,63 @@ class ArgillaSettings(BaseModel):
     api_url: str | None = None
 
 
-class TaskOverlap(BaseModel):
-    """Per-task overlap topology: production and (optional) calibration thresholds.
+class TaskSettings(BaseModel):
+    """Per-task overrides.
 
-    Calibration is declared here so future imports can route a subset of
-    records to a separate calibration dataset for IAA.
+    Default-free for cascade fields: every cascade field defaults to ``INHERIT``,
+    meaning "no override at this scope — use the parent (workspace) value."
+    Concrete opinionated defaults live exclusively on ``AnnotationSettings``;
+    this class only carries values an admin has explicitly overridden at task
+    scope.
 
     Attributes:
         production_min_submitted: Argilla ``min_submitted`` for the production
-            dataset (typically 1; >1 enables full overlap on production).
-        calibration_min_submitted: Argilla ``min_submitted`` for a future
-            calibration dataset, or ``None`` to disable calibration for this
-            task. Default 3 covers Krippendorff alpha plus pairwise Cohen
-            kappa.
+            dataset, or ``INHERIT`` to use the workspace/deployment value.
+        calibration_min_submitted: Argilla ``min_submitted`` for the calibration
+            dataset, ``None`` to explicitly disable calibration for this task,
+            or ``INHERIT`` to use the workspace/deployment value.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
 
-    production_min_submitted: PositiveInt = 1
-    calibration_min_submitted: PositiveInt | None = 3
+    production_min_submitted: PositiveInt | Inherit = INHERIT
+    calibration_min_submitted: PositiveInt | None | Inherit = INHERIT
+
+
+class WorkspaceSettings(BaseModel):
+    """Per-workspace overrides.
+
+    Default-free for cascade fields: every cascade field defaults to ``INHERIT``,
+    meaning "no override at this scope — use the parent (deployment) value."
+    Concrete opinionated defaults live exclusively on ``AnnotationSettings``;
+    this class only carries values an admin has explicitly overridden at
+    workspace scope, plus the 1-to-N ``tasks`` mapping.
+
+    Attributes:
+        production_min_submitted: Workspace-level override for production
+            ``min_submitted``, or ``INHERIT`` to use the deployment value.
+        calibration_min_submitted: Workspace-level override for calibration
+            ``min_submitted``, ``None`` to explicitly disable calibration for
+            tasks that inherit, or ``INHERIT`` to use the deployment value.
+        tasks: Mapping of tasks owned by this workspace to their per-task
+            overrides.
+    """
+
+    model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
+
+    production_min_submitted: PositiveInt | Inherit = INHERIT
+    calibration_min_submitted: PositiveInt | None | Inherit = INHERIT
+    tasks: dict[Task, TaskSettings]
 
 
 class AnnotationSettings(ResolveSettings):
     """Configurable runtime settings for annotation (setup, import, export).
 
-    Controls workspace topology and per-task overlap thresholds.
+    Controls workspace topology and per-task overlap thresholds. Carries
+    opinionated deployment-level defaults for cascade fields; per-workspace and
+    per-task overrides live on ``WorkspaceSettings``/``TaskSettings`` and are
+    propagated downward by ``_propagate_cascade`` at materialisation.
+
     Task definitions (Argilla rg.Settings per task) are hardcoded — see
     core/annotation/argilla_task_definitions.py.
     """
@@ -51,48 +83,65 @@ class AnnotationSettings(ResolveSettings):
     argilla: ArgillaSettings = Field(default_factory=ArgillaSettings)
     base_dir: Path = Field(default_factory=Path.cwd)
     dataset_id: SafePathSegment = ""
-    workspace_dataset_map: dict[str, dict[Task, TaskOverlap]] = Field(
-        default_factory=lambda: {
-            "retrieval": {Task.RETRIEVAL: TaskOverlap()},
-            "grounding": {Task.GROUNDING: TaskOverlap()},
-            "generation": {Task.GENERATION: TaskOverlap()},
-        }
-    )
+    production_min_submitted: PositiveInt = 1
+    calibration_min_submitted: PositiveInt | None = 3
     calibration_fraction: float = Field(0.1, ge=0.0, le=1.0)
     calibration_partition_seed: NonNegativeInt = 0
     include_discarded: bool = False
+    workspaces: dict[str, WorkspaceSettings] = Field(
+        default_factory=lambda: {
+            "retrieval": WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings()}),
+            "grounding": WorkspaceSettings(tasks={Task.GROUNDING: TaskSettings()}),
+            "generation": WorkspaceSettings(tasks={Task.GENERATION: TaskSettings()}),
+        }
+    )
+
+    _CASCADE_FIELDS: ClassVar[tuple[str, ...]] = (
+        "production_min_submitted",
+        "calibration_min_submitted",
+    )
 
     @model_validator(mode="after")
-    def _check_calibration_topology(self) -> Self:
-        if self.calibration_fraction <= 0.0:
-            return self
-        missing = sorted(
-            {
-                task.value
-                for task_overlaps in self.workspace_dataset_map.values()
-                for task, overlap in task_overlaps.items()
-                if overlap.calibration_min_submitted is None
-            }
-        )
-        if missing:
-            raise ValueError(
-                f"calibration_fraction={self.calibration_fraction} > 0 but topology has no "
-                f"calibration dataset for tasks: {missing}. Either set calibration_fraction=0.0 "
-                f"or enable calibration in workspace_dataset_map."
-            )
+    def _propagate_cascade(self) -> Self:
+        for ws in self.workspaces.values():
+            for field_name in self._CASCADE_FIELDS:
+                if isinstance(getattr(ws, field_name), _InheritType):
+                    setattr(ws, field_name, getattr(self, field_name))
+            for task_settings in ws.tasks.values():
+                for field_name in self._CASCADE_FIELDS:
+                    if isinstance(getattr(task_settings, field_name), _InheritType):
+                        setattr(task_settings, field_name, getattr(ws, field_name))
         return self
 
     @model_validator(mode="after")
     def _validate_task_uniqueness(self) -> Self:
         seen: set[Task] = set()
-        for task_overlaps in self.workspace_dataset_map.values():
-            for task in task_overlaps:
+        for ws in self.workspaces.values():
+            for task in ws.tasks:
                 if task in seen:
                     raise ValueError(
-                        f"task {task.value!r} appears in multiple workspace_dataset_map entries; "
+                        f"task {task.value!r} appears in multiple workspaces; "
                         "each task must belong to exactly one workspace."
                     )
                 seen.add(task)
+        return self
+
+    @model_validator(mode="after")
+    def _check_calibration_topology(self) -> Self:
+        if self.calibration_fraction <= 0.0:
+            return self
+        missing: list[tuple[str, str]] = []
+        for ws_name, ws in self.workspaces.items():
+            for task, task_settings in ws.tasks.items():
+                if task_settings.calibration_min_submitted is None:
+                    missing.append((ws_name, task.value))
+        if missing:
+            raise ValueError(
+                f"calibration_fraction={self.calibration_fraction} > 0 but these "
+                f"(workspace, task) pairs disable calibration: {missing}. "
+                f"Either set calibration_fraction=0.0 or enable calibration at "
+                f"the appropriate scope."
+            )
         return self
 
 
