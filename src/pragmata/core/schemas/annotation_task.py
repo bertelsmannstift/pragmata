@@ -2,6 +2,19 @@
 
 from enum import StrEnum
 
+Locale = str
+"""Locale code for Argilla dataset display strings.
+
+Open string (e.g. ``"en"``, ``"de"``, ``"pt-BR"``). Validated at catalog
+lookup via :func:`pragmata.core.annotation.locales.registry.get_catalog` —
+a deployment adds a locale by dropping ``<code>.yaml`` into
+``core/annotation/locales/`` with no Python edit required.
+
+Display strings come from the per-locale catalog; field/question ``name=``
+identities and label values are locale-invariant so exports merge cleanly
+across locales.
+"""
+
 
 class Task(StrEnum):
     """Annotation task types."""
@@ -17,14 +30,3 @@ class DiscardReason(StrEnum):
     INVALID_OR_UNREALISTIC = "invalid_or_unrealistic"
     UNCLEAR = "unclear"
     OUTSIDE_REVIEWER_EXPERTISE = "outside_reviewer_expertise"
-
-
-class Locale(StrEnum):
-    """Supported UI locales for Argilla dataset titles, questions, and guidelines.
-
-    Locale only affects display strings — field/question ``name=`` identities and
-    label values remain stable across locales so exports merge cleanly.
-    """
-
-    EN = "en"
-    DE = "de"

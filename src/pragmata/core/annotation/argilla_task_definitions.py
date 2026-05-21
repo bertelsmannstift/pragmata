@@ -87,7 +87,7 @@ def _discard_questions(task: Task, catalog: Catalog) -> list[rg.LabelQuestion | 
 
 
 @functools.cache
-def build_task_settings(locale: Locale = Locale.EN) -> dict[Task, rg.Settings]:
+def build_task_settings(locale: Locale = "en") -> dict[Task, rg.Settings]:
     """Build Argilla Settings for each annotation task, in the given locale.
 
     Deferred construction — call after an Argilla client is connected

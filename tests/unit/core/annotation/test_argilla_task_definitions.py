@@ -251,14 +251,13 @@ class TestCatalogDrivesRenderedOutput:
 
     def test_catalog_drives_field_title(self, monkeypatch):
         from pragmata.core.annotation.locales.registry import CATALOGS
-        from pragmata.core.schemas.annotation_task import Locale
 
         sentinel = "SENTINEL_TITLE"
-        stub = dict(CATALOGS[Locale.EN])
+        stub = dict(CATALOGS["en"])
         stub[(Task.RETRIEVAL, "field", "query")] = sentinel
-        monkeypatch.setitem(CATALOGS, Locale.EN, stub)
+        monkeypatch.setitem(CATALOGS, "en", stub)
 
-        rendered = build_task_settings(Locale.EN)[Task.RETRIEVAL]
+        rendered = build_task_settings("en")[Task.RETRIEVAL]
         query_field = _get_field(rendered, "query")
         assert query_field is not None
         assert query_field.title == sentinel

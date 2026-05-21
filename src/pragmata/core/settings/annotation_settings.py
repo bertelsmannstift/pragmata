@@ -91,7 +91,7 @@ class AnnotationSettings(ResolveSettings):
     dataset_id: SafePathSegment = ""
     production_min_submitted: PositiveInt = 1
     calibration_min_submitted: PositiveInt | None = 3
-    locale: Locale = Locale.EN
+    locale: Locale = "en"
     calibration_fraction: float = Field(0.1, ge=0.0, le=1.0)
     calibration_partition_seed: NonNegativeInt = 0
     include_discarded: bool = False

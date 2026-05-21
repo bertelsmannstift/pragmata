@@ -4,7 +4,7 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from pragmata.core.schemas.annotation_task import Locale, Task
+from pragmata.core.schemas.annotation_task import Task
 from pragmata.core.settings.annotation_settings import (
     AnnotationSettings,
     ArgillaSettings,
@@ -263,39 +263,39 @@ class TestResolvedTask:
 
     def test_locale_resolves_from_deployment_when_unset(self):
         s = AnnotationSettings(
-            locale=Locale.DE,
+            locale="de",
             workspaces={"r": WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings()})},
         )
-        assert s.resolved_task("r", Task.RETRIEVAL).locale is Locale.DE
+        assert s.resolved_task("r", Task.RETRIEVAL).locale == "de"
 
     def test_locale_resolves_from_workspace_when_task_unset(self):
         s = AnnotationSettings(
             workspaces={
                 "r": WorkspaceSettings(
-                    locale=Locale.DE,
+                    locale="de",
                     tasks={Task.RETRIEVAL: TaskSettings()},
                 ),
             },
         )
-        assert s.resolved_task("r", Task.RETRIEVAL).locale is Locale.DE
+        assert s.resolved_task("r", Task.RETRIEVAL).locale == "de"
 
     def test_locale_task_override_wins_over_workspace_and_deployment(self):
         s = AnnotationSettings(
-            locale=Locale.EN,
+            locale="en",
             workspaces={
                 "r": WorkspaceSettings(
-                    locale=Locale.DE,
-                    tasks={Task.RETRIEVAL: TaskSettings(locale=Locale.EN)},
+                    locale="de",
+                    tasks={Task.RETRIEVAL: TaskSettings(locale="en")},
                 ),
             },
         )
-        assert s.resolved_task("r", Task.RETRIEVAL).locale is Locale.EN
+        assert s.resolved_task("r", Task.RETRIEVAL).locale == "en"
 
     def test_locale_default_resolves_to_en(self):
         s = AnnotationSettings(
             workspaces={"r": WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings()})},
         )
-        assert s.resolved_task("r", Task.RETRIEVAL).locale is Locale.EN
+        assert s.resolved_task("r", Task.RETRIEVAL).locale == "en"
 
 
 class TestTaskUniquenessValidator:
