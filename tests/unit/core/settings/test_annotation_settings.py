@@ -261,14 +261,14 @@ class TestResolvedTask:
         assert ws.production_min_submitted is INHERIT
         assert ws.tasks[Task.RETRIEVAL].production_min_submitted is INHERIT
 
-    def test_locale_workspace_inherits_from_annotation(self):
+    def test_locale_resolves_from_deployment_when_unset(self):
         s = AnnotationSettings(
             locale=Locale.DE,
             workspaces={"r": WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings()})},
         )
-        assert s.workspaces["r"].locale is Locale.DE
+        assert s.resolved_task("r", Task.RETRIEVAL).locale is Locale.DE
 
-    def test_locale_task_inherits_from_workspace(self):
+    def test_locale_resolves_from_workspace_when_task_unset(self):
         s = AnnotationSettings(
             workspaces={
                 "r": WorkspaceSettings(
@@ -277,9 +277,9 @@ class TestResolvedTask:
                 ),
             },
         )
-        assert s.workspaces["r"].tasks[Task.RETRIEVAL].locale is Locale.DE
+        assert s.resolved_task("r", Task.RETRIEVAL).locale is Locale.DE
 
-    def test_locale_respects_explicit_task_override(self):
+    def test_locale_task_override_wins_over_workspace_and_deployment(self):
         s = AnnotationSettings(
             locale=Locale.EN,
             workspaces={
@@ -289,16 +289,13 @@ class TestResolvedTask:
                 ),
             },
         )
-        assert s.workspaces["r"].locale is Locale.DE
-        assert s.workspaces["r"].tasks[Task.RETRIEVAL].locale is Locale.EN
+        assert s.resolved_task("r", Task.RETRIEVAL).locale is Locale.EN
 
-    def test_locale_default_cascades_to_tasks(self):
-        # No explicit overrides: deployment default EN propagates everywhere.
+    def test_locale_default_resolves_to_en(self):
         s = AnnotationSettings(
             workspaces={"r": WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings()})},
         )
-        assert s.workspaces["r"].locale is Locale.EN
-        assert s.workspaces["r"].tasks[Task.RETRIEVAL].locale is Locale.EN
+        assert s.resolved_task("r", Task.RETRIEVAL).locale is Locale.EN
 
 
 class TestTaskUniquenessValidator:

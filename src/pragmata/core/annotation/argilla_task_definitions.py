@@ -24,7 +24,7 @@ from string import Template
 import argilla as rg
 
 from pragmata.core.annotation.locales.registry import get_catalog
-from pragmata.core.annotation.locales.types import Catalog
+from pragmata.core.annotation.locales.types import Catalog, CatalogKind
 from pragmata.core.schemas.annotation_task import DiscardReason, Locale, Task
 
 DATASET_NAMES: dict[Task, str] = {
@@ -109,8 +109,8 @@ def build_task_settings(locale: Locale = Locale.EN) -> dict[Task, rg.Settings]:
             required=False,
         )
 
-    def t(task: Task, kind: str, name: str) -> str:
-        return catalog[(task, kind, name)]  # type: ignore[index]
+    def t(task: Task, kind: CatalogKind, name: str) -> str:
+        return catalog[(task, kind, name)]
 
     def _yes_no(task: Task, question: str) -> dict[str, str]:
         return _localised_labels(catalog, task, question, ["yes", "no"])
