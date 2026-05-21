@@ -66,10 +66,11 @@ def parse_locale(raw: str | None) -> "Locale | None":
 
 
 def parse_datetime(raw: str | None) -> datetime | None:
-    """Parse an ISO 8601 datetime string, or return None when unset.
+    """Parse an ISO 8601 datetime string (e.g. ``2026-05-01T00:00:00``).
 
-    Raises ``typer.BadParameter`` on invalid input so the CLI exits cleanly
-    with a usage error rather than a traceback.
+    Returns None when no value is supplied, leaving filter selection to
+    the downstream default. Raises ``typer.BadParameter`` on invalid input
+    so the CLI exits with a usage error rather than a traceback.
     """
     if raw is None:
         return None
@@ -80,9 +81,10 @@ def parse_datetime(raw: str | None) -> datetime | None:
 
 
 def parse_annotator_ids(raw: str | None) -> list[str] | None:
-    """Parse a comma-separated list of annotator IDs, or return None when unset.
+    """Parse a comma-separated list of annotator IDs (e.g. ``alice,bob``).
 
-    Whitespace around each entry is stripped; empty entries are dropped.
+    Returns None when no IDs are supplied, leaving filter selection to
+    the downstream default.
     """
     if raw is None:
         return None
