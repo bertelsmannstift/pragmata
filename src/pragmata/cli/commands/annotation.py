@@ -97,11 +97,23 @@ def import_command(
         "Falls through to YAML config and built-in default (0.1) when omitted; "
         "set to 0.0 for production-only batches.",
     ),
+    no_calibration: bool = typer.Option(
+        False,
+        "--no-calibration",
+        help="Disable calibration entirely for this batch: sets calibration_min_submitted=None "
+        "and calibration_fraction=0.0. Cannot be combined with --calibration-fraction > 0.",
+    ),
+    calibration_partition_seed: int | None = typer.Option(
+        None,
+        "--calibration-partition-seed",
+        help="Deterministic seed for assigning new records to calibration vs production. "
+        "Existing assignments are locked by the partition manifest.",
+    ),
     locale: str | None = typer.Option(
         None,
         "--locale",
         help="Deployment-level UI locale for Argilla dataset titles/questions/guidelines "
-        "(en, de). Cascades to workspaces/tasks unless they carve out a value in YAML. "
+        "(en, de). Inherits to workspaces/tasks unless they carve out a value in YAML. "
         "Falls back to config, then 'en'.",
     ),
 ) -> None:
@@ -113,6 +125,22 @@ def import_command(
     """
     from pragmata import annotation
 
+    if no_calibration and calibration_fraction is not None and calibration_fraction > 0:
+        typer.echo(
+            "Error: --no-calibration cannot be combined with --calibration-fraction > 0.",
+            err=True,
+        )
+        raise typer.Exit(code=2)
+
+    resolved_calibration_fraction: float | object
+    resolved_calibration_min_submitted: int | None | object
+    if no_calibration:
+        resolved_calibration_fraction = 0.0
+        resolved_calibration_min_submitted = None
+    else:
+        resolved_calibration_fraction = UNSET if calibration_fraction is None else calibration_fraction
+        resolved_calibration_min_submitted = UNSET
+
     result = annotation.import_records(
         records,
         api_url=UNSET if api_url is None else api_url,
@@ -121,7 +149,9 @@ def import_command(
         dataset_id=UNSET if dataset_id is None else dataset_id,
         base_dir=UNSET if base_dir is None else base_dir,
         config_path=UNSET if config is None else config,
-        calibration_fraction=UNSET if calibration_fraction is None else calibration_fraction,
+        calibration_fraction=resolved_calibration_fraction,
+        calibration_min_submitted=resolved_calibration_min_submitted,
+        calibration_partition_seed=UNSET if calibration_partition_seed is None else calibration_partition_seed,
         locale=parse_locale(locale) or UNSET,
     )
     typer.echo(f"Total records: {result.total_records}")
