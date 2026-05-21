@@ -3,7 +3,13 @@
 import typer
 
 from pragmata.api import UNSET
-from pragmata.cli.parsing import parse_locale, parse_tasks, parse_user_specs
+from pragmata.cli.parsing import (
+    parse_annotator_ids,
+    parse_datetime,
+    parse_locale,
+    parse_tasks,
+    parse_user_specs,
+)
 
 annotation_app = typer.Typer(help="Annotation pipeline commands.")
 
@@ -216,6 +222,21 @@ def iaa_command(
     n_resamples: int = typer.Option(1000, "--n-resamples", help="Bootstrap iterations for confidence intervals."),
     ci: float = typer.Option(0.95, "--ci", help="Confidence level (e.g. 0.95)."),
     seed: int | None = typer.Option(None, "--seed", help="RNG seed for reproducible bootstrap."),
+    after: str | None = typer.Option(
+        None,
+        "--after",
+        help="Keep only annotations submitted on or after this ISO 8601 datetime (e.g. 2026-05-01T00:00:00).",
+    ),
+    before: str | None = typer.Option(
+        None,
+        "--before",
+        help="Keep only annotations submitted before this ISO 8601 datetime.",
+    ),
+    exclude_annotators: str | None = typer.Option(
+        None,
+        "--exclude-annotators",
+        help="Comma-separated annotator IDs to drop from the analysis.",
+    ),
 ) -> None:
     """Compute inter-annotator agreement from exported CSVs."""
     from pragmata import annotation
@@ -227,6 +248,9 @@ def iaa_command(
         n_resamples=n_resamples,
         ci=ci,
         seed=seed,
+        after=parse_datetime(after),
+        before=parse_datetime(before),
+        exclude_annotators=parse_annotator_ids(exclude_annotators),
         config_path=UNSET if config is None else config,
     )
     for task_agreement in report.tasks:

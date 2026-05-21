@@ -1,8 +1,11 @@
 """Parsing helpers for CLI option values."""
 
 import json
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+
+import typer
 
 from pragmata.api import UNSET
 
@@ -60,6 +63,30 @@ def parse_locale(raw: str | None) -> "Locale | None":
     if raw is None:
         return None
     return raw.strip()
+
+
+def parse_datetime(raw: str | None) -> datetime | None:
+    """Parse an ISO 8601 datetime string, or return None when unset.
+
+    Raises ``typer.BadParameter`` on invalid input so the CLI exits cleanly
+    with a usage error rather than a traceback.
+    """
+    if raw is None:
+        return None
+    try:
+        return datetime.fromisoformat(raw)
+    except ValueError as exc:
+        raise typer.BadParameter(f"Invalid ISO datetime: {raw!r} ({exc})") from exc
+
+
+def parse_annotator_ids(raw: str | None) -> list[str] | None:
+    """Parse a comma-separated list of annotator IDs, or return None when unset.
+
+    Whitespace around each entry is stripped; empty entries are dropped.
+    """
+    if raw is None:
+        return None
+    return [part.strip() for part in raw.split(",") if part.strip()]
 
 
 def parse_user_specs(path: str | None) -> "list[UserSpec] | None":
