@@ -240,3 +240,25 @@ class TestDiscardFlowHtmlEnumSync:
         option_values = set(re.findall(r'<option value="([^"]+)"', html))
         option_values.discard("")  # ignore placeholder "-- select --" option
         assert option_values == {r.value for r in DiscardReason}
+
+
+class TestCatalogDrivesRenderedOutput:
+    """The catalog is the source of truth for user-visible strings.
+
+    Swapping a catalog entry must change the rendered title; identities
+    (``name=``) and label values stay frozen so exports merge cleanly.
+    """
+
+    def test_catalog_drives_field_title(self, monkeypatch):
+        from pragmata.core.annotation.locales.registry import CATALOGS
+        from pragmata.core.schemas.annotation_task import Locale
+
+        sentinel = "SENTINEL_TITLE"
+        stub = dict(CATALOGS[Locale.EN])
+        stub[(Task.RETRIEVAL, "field", "query")] = sentinel
+        monkeypatch.setitem(CATALOGS, Locale.EN, stub)
+
+        rendered = build_task_settings(Locale.EN)[Task.RETRIEVAL]
+        query_field = _get_field(rendered, "query")
+        assert query_field is not None
+        assert query_field.title == sentinel
