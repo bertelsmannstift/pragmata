@@ -93,8 +93,9 @@ def import_records(
     Credential resolution:
     - ``api_url``: kwarg > ``ARGILLA_API_URL`` env > config (``argilla.api_url``)
     - ``api_key``: kwarg > ``ARGILLA_API_KEY`` env (secrets never live in config)
-    - ``locale``: kwarg > ``--config`` file > default EN. Cascades to
-      per-workspace/per-task overrides defined in the YAML config.
+    - ``locale``: kwarg > ``--config`` file (``annotation.locale``) > default
+      EN. Cascades to per-workspace/per-task overrides defined in the YAML
+      config.
 
     Args:
         records: Input data — list[dict], file path (str/Path), HF Dataset,
