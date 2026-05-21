@@ -262,13 +262,13 @@ class TestCatalogDrivesRenderedOutput:
         stub = dict(CATALOGS["en"])
         stub[(Task.RETRIEVAL, "field", "query")] = sentinel
         monkeypatch.setitem(CATALOGS, "en", stub)
-        # build_task_settings is @functools.cache'd; clear before AND after so
-        # neither the cached pre-stub build nor the sentinel-tainted post-stub
-        # build leaks across tests.
+        # build_task_settings is @functools.cache'd; clear so the swap takes effect
+        # and again on the way out so later tests see the unmodified catalog.
         build_task_settings.cache_clear()
-
-        rendered = build_task_settings("en")[Task.RETRIEVAL]
-        query_field = _get_field(rendered, "query")
-        assert query_field is not None
-        assert query_field.title == sentinel
-        build_task_settings.cache_clear()
+        try:
+            rendered = build_task_settings("en")[Task.RETRIEVAL]
+            query_field = _get_field(rendered, "query")
+            assert query_field is not None
+            assert query_field.title == sentinel
+        finally:
+            build_task_settings.cache_clear()

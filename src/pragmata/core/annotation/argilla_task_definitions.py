@@ -32,7 +32,14 @@ from pragmata.core.schemas.annotation_task import DiscardReason, Locale, Task
 
 
 class _DiscardTemplate(Template):
-    """``string.Template`` with ``@@`` delimiter — JS body uses ``$nuxt``/``$i18n``."""
+    """``string.Template`` with ``@@`` delimiter; JS body uses ``$nuxt``/``$i18n``.
+
+    The discard_flow.html template body contains literal ``$``-references
+    (``$nuxt``, ``$i18n``, ``$el``); switching the delimiter to ``@@``
+    keeps those intact. When editing discard_flow.html, do not introduce
+    ``@@`` tokens in the JS or HTML body unless you intend them as
+    substitution placeholders.
+    """
 
     delimiter = "@@"
 
@@ -118,10 +125,11 @@ def _render_discard_template(template_text: str, task: Task, dataset_locale: Loc
     """Substitute the all-locales i18n payload into ``discard_flow.html``.
 
     The widget JS picks the active locale at runtime (Argilla's chrome
-    locale, with a fallback chain), so we ship every supported locale's
-    strings, ordering ``SUPPORTED_LOCALES`` with the dataset's creation
-    locale first. That ordering is consulted when probing Argilla's
-    ``aria-label`` attributes for the hidden helper-question cards.
+    locale, with a fallback chain). All supported locales are shipped so
+    the switch is instant. ``SUPPORTED_LOCALES`` is ordered with the
+    dataset's creation locale first; this is defensive only -- the JS
+    iterates every locale when matching ``aria-label`` attributes and
+    EN/DE titles do not collide today.
     """
     locales_in_order = [dataset_locale] + [loc for loc in sorted(CATALOGS) if loc != dataset_locale]
     i18n_payload = {loc: _discard_i18n_payload_for_locale(loc, task) for loc in locales_in_order}
