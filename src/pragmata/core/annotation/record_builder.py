@@ -275,33 +275,26 @@ def _build_batches(
 def _detect_dataset_locale(dataset: rg.Dataset, task: Task) -> Locale | None:
     """Infer an existing Argilla dataset's creation locale from its label displays.
 
-    Inspects the first ``LabelQuestion``'s option list (value→display text from
-    ``_model.settings.options``) and matches the display text against each
-    per-locale catalog to identify the locale used at dataset creation. Returns
-    ``None`` if no locale matches — e.g. when the dataset was provisioned
-    outside pragmata or used a custom catalog.
-
-    Label *values* are locale-invariant, so this lookup keys by display text
-    on the catalog side. We use ``_model.settings.options`` rather than the
-    public ``.labels`` because the latter is lossy (returns option keys only).
+    Probes the first ``LabelQuestion``'s value→display map (via the private
+    ``_model.settings.options`` — public ``.labels`` is lossy, returns keys
+    only) against each per-locale catalog. Returns ``None`` if no locale
+    matches — e.g. when the dataset was provisioned outside pragmata.
     """
-    for question in dataset.settings.questions:
-        if not isinstance(question, rg.LabelQuestion):
-            continue
-        try:
-            options = question._model.settings.options
-        except AttributeError:
-            return None
-        existing_displays = {opt["value"]: opt["text"] for opt in options}
-        for loc, catalog in CATALOGS.items():
-            expected = {
-                value: catalog[(task, "label", f"{question.name}.{value}")]
-                for value in existing_displays
-                if (task, "label", f"{question.name}.{value}") in catalog
-            }
-            if expected and expected == existing_displays:
-                return loc
+    question = next(
+        (q for q in dataset.settings.questions if isinstance(q, rg.LabelQuestion)),
+        None,
+    )
+    if question is None:
         return None
+    try:
+        options = question._model.settings.options
+    except AttributeError:
+        return None
+    existing = {opt["value"]: opt["text"] for opt in options}
+    for loc, catalog in CATALOGS.items():
+        rendered = {v: catalog.get((task, "label", f"{question.name}.{v}")) for v in existing}
+        if all(rendered.values()) and rendered == existing:
+            return loc
     return None
 
 
