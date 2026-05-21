@@ -9,12 +9,10 @@ flat catalog shape.
 """
 
 from pathlib import Path
-from typing import Any
-
-import yaml
 
 from pragmata.core.annotation.locales.types import Catalog
-from pragmata.core.schemas.annotation_task import Task
+from pragmata.core.schemas.annotation_task import DiscardReason, Task
+from pragmata.core.settings.settings_base import load_config_file
 
 _YES_NO_QUESTIONS_BY_TASK: dict[Task, list[str]] = {
     Task.RETRIEVAL: ["topically_relevant", "evidence_sufficient", "misleading"],
@@ -36,18 +34,14 @@ def load_catalog(path: Path) -> Catalog:
     or label value is missing — fail-loud is intentional so a typo in a locale
     file surfaces at import time, not at first widget render.
     """
-    data: dict[str, Any] = yaml.safe_load(path.read_text(encoding="utf-8"))
+    data = load_config_file(path)
     catalog: Catalog = {}
 
-    for task_name, fields in data["fields"].items():
-        task = Task(task_name)
-        for field_name, display in fields.items():
-            catalog[(task, "field", field_name)] = display
-
-    for task_name, questions in data["questions"].items():
-        task = Task(task_name)
-        for question_name, display in questions.items():
-            catalog[(task, "question", question_name)] = display
+    for kind in ("field", "question"):
+        for task_name, entries in data[f"{kind}s"].items():
+            task = Task(task_name)
+            for name, display in entries.items():
+                catalog[(task, kind, name)] = display
 
     for task_name, text in data["guidelines"].items():
         catalog[(Task(task_name), "guidelines", "")] = text
@@ -59,7 +53,7 @@ def load_catalog(path: Path) -> Catalog:
         for question in question_names:
             catalog[(task, "label", f"{question}.yes")] = yes_display
             catalog[(task, "label", f"{question}.no")] = no_display
-        for reason_value, display in discard_reasons.items():
-            catalog[(task, "label", f"discard_reason.{reason_value}")] = display
+        for reason in DiscardReason:
+            catalog[(task, "label", f"discard_reason.{reason.value}")] = discard_reasons[reason.value]
 
     return catalog
