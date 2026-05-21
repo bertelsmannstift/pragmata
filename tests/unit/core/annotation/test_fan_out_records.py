@@ -219,8 +219,10 @@ class TestImportLocaleConflict:
                 result = fan_out_records(MagicMock(), records=records, settings=settings_de, assignments=assignments)
 
         # Records were appended (no error raised), and a warning was logged.
+        # Assert against locale .name rather than the %r-formatted .value so the
+        # test isn't tied to the log formatter's quote style.
         assert len(result) == 1
         assert "Locale mismatch" in caplog.text
-        assert "'en'" in caplog.text
-        assert "'de'" in caplog.text
+        assert Locale.EN.value in caplog.text
+        assert Locale.DE.value in caplog.text
         fake_dataset.records.log.assert_called_once()

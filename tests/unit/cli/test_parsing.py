@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from pragmata.annotation import Task, UserSpec
+from pragmata.annotation import Locale, Task, UserSpec
 from pragmata.api import UNSET
-from pragmata.cli.parsing import parse_cli_value, parse_tasks, parse_user_specs
+from pragmata.cli.parsing import parse_cli_value, parse_locale, parse_tasks, parse_user_specs
 
 
 class TestParseCliValue:
@@ -44,6 +44,24 @@ class TestParseTasks:
     def test_invalid_task_raises(self) -> None:
         with pytest.raises(ValueError):
             parse_tasks("nonexistent")
+
+
+class TestParseLocale:
+    def test_none_returns_none(self) -> None:
+        assert parse_locale(None) is None
+
+    def test_valid_locale_en(self) -> None:
+        assert parse_locale("en") is Locale.EN
+
+    def test_valid_locale_de(self) -> None:
+        assert parse_locale("de") is Locale.DE
+
+    def test_whitespace_tolerant(self) -> None:
+        assert parse_locale("  en  ") is Locale.EN
+
+    def test_invalid_locale_raises(self) -> None:
+        with pytest.raises(ValueError):
+            parse_locale("xx")
 
 
 class TestParseUserSpecs:
