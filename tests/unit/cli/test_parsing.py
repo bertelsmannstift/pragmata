@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from pragmata.annotation import Locale, Task, UserSpec
+from pragmata.annotation import Task, UserSpec
 from pragmata.api import UNSET
 from pragmata.cli.parsing import parse_cli_value, parse_locale, parse_tasks, parse_user_specs
 
@@ -51,16 +51,16 @@ class TestParseLocale:
         assert parse_locale(None) is None
 
     def test_valid_locale_en(self) -> None:
-        assert parse_locale("en") is Locale.EN
+        assert parse_locale("en") == "en"
 
     def test_valid_locale_de(self) -> None:
-        assert parse_locale("de") is Locale.DE
+        assert parse_locale("de") == "de"
 
     def test_whitespace_tolerant(self) -> None:
-        assert parse_locale("  en  ") is Locale.EN
+        assert parse_locale("  en  ") == "en"
 
     def test_invalid_locale_raises(self) -> None:
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="Unknown locale"):
             parse_locale("xx")
 
 

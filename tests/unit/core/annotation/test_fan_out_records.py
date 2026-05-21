@@ -10,7 +10,7 @@ import pytest
 
 from pragmata.core.annotation.record_builder import fan_out_records
 from pragmata.core.schemas.annotation_import import Chunk, QueryResponsePair
-from pragmata.core.schemas.annotation_task import Locale, Task
+from pragmata.core.schemas.annotation_task import Task
 from pragmata.core.settings.annotation_settings import AnnotationSettings, TaskSettings, WorkspaceSettings
 
 
@@ -189,7 +189,7 @@ class TestImportLocaleConflict:
 
         # Build an EN-flavoured existing dataset; _detect_dataset_locale will
         # match its label displays against the EN catalog.
-        en_settings = build_task_settings(Locale.EN)[Task.RETRIEVAL]
+        en_settings = build_task_settings("en")[Task.RETRIEVAL]
         ds_name = dataset_name(Task.RETRIEVAL, calibration=False, dataset_id="run1")
         fake_dataset = fake_dataset_factory(ds_name)
         fake_dataset.settings = rg.Settings(
@@ -209,7 +209,7 @@ class TestImportLocaleConflict:
         # DE-locale settings — mismatch against the EN existing dataset.
         settings_de = AnnotationSettings(
             dataset_id="run1",
-            locale=Locale.DE,
+            locale="de",
             calibration_fraction=0.0,
             workspaces={"retrieval": WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings()})},
         )
@@ -223,6 +223,6 @@ class TestImportLocaleConflict:
         # test isn't tied to the log formatter's quote style.
         assert len(result) == 1
         assert "Locale mismatch" in caplog.text
-        assert Locale.EN.value in caplog.text
-        assert Locale.DE.value in caplog.text
+        assert "en" in caplog.text
+        assert "de" in caplog.text
         fake_dataset.records.log.assert_called_once()
