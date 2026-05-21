@@ -51,10 +51,16 @@ def parse_tasks(raw: str | None) -> "list[Task] | None":
     return [Task(item.strip()) for item in raw.split(",")]
 
 
-def parse_locale(raw: str) -> "Locale":
-    """Parse a locale string (e.g. ``en``, ``de``) into a Locale enum."""
+def parse_locale(raw: str | None) -> "Locale | None":
+    """Parse a locale string (e.g. ``en``, ``de``) into a Locale enum.
+
+    Returns None when no locale is supplied, leaving locale selection to
+    the downstream default.
+    """
     from pragmata.annotation import Locale
 
+    if raw is None:
+        return None
     return Locale(raw.strip())
 
 

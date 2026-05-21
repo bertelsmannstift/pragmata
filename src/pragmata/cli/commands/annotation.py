@@ -122,7 +122,7 @@ def import_command(
         base_dir=UNSET if base_dir is None else base_dir,
         config_path=UNSET if config is None else config,
         calibration_fraction=UNSET if calibration_fraction is None else calibration_fraction,
-        locale=UNSET if locale is None else parse_locale(locale),
+        locale=parse_locale(locale) or UNSET,
     )
     typer.echo(f"Total records: {result.total_records}")
     typer.echo(
