@@ -1,145 +1,138 @@
 # Annotation locales
 
-Locale-specific display strings for Argilla dataset titles, fields, questions,
-labels, guidelines, and discard-widget chrome. One catalog per locale; one
-registry maps `Locale` enum members to catalogs.
+Locale-specific display strings for Argilla dataset titles, fields, questions,labels, guidelines, and discard-widget chrome. Translations live as data in per-locale YAML files alongside this README; a registry auto-discovers them at import time. `Locale` is an open `str` type - a locale code is any string the registry knows about.
 
 ## Package layout
 
-| File           | Purpose                                                              |
-|----------------|----------------------------------------------------------------------|
-| `types.py`     | `CatalogKind` / `CatalogKey` / `Catalog` type aliases                |
-| `structure.py` | Locale-invariant structure: `_YES_NO_QUESTIONS_BY_TASK`, `DISCARD_WIDGET_KEYS`, `build_programmatic_entries()` |
-| `registry.py`  | `CATALOGS` dict + `get_catalog(locale)` lookup                       |
-| `en.py`        | English catalog (source-of-truth)                                    |
-| `de.py`        | German catalog                                                       |
-| `__init__.py`  | Package docstring only — import from the specific module             |
+| File          | Purpose                                                                |
+|---------------|------------------------------------------------------------------------|
+| `types.py`    | `CatalogKind` / `CatalogKey` / `Catalog` type aliases                  |
+| `loader.py`   | YAML loader + locale-invariant structure (`_YES_NO_QUESTIONS_BY_TASK`, `DISCARD_WIDGET_KEYS`) |
+| `registry.py` | `CATALOGS` dict (auto-discovered) + `get_catalog(locale)` lookup       |
+| `en.yaml`     | English catalog (source-of-truth)                                      |
+| `de.yaml`     | German catalog                                                         |
+| `__init__.py` | Package docstring only - import from the specific module               |
 
 ## Catalog shape
 
-Catalogs are `dict[(Task, CatalogKind, str), str]` where `CatalogKind` is one
-of `"field"`, `"question"`, `"guidelines"`, `"label"`, `"widget"`.
+The on-disk shape is a nested YAML mapping (`fields`, `questions`, `guidelines`, `labels`, `widget`); `loader.load_catalog` fans it out into the flat in-memory shape consumers use:
 
-The `name` slot encodes the kind:
+```
+dict[(Task, CatalogKind, str), str]
+```
 
-- `"field"` / `"question"` — the Argilla `name=` identifier
+where `CatalogKind` is one of `"field"`, `"question"`, `"guidelines"`, `"label"`, `"widget"`. The third tuple slot encodes the kind:
+
+- `"field"` / `"question"` - the Argilla `name=` identifier
   (e.g. `"query"`, `"topically_relevant"`)
-- `"guidelines"` — always `""` (one guidelines string per task)
-- `"label"` — `"<question_name>.<label_value>"`
+- `"guidelines"` - always `""` (one guidelines string per task)
+- `"label"` - `"<question_name>.<label_value>"`
   (e.g. `"topically_relevant.yes"`, `"discard_reason.unclear"`)
-- `"widget"` — `"discard.<widget_key>"` for strings inside the injected
+- `"widget"` - `"discard.<widget_key>"` for strings inside the injected
   discard HTML widget (e.g. `"discard.button_label"`)
 
 ## What stays stable across locales
 
-These are machine identifiers and never translated — exports and downstream
-parsing depend on them:
+These are machine identifiers and never translated - exports and downstream parsing depend on them:
 
 - Field `name=` and question `name=`
 - Label *values* (e.g. `"yes"`, `"no"`, `DiscardReason.UNCLEAR.value`)
-- `Locale` enum keys (`EN`, `DE`, ...)
-- The set of catalog keys (every locale must define the same keys as `en.py`)
+- The set of catalog keys (every locale must define the same keys as
+  `en.yaml`)
 
 Only the catalog *values* (display text) vary by locale.
 
 ## Adding a new locale
 
-### 1. Add the enum member
+### 1. Copy `en.yaml` to `<code>.yaml`
 
-In `src/pragmata/core/schemas/annotation_task.py`:
+Name the file after the locale code (e.g. `fr.yaml`). The registry picks
+it up at import; the file stem is what operators pass to `--locale`.
 
-```python
-class Locale(StrEnum):
-    EN = "en"
-    DE = "de"
-    FR = "fr"  # new
+```sh
+cp src/pragmata/core/annotation/locales/en.yaml \
+   src/pragmata/core/annotation/locales/fr.yaml
 ```
 
-### 2. Create the catalog file
+### 2. Translate values, keep keys
 
-Copy `en.py` to `<locale>.py` and translate the values. Keep the keys identical.
-Use `build_programmatic_entries()` from `structure.py` for the label/widget rows
-— it fans the yes/no display strings across every question in
-`_YES_NO_QUESTIONS_BY_TASK` and every key in `DISCARD_WIDGET_KEYS` so you supply
-each translation once:
+Edit the new file. Translate every string under `fields:`, `questions:`,
+`guidelines:`, `labels:`, and `widget:`. Do not rename keys, do not add new
+ones - the keys are wired into Argilla and the discard widget; only the
+values change per locale.
 
-```python
-from pragmata.core.annotation.locales.structure import build_programmatic_entries
-from pragmata.core.annotation.locales.types import Catalog
-from pragmata.core.schemas.annotation_task import DiscardReason, Task
+```yaml
+fields:
+  retrieval:
+    query: Requête
+    chunk: Passage
+    # ...
 
-CATALOG: Catalog = {
-    (Task.RETRIEVAL, "field", "query"): "Requête",
-    # ... rest of field / question / guidelines entries ...
-    **build_programmatic_entries(
-        yes_display="Oui",
-        no_display="Non",
-        discard_reason_displays={
-            DiscardReason.INVALID_OR_UNREALISTIC.value: "Enregistrement invalide ou irréaliste",
-            DiscardReason.UNCLEAR.value: "Relation ambiguë",
-            DiscardReason.OUTSIDE_REVIEWER_EXPERTISE.value: "Hors expertise",
-        },
-        discard_widget_displays={
-            "panel_summary": "Rejeter cet enregistrement",
-            "panel_help": "...",
-            "reason_label": "Motif :",
-            "reason_placeholder": "— choisir —",
-            "notes_label": "Notes facultatives :",
-            "notes_placeholder": "...",
-            "button_label": "Rejeter",
-        },
-    ),
-}
+labels:
+  yes_display: Oui
+  no_display: Non
+  discard_reasons:
+    invalid_or_unrealistic: Enregistrement invalide ou irréaliste
+    unclear: Relation ambiguë
+    outside_reviewer_expertise: Hors expertise
+
+widget:
+  panel_summary: Rejeter cet enregistrement
+  reason_label: "Motif :"
+  # ...
 ```
 
-### 3. Register the catalog
-
-In `registry.py`:
-
-```python
-from pragmata.core.annotation.locales.fr import CATALOG as _FR
-
-CATALOGS: dict[Locale, Catalog] = {
-    Locale.EN: _EN,
-    Locale.DE: _DE,
-    Locale.FR: _FR,
-}
-```
-
-### 4. Run the tests
+### 3. Run the tests
 
 ```sh
 uv run python -m pytest tests/unit/core/annotation/test_locales.py -v
 ```
 
-`TestCatalogCompleteness` is parameterised over `Locale` and will tell you
-about any missing or stray keys; `TestLocaleAwareSettings` confirms the
-display strings actually flow into the rendered `rg.Settings`.
+`TestCatalogCompleteness` parametrises over every registered locale and
+tells you about any missing or stray keys versus `en.yaml`.
+`TestLocaleAwareSettings` confirms the display strings actually flow into
+the rendered `rg.Settings`.
+
+That's it. No enum to edit, no registry to register, no import statement
+to add.
 
 ## Correctness invariant
 
-`_YES_NO_QUESTIONS_BY_TASK` in `structure.py` lists every question that uses
-the shared `yes`/`no` LabelQuestion. If you add or rename such a question
-elsewhere in the codebase, update this mapping in the same change — otherwise
-`build_programmatic_entries()` will emit stale label rows and the catalog
+`_YES_NO_QUESTIONS_BY_TASK` in `loader.py` lists every question that uses
+the shared `yes`/`no` `LabelQuestion`. If you add or rename such a
+question elsewhere in the codebase, update this mapping in the same
+change - otherwise the loader will emit stale label rows and the catalog
 completeness test will fail.
 
-`DISCARD_WIDGET_KEYS` is the source-of-truth list of chrome strings inside the
-discard widget. Adding a key requires updating every locale's
-`discard_widget_displays` argument; missing keys raise `KeyError` at import.
+`DISCARD_WIDGET_KEYS` in `loader.py` is the source-of-truth list of chrome
+strings inside the discard widget. Adding a key requires updating the
+`widget:` section of every locale YAML; missing keys raise `KeyError` at
+load time.
 
-## What's automatic vs manual
+`DiscardReason` (in `core/schemas/annotation_task.py`) drives the
+discard-reason label fan-out. Adding a reason requires updating every
+locale's `labels.discard_reasons:` map; missing reasons raise `KeyError`
+at load time.
 
-Automatic (handled by `build_programmatic_entries()`):
+## What the YAML must contain
 
-- Yes/No label rows for every question in `_YES_NO_QUESTIONS_BY_TASK`
-- Discard-reason label rows for every `DiscardReason` value
-- Discard-widget rows for every `DISCARD_WIDGET_KEYS` entry, duplicated per task
-
-Manual (per task, per locale):
+Spelled out per task (under `fields:`, `questions:`, `guidelines:`):
 
 - Field titles (e.g. `"query"`, `"chunk"`, `"answer"`, `"context_set"`)
-- Question titles (the full sentence shown above each LabelQuestion)
+- Question titles (the full sentence shown above each `LabelQuestion`)
 - Guidelines text (one per task)
-- The `"notes"`, `"discard_reason"`, `"discard_notes"` question titles
-- The `"discard_flow"` field title
+- The `notes`, `discard_reason`, `discard_notes` question titles
+- The `discard_flow` field title
+
+Spelled out once each, then fanned out by the loader:
+
+- `labels.yes_display` / `labels.no_display` - one string each; the loader
+  emits a label row for every yes/no `LabelQuestion` in every task
+- `labels.discard_reasons.*` - one string per `DiscardReason` value;
+  fanned out per task
+- `widget.*` - seven chrome strings for the discard widget; fanned out
+  per task
+
+So a contributor writes every display string exactly once. The loader
+handles the duplication across the per-task catalog rows consumers
+expect.
