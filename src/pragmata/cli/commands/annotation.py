@@ -2,7 +2,7 @@
 
 import typer
 
-from pragmata.api import UNSET
+from pragmata.api import UNSET, Unset
 from pragmata.cli.parsing import parse_locale, parse_tasks, parse_user_specs
 
 annotation_app = typer.Typer(help="Annotation pipeline commands.")
@@ -132,8 +132,8 @@ def import_command(
         )
         raise typer.Exit(code=2)
 
-    resolved_calibration_fraction: float | object
-    resolved_calibration_min_submitted: int | None | object
+    resolved_calibration_fraction: float | Unset
+    resolved_calibration_min_submitted: int | None | Unset
     if no_calibration:
         resolved_calibration_fraction = 0.0
         resolved_calibration_min_submitted = None
