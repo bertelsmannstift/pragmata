@@ -333,15 +333,15 @@ def _ensure_dataset(
         logger.info("Auto-created dataset %r in workspace %r", ds_name, ws_base)
     else:
         existing_locale = _detect_dataset_locale(dataset, task)
-        if existing_locale is not None and existing_locale is not locale:
+        if existing_locale is not None and existing_locale != locale:
             logger.warning(
                 "Locale mismatch on dataset %r (workspace %r): existing dataset was created "
                 "with locale=%r but this import uses locale=%r. Appending records (label "
                 "values are locale-invariant; only display text differs).",
                 ds_name,
                 ws_base,
-                existing_locale.value,
-                locale.value,
+                existing_locale,
+                locale,
             )
     return dataset
 
