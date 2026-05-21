@@ -28,9 +28,9 @@ class _InheritType:
     """Sentinel meaning 'inherit from parent scope' on nested settings models.
 
     Distinct from ``Unset``: ``Unset`` is stripped pre-validation by
-    ``prune_unset``; ``Inherit`` persists through validation and is replaced
-    with the parent-scope value by ``_propagate_inheritance`` on
-    ``AnnotationSettings``.
+    ``prune_unset``; ``Inherit`` persists through validation as a raw
+    specified value. CSS-style: child scopes store ``INHERIT`` until a
+    read-time resolver walks the scope chain and returns the computed value.
     """
 
     __slots__ = ()
@@ -39,7 +39,7 @@ class _InheritType:
         return "INHERIT"
 
     def __bool__(self) -> bool:
-        raise TypeError("INHERIT has no truth value. Use `isinstance(x, _InheritType)`.")
+        raise TypeError("INHERIT has no truth value. Use `x is INHERIT`.")
 
 
 INHERIT: Final[_InheritType] = _InheritType()

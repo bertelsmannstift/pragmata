@@ -102,9 +102,9 @@ def teardown_resources(
             logger.info("Workspace %r not found — skipping", ws_base)
             continue
 
-        for task, task_settings in ws_settings.tasks.items():
+        for task in ws_settings.tasks:
             purposes_present = [False]  # production always exists
-            if task_settings.calibration_min_submitted is not None:
+            if settings.resolved_task(ws_base, task).calibration_min_submitted is not None:
                 purposes_present.append(True)
             for calibration in purposes_present:
                 ds_name = dataset_name(task, calibration=calibration, dataset_id=settings.dataset_id)

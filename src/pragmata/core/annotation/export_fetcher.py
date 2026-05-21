@@ -109,16 +109,15 @@ def fetch_task(
     to also include responses the annotator discarded.
     """
     workspace_name: str | None = None
-    task_settings = None
     for ws_base, ws_settings in settings.workspaces.items():
         if task in ws_settings.tasks:
             workspace_name = ws_base
-            task_settings = ws_settings.tasks[task]
             break
 
     purposes: list[bool] = [False]
-    if task_settings is not None and task_settings.calibration_min_submitted is not None:
-        purposes.append(True)
+    if workspace_name is not None:
+        if settings.resolved_task(workspace_name, task).calibration_min_submitted is not None:
+            purposes.append(True)
 
     statuses = ["submitted", "discarded"] if include_discarded else ["submitted"]
     query = rg.Query(filter=rg.Filter([("response.status", "in", statuses)]))

@@ -3,9 +3,11 @@
 Settings are organised into three scopes — deployment (``AnnotationSettings``),
 workspace (``WorkspaceSettings``), task (``TaskSettings``). Fields listed in
 ``AnnotationSettings._INHERITED_FIELDS`` may be set at any scope; child scopes
-default to ``INHERIT`` and adopt the nearest non-inherited ancestor value at
-materialisation. CSS-style inheritance: explicit override at any scope wins;
-otherwise look upward.
+default to ``INHERIT``. Models hold the **specified** values exactly as given
+(``INHERIT`` survives validation, raw inputs round-trip losslessly through
+``model_dump()``). ``resolved_task(workspace_name, task)`` returns the
+**computed** values after walking task → workspace → deployment — the CSS
+"computed value" analogy: first non-``INHERIT`` ancestor wins.
 """
 
 from dataclasses import dataclass, field
@@ -15,7 +17,7 @@ from typing import ClassVar, Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, NonNegativeInt, PositiveInt, model_validator
 
 from pragmata.core.schemas.annotation_task import Task
-from pragmata.core.settings.settings_base import INHERIT, Inherit, ResolveSettings, _InheritType
+from pragmata.core.settings.settings_base import INHERIT, Inherit, ResolveSettings
 from pragmata.core.types import SafePathSegment
 
 
@@ -25,13 +27,6 @@ class ArgillaSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     api_url: str | None = None
-
-
-def _inherit(child: BaseModel, parent: BaseModel, fields: tuple[str, ...]) -> None:
-    """Replace ``INHERIT`` placeholders on ``child`` with the matching ``parent`` values."""
-    for name in fields:
-        if isinstance(getattr(child, name), _InheritType):
-            setattr(child, name, getattr(parent, name))
 
 
 class TaskSettings(BaseModel):
@@ -56,6 +51,14 @@ class WorkspaceSettings(BaseModel):
     production_min_submitted: PositiveInt | Inherit = INHERIT
     calibration_min_submitted: PositiveInt | None | Inherit = INHERIT
     tasks: dict[Task, TaskSettings]
+
+
+@dataclass(frozen=True)
+class ResolvedTaskSettings:
+    """Concrete per-task settings after inheritance resolution (CSS 'computed' values)."""
+
+    production_min_submitted: int
+    calibration_min_submitted: int | None
 
 
 class AnnotationSettings(ResolveSettings):
@@ -89,13 +92,24 @@ class AnnotationSettings(ResolveSettings):
         "calibration_min_submitted",
     )
 
-    @model_validator(mode="after")
-    def _propagate_inheritance(self) -> Self:
-        for ws in self.workspaces.values():
-            _inherit(ws, self, self._INHERITED_FIELDS)
-            for task in ws.tasks.values():
-                _inherit(task, ws, self._INHERITED_FIELDS)
-        return self
+    def resolved_task(self, workspace_name: str, task: Task) -> ResolvedTaskSettings:
+        """Return the computed task settings: task → workspace → deployment.
+
+        First non-``INHERIT`` ancestor wins. Consumers should call this rather
+        than reading inheritable fields directly off ``TaskSettings`` /
+        ``WorkspaceSettings``, which hold raw specified values.
+        """
+        ws = self.workspaces[workspace_name]
+        ts = ws.tasks[task]
+        kwargs: dict[str, object] = {}
+        for name in self._INHERITED_FIELDS:
+            value = getattr(ts, name)
+            if value is INHERIT:
+                value = getattr(ws, name)
+            if value is INHERIT:
+                value = getattr(self, name)
+            kwargs[name] = value
+        return ResolvedTaskSettings(**kwargs)  # type: ignore[arg-type]
 
     @model_validator(mode="after")
     def _validate_task_uniqueness(self) -> Self:
@@ -117,8 +131,8 @@ class AnnotationSettings(ResolveSettings):
         missing = [
             f"{ws_name}/{task.value}"
             for ws_name, ws in self.workspaces.items()
-            for task, ts in ws.tasks.items()
-            if ts.calibration_min_submitted is None
+            for task in ws.tasks
+            if self.resolved_task(ws_name, task).calibration_min_submitted is None
         ]
         if missing:
             raise ValueError(

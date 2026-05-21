@@ -117,10 +117,10 @@ def _resolve_calibration_enabled(settings: "AnnotationSettings", tasks: list[Tas
     hide a config bug.
     """
     flags: dict[Task, bool] = {}
-    for ws_settings in settings.workspaces.values():
-        for task, task_settings in ws_settings.tasks.items():
+    for ws_name, ws_settings in settings.workspaces.items():
+        for task in ws_settings.tasks:
             if task in tasks:
-                flags[task] = task_settings.calibration_min_submitted is not None
+                flags[task] = settings.resolved_task(ws_name, task).calibration_min_submitted is not None
     missing = [task.value for task in tasks if task not in flags]
     if missing:
         raise ValueError(

@@ -145,9 +145,9 @@ class TestCalibrationTopologyValidator:
     def test_per_workspace_task_inheritance(self):
         """Workspace-level calibration_min_submitted=None is inherited by its tasks.
 
-        With calibration_fraction>0, the topology validator (running after
-        inheritance propagation) sees the propagated None on each task and
-        reports them by workspace/task pair.
+        With calibration_fraction>0, the topology validator resolves each
+        task's calibration value through the inheritance walk and reports
+        any None resolutions by workspace/task pair.
         """
         workspaces = {
             "retrieval": WorkspaceSettings(
@@ -167,17 +167,17 @@ class TestCalibrationTopologyValidator:
             AnnotationSettings(calibration_fraction=-0.1)
 
 
-class TestInheritancePropagation:
-    """``_propagate_inheritance`` replaces INHERIT with the parent-scope value."""
+class TestResolvedTask:
+    """``resolved_task()`` walks task → workspace → deployment for inherited fields."""
 
-    def test_workspace_inherits_from_annotation(self):
+    def test_task_resolves_from_deployment_when_unset(self):
         s = AnnotationSettings(
             production_min_submitted=5,
             workspaces={"r": WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings()})},
         )
-        assert s.workspaces["r"].production_min_submitted == 5
+        assert s.resolved_task("r", Task.RETRIEVAL).production_min_submitted == 5
 
-    def test_task_inherits_from_workspace(self):
+    def test_task_resolves_from_workspace_when_unset(self):
         s = AnnotationSettings(
             workspaces={
                 "r": WorkspaceSettings(
@@ -186,9 +186,9 @@ class TestInheritancePropagation:
                 ),
             },
         )
-        assert s.workspaces["r"].tasks[Task.RETRIEVAL].production_min_submitted == 7
+        assert s.resolved_task("r", Task.RETRIEVAL).production_min_submitted == 7
 
-    def test_respects_explicit_workspace_override(self):
+    def test_workspace_override_wins_over_deployment(self):
         s = AnnotationSettings(
             production_min_submitted=1,
             workspaces={
@@ -198,9 +198,9 @@ class TestInheritancePropagation:
                 ),
             },
         )
-        assert s.workspaces["r"].production_min_submitted == 4
+        assert s.resolved_task("r", Task.RETRIEVAL).production_min_submitted == 4
 
-    def test_respects_explicit_task_override(self):
+    def test_task_override_wins_over_workspace_and_deployment(self):
         s = AnnotationSettings(
             production_min_submitted=1,
             workspaces={
@@ -210,9 +210,9 @@ class TestInheritancePropagation:
                 ),
             },
         )
-        assert s.workspaces["r"].tasks[Task.RETRIEVAL].production_min_submitted == 9
+        assert s.resolved_task("r", Task.RETRIEVAL).production_min_submitted == 9
 
-    def test_preserves_explicit_disable_at_task(self):
+    def test_resolves_explicit_disable_at_task(self):
         s = AnnotationSettings(
             calibration_fraction=0.0,
             workspaces={
@@ -221,9 +221,9 @@ class TestInheritancePropagation:
                 ),
             },
         )
-        assert s.workspaces["r"].tasks[Task.RETRIEVAL].calibration_min_submitted is None
+        assert s.resolved_task("r", Task.RETRIEVAL).calibration_min_submitted is None
 
-    def test_workspace_disable_inherited_by_tasks(self):
+    def test_resolves_workspace_disable_for_task(self):
         s = AnnotationSettings(
             calibration_fraction=0.0,
             workspaces={
@@ -233,16 +233,33 @@ class TestInheritancePropagation:
                 ),
             },
         )
-        assert s.workspaces["r"].tasks[Task.RETRIEVAL].calibration_min_submitted is None
+        assert s.resolved_task("r", Task.RETRIEVAL).calibration_min_submitted is None
 
     def test_empty_tasks_dict_no_op(self):
-        # An empty tasks dict must not crash the inheritance walk.
+        # An empty tasks dict must not crash settings construction.
         s = AnnotationSettings(
             workspaces={"empty": WorkspaceSettings(tasks={})},
         )
         assert s.workspaces["empty"].tasks == {}
-        # Workspace-level field still inherits from annotation.
-        assert s.workspaces["empty"].production_min_submitted == 1
+
+    def test_raw_models_preserve_inherit_sentinel(self):
+        """The model holds specified values; ``INHERIT`` is preserved untouched."""
+        s = AnnotationSettings(
+            production_min_submitted=5,
+            workspaces={"r": WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings()})},
+        )
+        assert s.workspaces["r"].production_min_submitted is INHERIT
+        assert s.workspaces["r"].tasks[Task.RETRIEVAL].production_min_submitted is INHERIT
+
+    def test_shared_workspace_settings_never_mutated(self):
+        """Reused WorkspaceSettings instances must not carry stale resolved values."""
+        ws = WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings()})
+        _ = AnnotationSettings(production_min_submitted=1, workspaces={"retrieval": ws})
+        s2 = AnnotationSettings(production_min_submitted=42, workspaces={"retrieval": ws})
+        assert s2.resolved_task("retrieval", Task.RETRIEVAL).production_min_submitted == 42
+        # Raw instance untouched — INHERIT sentinel preserved across both constructions
+        assert ws.production_min_submitted is INHERIT
+        assert ws.tasks[Task.RETRIEVAL].production_min_submitted is INHERIT
 
 
 class TestTaskUniquenessValidator:
@@ -256,15 +273,15 @@ class TestTaskUniquenessValidator:
             )
 
 
-class TestValidatorOrdering:
-    """``_propagate_inheritance`` must run before ``_check_calibration_topology``.
+class TestCalibrationTopologyResolution:
+    """``_check_calibration_topology`` resolves inheritance for each task.
 
-    Without correct ordering, the topology check would see ``INHERIT`` on task
-    fields instead of the inherited concrete ``None`` and silently accept a
-    config that should fail.
+    A workspace-level ``calibration_min_submitted=None`` must surface in the
+    topology check via the inheritance walk, even though the raw task models
+    still hold ``INHERIT``.
     """
 
-    def test_propagation_runs_before_topology_check(self):
+    def test_workspace_disable_surfaces_via_resolution(self):
         with pytest.raises(ValidationError, match=r"r/retrieval"):
             AnnotationSettings(
                 calibration_fraction=0.1,
@@ -286,15 +303,27 @@ class TestValidatorOrdering:
 
 
 class TestYamlRoundtrip:
-    """Documented non-goal: sparse YAML inputs become concrete in ``model_dump()``."""
+    """Specified values round-trip losslessly; ``resolved_task()`` gives computed values."""
 
-    def test_model_dump_post_inheritance_is_lossy(self):
+    def test_model_dump_preserves_inherit_sentinel(self):
+        """``model_dump()`` returns specified values: child scopes stay ``INHERIT``."""
+        s = AnnotationSettings(
+            production_min_submitted=5,
+            workspaces={"r": WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings()})},
+        )
+        dumped = s.model_dump()
+        assert dumped["production_min_submitted"] == 5
+        assert dumped["workspaces"]["r"]["production_min_submitted"] is INHERIT
+        assert dumped["workspaces"]["r"]["tasks"][Task.RETRIEVAL]["production_min_submitted"] is INHERIT
+        # But resolved_task gives the computed value.
+        assert s.resolved_task("r", Task.RETRIEVAL).production_min_submitted == 5
+
+    def test_sparse_yaml_input_roundtrips_to_resolved_value(self):
         data = yaml.safe_load(
             "production_min_submitted: 4\ncalibration_fraction: 0.0\nworkspaces: {r: {tasks: {retrieval: {}}}}\n"
         )
-        dumped = AnnotationSettings(**data).model_dump()
-        assert dumped["workspaces"]["r"]["production_min_submitted"] == 4
-        assert dumped["workspaces"]["r"]["tasks"]["retrieval"]["production_min_submitted"] == 4
+        s = AnnotationSettings(**data)
+        assert s.resolved_task("r", Task.RETRIEVAL).production_min_submitted == 4
 
 
 class TestArgillaSettings:
