@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 import argilla as rg
 
 from pragmata.core.annotation.export_fetcher import AnnotationModel, build_user_lookup, fetch_task
+from pragmata.core.annotation.logical_constraints import LogicalConstraint
 from pragmata.core.csv_io import _to_csv_value
 from pragmata.core.paths.annotation_paths import AnnotationExportPaths
 from pragmata.core.schemas.annotation_export import (
@@ -58,7 +59,8 @@ class ExportResult:
         paths: Path bundle used for this export.
         files: Mapping of task to written CSV file path.
         row_counts: Number of rows written per task.
-        constraint_summary: Violation count per rule name (namespaced by task).
+        constraint_summary: Violation count per ``constraint_id`` (the stable
+            short identifier defined in :mod:`logical_constraints`).
         n_annotators: Count of distinct annotators per task.
     """
 
@@ -70,7 +72,7 @@ class ExportResult:
 
 
 def write_export_csv(
-    rows: list[tuple[RetrievalAnnotation | GroundingAnnotation | GenerationAnnotation, list[str]]],
+    rows: list[tuple[RetrievalAnnotation | GroundingAnnotation | GenerationAnnotation, list[LogicalConstraint]]],
     path: Path,
     task: Task,
 ) -> None:
@@ -82,7 +84,10 @@ def write_export_csv(
     header row even when rows is empty.
 
     Args:
-        rows: List of (annotation, violations) tuples.
+        rows: List of (annotation, violations) tuples. Each violation is a
+            ``LogicalConstraint``; the CSV ``constraint_details`` column is
+            generated from ``LogicalConstraint.violation_string()`` and stays
+            in the legacy verbose ``";"``-joined format for human readers.
         path: Final output path.
         task: Task type — determines the export-row schema.
     """
@@ -97,7 +102,7 @@ def write_export_csv(
                 export_row = row_cls(
                     **annotation.model_dump(),
                     constraint_violated=bool(violations),
-                    constraint_details=";".join(violations),
+                    constraint_details=";".join(c.violation_string() for c in violations),
                 )
                 raw = export_row.model_dump(mode="json")
                 writer.writerow({k: _to_csv_value(raw[k]) for k in headers})
@@ -151,7 +156,7 @@ def assemble_export_meta(
         n_annotators: Distinct annotator count per task.
         calibration_enabled: Whether the topology declared a calibration
             dataset for each task.
-        constraint_summary: Constraint violation count per rule name.
+        constraint_summary: Violation count keyed by ``constraint_id``.
 
     Returns:
         Provenance sidecar with an internally stamped creation time.
@@ -204,7 +209,7 @@ def run_export(
 
     user_lookup = build_user_lookup(client)
 
-    task_rows: dict[Task, list[tuple[AnnotationModel, list[str]]]] = {}
+    task_rows: dict[Task, list[tuple[AnnotationModel, list[LogicalConstraint]]]] = {}
     for task in tasks:
         task_rows[task] = fetch_task(client, settings, task, user_lookup, include_discarded=include_discarded)
 
@@ -228,8 +233,8 @@ def run_export(
     constraint_summary: dict[str, int] = {}
     for task in tasks:
         for _, violations in task_rows[task]:
-            for v in violations:
-                constraint_summary[v] = constraint_summary.get(v, 0) + 1
+            for c in violations:
+                constraint_summary[c.constraint_id] = constraint_summary.get(c.constraint_id, 0) + 1
 
     meta = assemble_export_meta(
         export_id=paths.export_dir.name,

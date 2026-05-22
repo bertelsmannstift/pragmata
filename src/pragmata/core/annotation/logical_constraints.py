@@ -48,7 +48,7 @@ class LogicalConstraint:
         return getattr(row, self.then_question, None) != self.then_value
 
     def violation_string(self) -> str:
-        """Violation string used in export CSV/constraint_summary."""
+        """Human-readable violation string rendered into the per-row CSV ``constraint_details`` column."""
         return (
             f"{self.task.value}: {self.when_question}={self.when_value} but {self.then_question}={not self.then_value}"
         )
