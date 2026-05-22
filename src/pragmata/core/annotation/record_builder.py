@@ -326,7 +326,7 @@ def fan_out_records(
         the api layer.
     """
     task_to_ws = _invert_workspace_map(settings)
-    task_settings_map = build_task_settings()
+    task_settings_map = build_task_settings(settings)
     batches = _build_batches(records, assignments)
 
     dataset_counts: dict[str, int] = {}

@@ -8,8 +8,9 @@ from pragmata.core.annotation.argilla_task_definitions import (
     build_task_settings,
 )
 from pragmata.core.schemas.annotation_task import DiscardReason, Task
+from pragmata.core.settings.annotation_settings import AnnotationSettings
 
-_TASK_SETTINGS = build_task_settings()
+_TASK_SETTINGS = build_task_settings(AnnotationSettings())
 _RETRIEVAL = _TASK_SETTINGS[Task.RETRIEVAL]
 _GROUNDING = _TASK_SETTINGS[Task.GROUNDING]
 _GENERATION = _TASK_SETTINGS[Task.GENERATION]

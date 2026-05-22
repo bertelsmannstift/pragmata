@@ -24,8 +24,9 @@ class LogicalConstraint:
     """Binary implication: ``<when_question>=<when_value>`` requires ``<then_question>=<then_value>``.
 
     ``constraint_id`` is a stable short identifier for the rule; ``message``
-    is the annotator-facing explanation rendered by the UI widget;
-    ``severity`` controls whether the widget warns or blocks submission.
+    is the annotator-facing explanation rendered by the UI widget. Severity
+    is not a property of the rule itself, it is a configurable runtime
+    setting (see ``AnnotationSettings.constraint_severity``).
     """
 
     task: Task
@@ -34,7 +35,6 @@ class LogicalConstraint:
     when_value: bool
     then_question: str
     then_value: bool
-    severity: Severity
     message: str
 
     def applies(self, row: object) -> bool:
@@ -53,15 +53,19 @@ class LogicalConstraint:
             f"{self.task.value}: {self.when_question}={self.when_value} but {self.then_question}={not self.then_value}"
         )
 
-    def to_widget_payload(self) -> dict[str, str]:
-        """Serialisable constraint shape for the JS widget; uses string yes/no values."""
+    def to_widget_payload(self, severity: Severity) -> dict[str, str]:
+        """Serialisable constraint shape for the JS widget; uses string yes/no values.
+
+        ``severity`` is the resolved severity for this constraint
+        (from ``AnnotationSettings.constraint_severity``).
+        """
         return {
             "constraint_id": self.constraint_id,
             "when_question": self.when_question,
             "when_value": "yes" if self.when_value else "no",
             "then_question": self.then_question,
             "then_value": "yes" if self.then_value else "no",
-            "severity": self.severity,
+            "severity": severity,
             "message": self.message,
         }
 
@@ -75,7 +79,6 @@ LOGICAL_CONSTRAINTS: dict[Task, list[LogicalConstraint]] = {
             when_value=True,
             then_question="topically_relevant",
             then_value=True,
-            severity="block",
             message=(
                 "If a passage provides sufficient evidence to answer the query, it must also be topically relevant."
             ),
@@ -87,7 +90,6 @@ LOGICAL_CONSTRAINTS: dict[Task, list[LogicalConstraint]] = {
             when_value=True,
             then_question="misleading",
             then_value=False,
-            severity="warn",
             message=(
                 "A passage marked as providing sufficient evidence is usually not also "
                 "misleading. Double-check this combination. Keep it only if the passage "
@@ -103,7 +105,6 @@ LOGICAL_CONSTRAINTS: dict[Task, list[LogicalConstraint]] = {
             when_value=True,
             then_question="unsupported_claim_present",
             then_value=True,
-            severity="block",
             message=(
                 "A contradicted claim is by definition not supported by the context, "
                 "so 'unsupported claim present' must also be yes."
@@ -116,11 +117,16 @@ LOGICAL_CONSTRAINTS: dict[Task, list[LogicalConstraint]] = {
             when_value=True,
             then_question="source_cited",
             then_value=True,
-            severity="block",
             message=(
                 "A fabricated source can only exist if the answer cites a source, so 'source cited' must also be yes."
             ),
         ),
     ],
     Task.GENERATION: [],
+}
+
+# By-id lookup over the flattened catalogue, used by the settings layer to
+# validate that override maps reference known constraint_ids.
+CONSTRAINT_BY_ID: dict[str, LogicalConstraint] = {
+    c.constraint_id: c for cs in LOGICAL_CONSTRAINTS.values() for c in cs
 }
