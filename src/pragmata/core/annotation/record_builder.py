@@ -169,11 +169,6 @@ def build_generation_record(pair: QueryResponsePair, record_uuid: str) -> rg.Rec
     )
 
 
-def _invert_workspace_map(settings: AnnotationSettings) -> dict[Task, str]:
-    """Invert workspaces topology to task → workspace_base."""
-    return {task: ws_base for ws_base, ws in settings.workspaces.items() for task in ws.tasks}
-
-
 # ---------------------------------------------------------------------------
 # Partition logic
 # ---------------------------------------------------------------------------
@@ -290,7 +285,7 @@ def assign_partitions(
     """
     now = datetime.now(timezone.utc)
     seed = manifest.partition_seed
-    workspace_for_task = _invert_workspace_map(settings)
+    workspace_for_task = settings.task_to_workspace()
 
     pairs_by_rid: dict[str, QueryResponsePair] = {derive_record_uuid(pair): pair for pair in pairs}
     per_task_fraction: dict[Task, float] = {}
@@ -626,7 +621,7 @@ def fan_out_records(
         calibration vs production totals are computable from
         ``partition.assignments`` and stay in the api layer.
     """
-    task_to_ws = _invert_workspace_map(settings)
+    task_to_ws = settings.task_to_workspace()
     batches = _build_batches(partition.pairs_by_rid, partition.assignments)
 
     dataset_counts: dict[str, int] = {}
