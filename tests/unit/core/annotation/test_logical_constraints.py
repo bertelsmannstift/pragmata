@@ -1,10 +1,8 @@
 """Unit tests for declarative logical constraints.
 
-The Python ``check_*`` helpers and the JS annotator-time widget both consume
-``LOGICAL_CONSTRAINTS``; these tests guard that single source of truth.
+The Python ``check_*`` helpers consume ``LOGICAL_CONSTRAINTS``; these tests
+guard that single source of truth.
 """
-
-import json
 
 import pytest
 
@@ -34,11 +32,6 @@ class TestCatalogue:
         ids = [c.constraint_id for c in LOGICAL_CONSTRAINTS[Task.GROUNDING]]
         assert len(ids) == len(set(ids))
 
-    def test_every_constraint_has_message(self):
-        for constraints in LOGICAL_CONSTRAINTS.values():
-            for c in constraints:
-                assert c.message and len(c.message) > 10
-
 
 # ---------------------------------------------------------------------------
 # LogicalConstraint semantics
@@ -46,7 +39,7 @@ class TestCatalogue:
 
 
 class _Row:
-    """Minimal stand-in for a Pydantic annotation row — exposes attribute access."""
+    """Minimal stand-in for a Pydantic annotation row; exposes attribute access."""
 
     def __init__(self, **kwargs):
         for k, v in kwargs.items():
@@ -62,8 +55,6 @@ def implication_constraint():
         when_value=True,
         then_question="topically_relevant",
         then_value=True,
-        severity="block",
-        message="If evidence is sufficient the chunk must also be relevant.",
     )
 
 
@@ -91,37 +82,3 @@ class TestConstraintSemantics:
     def test_violation_string_format(self, implication_constraint):
         s = implication_constraint.violation_string()
         assert s == "retrieval: evidence_sufficient=True but topically_relevant=False"
-
-
-# ---------------------------------------------------------------------------
-# JS widget payload
-# ---------------------------------------------------------------------------
-
-
-class TestWidgetPayload:
-    def test_payload_uses_string_yes_no(self, implication_constraint):
-        payload = implication_constraint.to_widget_payload()
-        assert payload["when_value"] == "yes"
-        assert payload["then_value"] == "yes"
-
-    def test_payload_serialises_no_correctly(self):
-        constraint = LogicalConstraint(
-            task=Task.RETRIEVAL,
-            constraint_id="x",
-            when_question="evidence_sufficient",
-            when_value=True,
-            then_question="misleading",
-            then_value=False,
-            severity="warn",
-            message="...",
-        )
-        assert constraint.to_widget_payload()["then_value"] == "no"
-
-    def test_payload_carries_severity_and_message(self, implication_constraint):
-        payload = implication_constraint.to_widget_payload()
-        assert payload["severity"] == "block"
-        assert payload["message"].startswith("If evidence")
-
-    def test_payload_is_json_serialisable(self):
-        for constraints in LOGICAL_CONSTRAINTS.values():
-            json.dumps([c.to_widget_payload() for c in constraints])

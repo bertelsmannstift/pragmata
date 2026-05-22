@@ -1,8 +1,8 @@
 """Post-hoc constraint validation for exported annotation rows.
 
-Thin compatibility shim over :mod:`logical_constraints` — the constraint
-definitions themselves are the single source of truth and are also consumed
-by the annotator-time UI widget. See :mod:`logical_constraints`.
+Task-keyed convenience checkers over :mod:`logical_constraints`. The
+constraint definitions in :mod:`logical_constraints` are the single source
+of truth.
 """
 
 from typing import Callable
