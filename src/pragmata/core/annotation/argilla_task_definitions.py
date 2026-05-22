@@ -131,6 +131,12 @@ def build_task_settings(settings: AnnotationSettings) -> dict[Task, rg.Settings]
             required=False,
         )
 
+    def assemble(task: Task, content_fields: list, questions: list, metadata: list, guidelines: str) -> rg.Settings:
+        # Constraints panel sits last in fields so it renders right above the
+        # discard panel — adjacent to the submit area where the annotator acts.
+        fields = [*content_fields, constraints_field(task, questions), discard_field()]
+        return rg.Settings(fields=fields, questions=questions, metadata=metadata, guidelines=guidelines)
+
     retrieval_questions: list = [
         rg.LabelQuestion(
             name="topically_relevant",
@@ -225,13 +231,12 @@ def build_task_settings(settings: AnnotationSettings) -> dict[Task, rg.Settings]
     ]
 
     return {
-        Task.RETRIEVAL: rg.Settings(
-            fields=[
+        Task.RETRIEVAL: assemble(
+            Task.RETRIEVAL,
+            content_fields=[
                 rg.TextField(name="query", title="Query", required=True),
                 rg.TextField(name="chunk", title="Chunk", required=True),
                 _collapsible_field("generated_answer", "Generated answer", template_text),
-                constraints_field(Task.RETRIEVAL, retrieval_questions),
-                discard_field(),
             ],
             questions=retrieval_questions,
             metadata=[
@@ -243,13 +248,12 @@ def build_task_settings(settings: AnnotationSettings) -> dict[Task, rg.Settings]
             ],
             guidelines="Retrieval. TODO: Revisit after first annotation iteration.",
         ),
-        Task.GROUNDING: rg.Settings(
-            fields=[
+        Task.GROUNDING: assemble(
+            Task.GROUNDING,
+            content_fields=[
                 rg.TextField(name="answer", title="Answer", required=True),
                 rg.TextField(name="context_set", title="Context set", required=True),
                 _collapsible_field("query", "Query", template_text),
-                constraints_field(Task.GROUNDING, grounding_questions),
-                discard_field(),
             ],
             questions=grounding_questions,
             metadata=[
@@ -258,13 +262,12 @@ def build_task_settings(settings: AnnotationSettings) -> dict[Task, rg.Settings]
             ],
             guidelines="Grounding. TODO: Revisit after first annotation iteration.",
         ),
-        Task.GENERATION: rg.Settings(
-            fields=[
+        Task.GENERATION: assemble(
+            Task.GENERATION,
+            content_fields=[
                 rg.TextField(name="query", title="Query", required=True),
                 rg.TextField(name="answer", title="Answer", required=True),
                 _collapsible_field("context_set", "Context set", template_text),
-                constraints_field(Task.GENERATION, generation_questions),
-                discard_field(),
             ],
             questions=generation_questions,
             metadata=[
