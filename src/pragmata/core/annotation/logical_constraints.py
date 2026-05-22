@@ -37,15 +37,15 @@ class LogicalConstraint:
     severity: Severity
     message: str
 
-    def applies(self, row: Any) -> bool:
+    def applies(self, row: object) -> bool:
         """Return True if the antecedent matches (i.e. the constraint is relevant to this row)."""
-        return getattr(row, self.when_question, None) is self.when_value
+        return getattr(row, self.when_question, None) == self.when_value
 
-    def violated_by(self, row: Any) -> bool:
+    def violated_by(self, row: object) -> bool:
         """Return True if the antecedent matches but the consequent is not satisfied."""
         if not self.applies(row):
             return False
-        return getattr(row, self.then_question, None) is not self.then_value
+        return getattr(row, self.then_question, None) != self.then_value
 
     def violation_string(self) -> str:
         """Backwards-compatible violation string used in export CSV/constraint_summary."""
