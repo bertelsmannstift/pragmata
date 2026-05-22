@@ -11,7 +11,7 @@ import pytest
 from pragmata.core.annotation.record_builder import fan_out_records
 from pragmata.core.schemas.annotation_import import Chunk, QueryResponsePair
 from pragmata.core.schemas.annotation_task import Task
-from pragmata.core.settings.annotation_settings import AnnotationSettings, TaskOverlap
+from pragmata.core.settings.annotation_settings import AnnotationSettings, TaskSettings, WorkspaceSettings
 
 
 def _make_pair(query: str) -> QueryResponsePair:
@@ -24,16 +24,18 @@ def _make_pair(query: str) -> QueryResponsePair:
 
 
 def _settings(*, calibration_enabled: bool = True) -> AnnotationSettings:
-    overlap = TaskOverlap(calibration_min_submitted=3 if calibration_enabled else None)
+    def _task() -> TaskSettings:
+        return TaskSettings(calibration_min_submitted=3 if calibration_enabled else None)
+
     return AnnotationSettings(
         dataset_id="run1",
         # When calibration_min_submitted=None for every task, calibration_fraction
         # must be 0 to satisfy the AnnotationSettings model validator.
         calibration_fraction=0.5 if calibration_enabled else 0.0,
-        workspace_dataset_map={
-            "retrieval": {Task.RETRIEVAL: overlap},
-            "grounding": {Task.GROUNDING: overlap},
-            "generation": {Task.GENERATION: overlap},
+        workspaces={
+            "retrieval": WorkspaceSettings(tasks={Task.RETRIEVAL: _task()}),
+            "grounding": WorkspaceSettings(tasks={Task.GROUNDING: _task()}),
+            "generation": WorkspaceSettings(tasks={Task.GENERATION: _task()}),
         },
     )
 
@@ -148,14 +150,14 @@ class TestFanOutRecords:
         assert cal_total == 3 * 3  # 3 cal records * 3 tasks
         assert prod_total == 2 * 3  # 2 prod records * 3 tasks
 
-    def test_skips_tasks_not_in_workspace_dataset_map(self, patched_create_dataset, caplog) -> None:
+    def test_skips_tasks_not_in_workspaces_topology(self, patched_create_dataset, caplog) -> None:
         client = MagicMock()
         _, created = patched_create_dataset
 
         # Topology only declares retrieval; grounding/generation are absent.
         partial_settings = AnnotationSettings(
             dataset_id="run1",
-            workspace_dataset_map={"retrieval": {Task.RETRIEVAL: TaskOverlap()}},
+            workspaces={"retrieval": WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings()})},
         )
         records = [_make_pair("q0")]
         from pragmata.core.annotation.record_builder import derive_record_uuid
@@ -168,4 +170,4 @@ class TestFanOutRecords:
         # Only retrieval gets a dataset; grounding and generation are skipped with a warning.
         assert len(result) == 1
         assert any(ds_name.startswith("retrieval_") for (_, ds_name) in created)
-        assert "not in workspace_dataset_map" in caplog.text
+        assert "not in workspaces topology" in caplog.text

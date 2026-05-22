@@ -109,16 +109,15 @@ def fetch_task(
     to also include responses the annotator discarded.
     """
     workspace_name: str | None = None
-    overlap = None
-    for ws_base, task_overlaps in settings.workspace_dataset_map.items():
-        if task in task_overlaps:
+    for ws_base, ws_settings in settings.workspaces.items():
+        if task in ws_settings.tasks:
             workspace_name = ws_base
-            overlap = task_overlaps[task]
             break
 
     purposes: list[bool] = [False]
-    if overlap is not None and overlap.calibration_min_submitted is not None:
-        purposes.append(True)
+    if workspace_name is not None:
+        if settings.resolved_task(workspace_name, task).calibration_min_submitted is not None:
+            purposes.append(True)
 
     statuses = ["submitted", "discarded"] if include_discarded else ["submitted"]
     query = rg.Query(filter=rg.Filter([("response.status", "in", statuses)]))

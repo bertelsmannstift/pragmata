@@ -117,14 +117,14 @@ def _resolve_calibration_enabled(settings: "AnnotationSettings", tasks: list[Tas
     hide a config bug.
     """
     flags: dict[Task, bool] = {}
-    for task_overlaps in settings.workspace_dataset_map.values():
-        for task, overlap in task_overlaps.items():
+    for ws_name, ws_settings in settings.workspaces.items():
+        for task in ws_settings.tasks:
             if task in tasks:
-                flags[task] = overlap.calibration_min_submitted is not None
+                flags[task] = settings.resolved_task(ws_name, task).calibration_min_submitted is not None
     missing = [task.value for task in tasks if task not in flags]
     if missing:
         raise ValueError(
-            f"tasks {sorted(missing)} not present in workspace_dataset_map; "
+            f"tasks {sorted(missing)} not present in workspaces topology; "
             "add the task to the topology or remove it from the export request."
         )
     return flags

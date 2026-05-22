@@ -35,7 +35,7 @@ def setup_command(
 
     Datasets are created automatically on import, not here. Per-task overlap
     (production and calibration ``min_submitted``) is configured via
-    ``workspace_dataset_map`` in the YAML config (``--config``).
+    ``workspaces`` in the YAML config (``--config``).
     """
     from pragmata import annotation
 

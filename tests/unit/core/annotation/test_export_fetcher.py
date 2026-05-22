@@ -16,7 +16,7 @@ from pragmata.core.schemas.annotation_export import (
     RetrievalAnnotation,
 )
 from pragmata.core.schemas.annotation_task import Task
-from pragmata.core.settings.annotation_settings import AnnotationSettings, TaskOverlap
+from pragmata.core.settings.annotation_settings import AnnotationSettings, TaskSettings, WorkspaceSettings
 
 # ---------------------------------------------------------------------------
 # Mock helpers
@@ -27,10 +27,10 @@ _UID2 = UUID("00000000-0000-0000-0000-000000000002")
 
 _SETTINGS = AnnotationSettings(
     calibration_fraction=0.0,
-    workspace_dataset_map={
-        "retrieval": {Task.RETRIEVAL: TaskOverlap(calibration_min_submitted=None)},
-        "grounding": {Task.GROUNDING: TaskOverlap(calibration_min_submitted=None)},
-        "generation": {Task.GENERATION: TaskOverlap(calibration_min_submitted=None)},
+    workspaces={
+        "retrieval": WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings(calibration_min_submitted=None)}),
+        "grounding": WorkspaceSettings(tasks={Task.GROUNDING: TaskSettings(calibration_min_submitted=None)}),
+        "generation": WorkspaceSettings(tasks={Task.GENERATION: TaskSettings(calibration_min_submitted=None)}),
     },
 )
 
@@ -367,10 +367,10 @@ class TestFetchTask:
 
     def test_calibration_enabled_fetches_both_datasets_and_tags_rows(self) -> None:
         settings = AnnotationSettings(
-            workspace_dataset_map={
-                "retrieval": {Task.RETRIEVAL: TaskOverlap(calibration_min_submitted=3)},
-                "grounding": {Task.GROUNDING: TaskOverlap(calibration_min_submitted=3)},
-                "generation": {Task.GENERATION: TaskOverlap(calibration_min_submitted=3)},
+            workspaces={
+                "retrieval": WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings(calibration_min_submitted=3)}),
+                "grounding": WorkspaceSettings(tasks={Task.GROUNDING: TaskSettings(calibration_min_submitted=3)}),
+                "generation": WorkspaceSettings(tasks={Task.GENERATION: TaskSettings(calibration_min_submitted=3)}),
             },
         )
         prod_record = _make_record(
