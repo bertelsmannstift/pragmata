@@ -27,13 +27,6 @@ from pragmata.core.schemas.annotation_task import Task
 from pragmata.core.settings.settings_base import INHERIT, Inherit, ResolveSettings
 from pragmata.core.types import SafePathSegment
 
-_DEFAULT_CONSTRAINT_SEVERITY: dict[str, Severity] = {
-    "evidence_requires_relevance": "block",
-    "evidence_excludes_misleading": "warn",
-    "contradiction_requires_unsupported": "block",
-    "fabricated_requires_cited": "block",
-}
-
 
 class ArgillaSettings(BaseModel):
     """Argilla connection settings (URL only; API key is resolved from env)."""
@@ -102,7 +95,14 @@ class AnnotationSettings(ResolveSettings):
     calibration_fraction: float = Field(0.1, ge=0.0, le=1.0)
     calibration_partition_seed: NonNegativeInt = 0
     include_discarded: bool = False
-    constraint_severity: dict[str, Severity] = Field(default_factory=lambda: dict(_DEFAULT_CONSTRAINT_SEVERITY))
+    constraint_severity: dict[str, Severity] = Field(
+        default_factory=lambda: {
+            "evidence_requires_relevance": "block",
+            "evidence_excludes_misleading": "warn",
+            "contradiction_requires_unsupported": "block",
+            "fabricated_requires_cited": "block",
+        }
+    )
     workspaces: dict[str, WorkspaceSettings] = Field(
         default_factory=lambda: {
             "retrieval": WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings()}),
@@ -144,10 +144,11 @@ class AnnotationSettings(ResolveSettings):
         """Overlay user-provided deployment severities onto the built-in defaults.
 
         Users supply only the constraint_ids they want to override; the rest
-        fall through to ``_DEFAULT_CONSTRAINT_SEVERITY``.
+        fall through to the field's default.
         """
         if isinstance(data, dict) and isinstance(data.get("constraint_severity"), dict):
-            data["constraint_severity"] = {**_DEFAULT_CONSTRAINT_SEVERITY, **data["constraint_severity"]}
+            defaults = cls.model_fields["constraint_severity"].default_factory()
+            data["constraint_severity"] = {**defaults, **data["constraint_severity"]}
         return data
 
     @model_validator(mode="after")
