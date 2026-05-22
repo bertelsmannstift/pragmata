@@ -18,7 +18,7 @@ Both halves consume the same definitions in :mod:`logical_constraints`
 
 from collections.abc import Callable
 
-from pragmata.core.annotation.logical_constraints import LOGICAL_CONSTRAINTS
+from pragmata.core.annotation.logical_constraints import LOGICAL_CONSTRAINTS, LogicalConstraint
 from pragmata.core.schemas.annotation_export import (
     GenerationAnnotation,
     GroundingAnnotation,
@@ -27,22 +27,22 @@ from pragmata.core.schemas.annotation_export import (
 from pragmata.core.schemas.annotation_task import Task
 
 
-def _evaluate(task: Task, row: object) -> list[str]:
-    return [c.violation_string() for c in LOGICAL_CONSTRAINTS[task] if c.violated_by(row)]
+def _evaluate(task: Task, row: object) -> list[LogicalConstraint]:
+    return [c for c in LOGICAL_CONSTRAINTS[task] if c.violated_by(row)]
 
 
-def check_retrieval(row: RetrievalAnnotation) -> list[str]:
-    """Return constraint violation strings for a retrieval annotation row."""
+def check_retrieval(row: RetrievalAnnotation) -> list[LogicalConstraint]:
+    """Return violated logical constraints for a retrieval annotation row."""
     return _evaluate(Task.RETRIEVAL, row)
 
 
-def check_grounding(row: GroundingAnnotation) -> list[str]:
-    """Return constraint violation strings for a grounding annotation row."""
+def check_grounding(row: GroundingAnnotation) -> list[LogicalConstraint]:
+    """Return violated logical constraints for a grounding annotation row."""
     return _evaluate(Task.GROUNDING, row)
 
 
-def check_generation(row: GenerationAnnotation) -> list[str]:
-    """Return constraint violation strings for a generation annotation row."""
+def check_generation(row: GenerationAnnotation) -> list[LogicalConstraint]:
+    """Return violated logical constraints for a generation annotation row."""
     return _evaluate(Task.GENERATION, row)
 
 
