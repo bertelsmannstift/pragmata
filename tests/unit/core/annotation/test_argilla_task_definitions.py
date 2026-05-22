@@ -243,20 +243,20 @@ class TestDiscardFlowHtmlEnumSync:
 
 
 class TestConstraintsField:
-    """The constraints_panel CustomField wires CONSTRAINT_RULES into the annotator UI."""
+    """The constraints_panel CustomField wires LOGICAL_CONSTRAINTS into the annotator UI."""
 
     def test_present_on_every_task(self):
-        # Even Generation (no rules) gets the field: every record carries a
+        # Even Generation (no constraints) gets the field: every record carries a
         # constraints_panel placeholder value, and Argilla rejects records
         # whose field keys don't all exist on the dataset.
         for settings in (_RETRIEVAL, _GROUNDING, _GENERATION):
             assert _get_field(settings, "constraints_panel") is not None
 
-    def test_generation_widget_payload_has_no_rules(self):
+    def test_generation_widget_payload_has_no_constraints(self):
         # Generation has no constraints — the widget should serialise an empty
-        # rules array, so it evaluates to no hits and stays hidden.
+        # constraints array, so it evaluates to no hits and stays hidden.
         template = _get_field(_GENERATION, "constraints_panel").template
-        assert "var RULES = [];" in template
+        assert "var CONSTRAINTS = [];" in template
 
     def test_is_advanced_custom_field(self):
         field = _get_field(_RETRIEVAL, "constraints_panel")
@@ -272,24 +272,24 @@ class TestConstraintsField:
             assert "@@CONSTRAINTS_JSON" not in template
             assert "@@QUESTION_TITLES_JSON" not in template
 
-    def test_template_contains_rule_messages(self):
-        # Rule messages must round-trip into the widget so the annotator sees them.
-        from pragmata.core.annotation.constraint_rules import CONSTRAINT_RULES
+    def test_template_contains_constraint_messages(self):
+        # Constraint messages must round-trip into the widget so the annotator sees them.
+        from pragmata.core.annotation.logical_constraints import LOGICAL_CONSTRAINTS
 
         for task, settings in ((Task.RETRIEVAL, _RETRIEVAL), (Task.GROUNDING, _GROUNDING)):
             template = _get_field(settings, "constraints_panel").template
-            for rule in CONSTRAINT_RULES[task]:
+            for constraint in LOGICAL_CONSTRAINTS[task]:
                 # First few words is enough — full message has punctuation/escaping noise.
-                assert rule.message.split(".")[0][:30] in template
+                assert constraint.message.split(".")[0][:30] in template
 
-    def test_template_carries_question_titles_used_by_rules(self):
+    def test_template_carries_question_titles_used_by_constraints(self):
         # Aria-label probing relies on these titles matching the dataset's questions.
-        from pragmata.core.annotation.constraint_rules import CONSTRAINT_RULES
+        from pragmata.core.annotation.logical_constraints import LOGICAL_CONSTRAINTS
 
         for task, settings in ((Task.RETRIEVAL, _RETRIEVAL), (Task.GROUNDING, _GROUNDING)):
             template = _get_field(settings, "constraints_panel").template
-            for rule in CONSTRAINT_RULES[task]:
-                for qname in (rule.when_question, rule.then_question):
+            for constraint in LOGICAL_CONSTRAINTS[task]:
+                for qname in (constraint.when_question, constraint.then_question):
                     title = _get_question(settings, qname).title
                     assert title in template
 

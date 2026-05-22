@@ -5,8 +5,8 @@
 <script>
 (function () {
   // Substituted at dataset creation time by argilla_task_definitions.py.
-  // RULES shape: see ConstraintRule.to_widget_payload in constraint_rules.py.
-  var RULES = $CONSTRAINTS_JSON;
+  // CONSTRAINTS shape: see LogicalConstraint.to_widget_payload in logical_constraints.py.
+  var CONSTRAINTS = $CONSTRAINTS_JSON;
   var QUESTION_TITLES = $QUESTION_TITLES_JSON;
 
   // Argilla DOM contract — verified against argilla-frontend v2.8.0 source.
@@ -48,8 +48,8 @@
         // so add literal spaces after it for the actual gap.
         '#' + INJECTED_PANEL_ID + ' li.warn::marker{content:"\\26A0   "}' +
         '#' + INJECTED_PANEL_ID + ' li.block::marker{content:"\\2715   "}' +
-        '#' + INJECTED_PANEL_ID + ' .rule-msg{display:block}' +
-        '#' + INJECTED_PANEL_ID + ' .rule-cite{font-style:italic;opacity:0.8;font-size:12px}';
+        '#' + INJECTED_PANEL_ID + ' .constraint-msg{display:block}' +
+        '#' + INJECTED_PANEL_ID + ' .constraint-cite{font-style:italic;opacity:0.8;font-size:12px}';
       return s;
     });
   }
@@ -102,12 +102,12 @@
 
   function evaluate() {
     var hits = [];
-    for (var i = 0; i < RULES.length; i++) {
-      var r = RULES[i];
-      if (selectedValue(r.when_question) !== r.when_value) continue;
-      var thenVal = selectedValue(r.then_question);
+    for (var i = 0; i < CONSTRAINTS.length; i++) {
+      var c = CONSTRAINTS[i];
+      if (selectedValue(c.when_question) !== c.when_value) continue;
+      var thenVal = selectedValue(c.then_question);
       if (thenVal === null) continue;  // dependent not answered yet
-      if (thenVal !== r.then_value) hits.push(r);
+      if (thenVal !== c.then_value) hits.push(c);
     }
     return hits;
   }
@@ -138,11 +138,11 @@
       var li = pdoc.createElement('li');
       li.className = h.severity;
       var msg = pdoc.createElement('span');
-      msg.className = 'rule-msg';
+      msg.className = 'constraint-msg';
       msg.textContent = h.message;
       li.appendChild(msg);
       var cite = pdoc.createElement('span');
-      cite.className = 'rule-cite';
+      cite.className = 'constraint-cite';
       cite.textContent =
         '(' + h.when_question + ' = ' + h.when_value +
         ' but ' + h.then_question + ' = ' + (h.then_value === 'yes' ? 'no' : 'yes') + ')';
@@ -202,7 +202,7 @@
     var hasBlock = false;
     var sig = '';
     for (var i = 0; i < hits.length; i++) {
-      sig += hits[i].rule_id + '|';
+      sig += hits[i].constraint_id + '|';
       if (hits[i].severity === 'block') hasBlock = true;
     }
     sig += hasBlock ? '1' : '0';

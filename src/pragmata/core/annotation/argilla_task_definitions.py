@@ -17,7 +17,7 @@ from string import Template
 
 import argilla as rg
 
-from pragmata.core.annotation.constraint_rules import CONSTRAINT_RULES
+from pragmata.core.annotation.logical_constraints import LOGICAL_CONSTRAINTS
 from pragmata.core.schemas.annotation_task import DiscardReason, Task
 
 # Static placeholder values seeded on every record for widget-only CustomFields.
@@ -75,12 +75,12 @@ def _discard_questions() -> list[rg.LabelQuestion | rg.TextQuestion]:
 
 
 def _render_constraints_template(task: Task, questions: list, template_text: str) -> str:
-    """Substitute the rule + question-title payload into ``constraints_field.html``."""
-    rules = CONSTRAINT_RULES[task]
-    referenced = {q for r in rules for q in (r.when_question, r.then_question)}
+    """Substitute the constraint + question-title payload into ``constraints_field.html``."""
+    constraints = LOGICAL_CONSTRAINTS[task]
+    referenced = {q for c in constraints for q in (c.when_question, c.then_question)}
     titles = {q.name: q.title for q in questions if isinstance(q, rg.LabelQuestion) and q.name in referenced}
     return Template(template_text).substitute(
-        CONSTRAINTS_JSON=json.dumps([r.to_widget_payload() for r in rules], ensure_ascii=False),
+        CONSTRAINTS_JSON=json.dumps([c.to_widget_payload() for c in constraints], ensure_ascii=False),
         QUESTION_TITLES_JSON=json.dumps(titles, ensure_ascii=False),
     )
 
@@ -113,7 +113,7 @@ def build_task_settings() -> dict[Task, rg.Settings]:
     def constraints_field(task: Task, questions: list) -> rg.CustomField:
         # Always present on every task. Argilla requires every CustomField to
         # have a value on every record; WIDGET_FIELD_PLACEHOLDERS supplies one
-        # for `constraints_panel`. When CONSTRAINT_RULES[task] is empty the
+        # for `constraints_panel`. When LOGICAL_CONSTRAINTS[task] is empty the
         # widget evaluates to no hits and stays hidden.
         return rg.CustomField(
             name="constraints_panel",
