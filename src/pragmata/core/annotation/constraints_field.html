@@ -49,7 +49,8 @@
         '#' + INJECTED_PANEL_ID + ' li.warn::marker{content:"\\26A0   "}' +
         '#' + INJECTED_PANEL_ID + ' li.block::marker{content:"\\2715   "}' +
         '#' + INJECTED_PANEL_ID + ' .constraint-msg{display:block}' +
-        '#' + INJECTED_PANEL_ID + ' .constraint-cite{font-style:italic;opacity:0.8;font-size:12px}';
+        '#' + INJECTED_PANEL_ID + ' .constraint-cite{font-style:italic;opacity:0.8;font-size:12px}' +
+        '#' + INJECTED_PANEL_ID + ' .constraint-cite code{font-style:normal;background:rgba(0,0,0,0.06);padding:1px 4px;border-radius:3px}';
       return s;
     });
   }
@@ -147,9 +148,20 @@
       cite.className = 'constraint-cite';
       var whenTitle = QUESTION_TITLES[h.when_question] || h.when_question;
       var thenTitle = QUESTION_TITLES[h.then_question] || h.then_question;
-      cite.textContent =
-        '(' + whenTitle + ' = ' + h.when_value +
-        ' but ' + thenTitle + ' = ' + (h.then_value === 'yes' ? 'no' : 'yes') + ')';
+      var thenDisplay = h.then_value === 'yes' ? 'no' : 'yes';
+      function codeFragment(title, value) {
+        var code = pdoc.createElement('code');
+        code.appendChild(pdoc.createTextNode(title + ' = '));
+        var strong = pdoc.createElement('strong');
+        strong.textContent = value;
+        code.appendChild(strong);
+        return code;
+      }
+      cite.appendChild(pdoc.createTextNode('(You selected '));
+      cite.appendChild(codeFragment(whenTitle, h.when_value));
+      cite.appendChild(pdoc.createTextNode(', but also '));
+      cite.appendChild(codeFragment(thenTitle, thenDisplay));
+      cite.appendChild(pdoc.createTextNode(')'));
       li.appendChild(cite);
       listEl.appendChild(li);
     });
