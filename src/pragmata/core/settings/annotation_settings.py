@@ -1,18 +1,18 @@
 """Operational settings for annotation (workspace topology, distribution).
 
 Settings are organised into three scopes — deployment (``AnnotationSettings``),
-workspace (``WorkspaceSettings``), task (``TaskSettings``). Fields listed in
-``AnnotationSettings._INHERITED_FIELDS`` may be set at any scope; child scopes
-default to ``INHERIT``. Models hold the **specified** values exactly as given
-(``INHERIT`` survives validation, raw inputs round-trip losslessly through
-``model_dump()``). ``resolved_task(workspace_name, task)`` returns the
-**computed** values after walking task → workspace → deployment — the CSS
-"computed value" analogy: first non-``INHERIT`` ancestor wins.
+workspace (``WorkspaceSettings``), task (``TaskSettings``). The inheritable
+fields (``production_min_submitted``, ``calibration_min_submitted``) may be set
+at any scope; child scopes default to ``INHERIT``. Models hold the **specified**
+values exactly as given (``INHERIT`` survives validation, raw inputs round-trip
+losslessly through ``model_dump()``). ``resolved_task(workspace_name, task)``
+returns the **computed** values after walking task → workspace → deployment —
+the CSS "computed value" analogy: first non-``INHERIT`` ancestor wins.
 """
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import ClassVar, Literal, Self
+from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, NonNegativeInt, PositiveInt, model_validator
 
@@ -64,9 +64,7 @@ class ResolvedTaskSettings:
 class AnnotationSettings(ResolveSettings):
     """Configurable runtime settings for annotation (setup, import, export).
 
-    Controls workspace topology and per-task overlap thresholds. Deployment-level
-    fields in ``_INHERITED_FIELDS`` are inherited by workspaces and tasks unless
-    overridden — see module docstring for the inheritance model. Task definitions
+    Controls workspace topology and per-task overlap thresholds. Task definitions
     (Argilla ``rg.Settings`` per task) are hardcoded; see
     ``core/annotation/argilla_task_definitions.py``.
 
@@ -98,11 +96,6 @@ class AnnotationSettings(ResolveSettings):
         }
     )
 
-    _INHERITED_FIELDS: ClassVar[tuple[str, ...]] = (
-        "production_min_submitted",
-        "calibration_min_submitted",
-    )
-
     def resolved_task(self, workspace_name: str, task: Task) -> ResolvedTaskSettings:
         """Return the computed task settings: task → workspace → deployment.
 
@@ -112,15 +105,23 @@ class AnnotationSettings(ResolveSettings):
         """
         ws = self.workspaces[workspace_name]
         ts = ws.tasks[task]
-        kwargs: dict[str, object] = {}
-        for name in self._INHERITED_FIELDS:
-            value = getattr(ts, name)
-            if value is INHERIT:
-                value = getattr(ws, name)
-            if value is INHERIT:
-                value = getattr(self, name)
-            kwargs[name] = value
-        return ResolvedTaskSettings(**kwargs)  # type: ignore[arg-type]
+
+        production = ts.production_min_submitted
+        if isinstance(production, Inherit):
+            production = ws.production_min_submitted
+        if isinstance(production, Inherit):
+            production = self.production_min_submitted
+
+        calibration = ts.calibration_min_submitted
+        if isinstance(calibration, Inherit):
+            calibration = ws.calibration_min_submitted
+        if isinstance(calibration, Inherit):
+            calibration = self.calibration_min_submitted
+
+        return ResolvedTaskSettings(
+            production_min_submitted=production,
+            calibration_min_submitted=calibration,
+        )
 
     @model_validator(mode="after")
     def _validate_task_uniqueness(self) -> Self:
