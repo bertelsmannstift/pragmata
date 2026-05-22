@@ -150,11 +150,6 @@ def build_generation_record(pair: QueryResponsePair, record_uuid: str) -> rg.Rec
     )
 
 
-def _invert_workspace_map(settings: AnnotationSettings) -> dict[Task, str]:
-    """Invert workspaces topology to task → workspace_base."""
-    return {task: ws_base for ws_base, ws in settings.workspaces.items() for task in ws.tasks}
-
-
 # ---------------------------------------------------------------------------
 # Partition logic
 # ---------------------------------------------------------------------------
@@ -325,7 +320,7 @@ def fan_out_records(
         vs production totals are computable from ``assignments`` and stay in
         the api layer.
     """
-    task_to_ws = _invert_workspace_map(settings)
+    task_to_ws = settings.task_to_workspace()
     task_settings_map = build_task_settings(settings)
     batches = _build_batches(records, assignments)
 

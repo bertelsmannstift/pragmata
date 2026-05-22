@@ -50,13 +50,16 @@ class WorkspaceSettings(BaseModel):
 
     Inherited fields default to ``INHERIT`` (use deployment value). ``None`` on
     ``calibration_min_submitted`` explicitly disables calibration for any task
-    that inherits from this workspace.
+    that inherits from this workspace. ``constraint_severity`` is a sparse
+    constraint-id to severity map: only listed constraint_ids override the
+    deployment value; omitted constraint_ids fall through to the deployment map.
     """
 
     model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
 
     production_min_submitted: PositiveInt | Inherit = INHERIT
     calibration_min_submitted: PositiveInt | None | Inherit = INHERIT
+    constraint_severity: dict[str, Severity] = Field(default_factory=dict)
     tasks: dict[Task, TaskSettings]
 
 
@@ -111,6 +114,23 @@ class AnnotationSettings(ResolveSettings):
         }
     )
 
+    def task_to_workspace(self) -> dict[Task, str]:
+        """Map each task to its owning workspace name (validated 1:1 by ``_validate_task_uniqueness``)."""
+        return {task: ws_name for ws_name, ws in self.workspaces.items() for task in ws.tasks}
+
+    def resolved_severity(self, workspace_name: str, constraint_id: str) -> Severity:
+        """Return the computed severity for a logical constraint: workspace then deployment.
+
+        Severity is per-constraint (not per-task), so this walks only the two
+        scopes where it can be set. Deployment defaults are guaranteed complete
+        by the merge validator on ``constraint_severity``; unknown ``constraint_id``
+        raises ``KeyError``.
+        """
+        ws = self.workspaces[workspace_name]
+        if constraint_id in ws.constraint_severity:
+            return ws.constraint_severity[constraint_id]
+        return self.constraint_severity[constraint_id]
+
     def resolved_task(self, workspace_name: str, task: Task) -> ResolvedTaskSettings:
         """Return the computed task settings: task → workspace → deployment.
 
@@ -154,12 +174,15 @@ class AnnotationSettings(ResolveSettings):
     @model_validator(mode="after")
     def _validate_constraint_severity_keys(self) -> Self:
         known = set(CONSTRAINT_BY_ID)
-        unknown = set(self.constraint_severity) - known
-        if unknown:
-            raise ValueError(
-                f"deployment constraint_severity references unknown constraint_id(s): "
-                f"{sorted(unknown)}. Known constraint_ids: {sorted(known)}."
-            )
+        for scope_name, overrides in [("deployment", self.constraint_severity)] + [
+            (f"workspace {ws_name!r}", ws.constraint_severity) for ws_name, ws in self.workspaces.items()
+        ]:
+            unknown = set(overrides) - known
+            if unknown:
+                raise ValueError(
+                    f"{scope_name} constraint_severity references unknown constraint_id(s): "
+                    f"{sorted(unknown)}. Known constraint_ids: {sorted(known)}."
+                )
         return self
 
     @model_validator(mode="after")
