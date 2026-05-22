@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html>
+<head></head>
+<body>
+<script>
+(function () {
+  // Substituted at dataset creation time by argilla_task_definitions.py.
+  // RULES shape: see ConstraintRule.to_widget_payload in constraint_rules.py.
+  var RULES = $CONSTRAINTS_JSON;
+  var QUESTION_TITLES = $QUESTION_TITLES_JSON;
+
+  // Argilla DOM contract — verified against argilla-frontend v2.8.0 source.
+  // QuestionHeader stamps title onto `<div class="title-area" aria-label=...>`;
+  // SingleLabel wraps the whole component in `<div class="wrapper">`;
+  // LabelSelection renders chips as `<input type=checkbox>` + `<label class="label-text">`
+  // with `.label-active` added when selected; QuestionsForm puts the submit
+  // button (`<button type=submit class="button--submit">`) inside `.footer-form`.
+  // Any of these moving will need re-verification on Argilla upgrades.
+  var pdoc = window.parent.document;
+  var SUBMIT_SEL = '.button--submit, button[type="submit"]';
+  var FOOTER_SEL = '.footer-form';
+  var INJECTED_PANEL_ID = '__constraints_injected_panel';
+  var INJECTED_STYLE_ID = '__constraints_injected_style';
+
+  function ensureNode(id, parent, build) {
+    var existing = pdoc.getElementById(id);
+    if (existing && existing.isConnected) return existing;
+    if (!parent) return null;
+    var node = build();
+    node.id = id;
+    parent.appendChild(node);
+    return node;
+  }
+
+  function ensureInjectedStyle() {
+    return ensureNode(INJECTED_STYLE_ID, pdoc.head, function () {
+      var s = pdoc.createElement('style');
+      s.textContent =
+        '#' + INJECTED_PANEL_ID + '{border-radius:6px;padding:10px 12px;' +
+        'font-family:system-ui,sans-serif;font-size:13px;line-height:1.4;margin:0 0 12px 0}' +
+        '#' + INJECTED_PANEL_ID + '[hidden]{display:none}' +
+        '#' + INJECTED_PANEL_ID + '.warn{border:2px solid #d4a017;background:#fff8e1;color:#5d4400}' +
+        '#' + INJECTED_PANEL_ID + '.block{border:2px solid #d9534f;background:#fff5f5;color:#6e0a0a}' +
+        '#' + INJECTED_PANEL_ID + ' h4{margin:0 0 6px 0;font-size:13px}' +
+        '#' + INJECTED_PANEL_ID + ' ul{margin:0;padding-left:18px}' +
+        '#' + INJECTED_PANEL_ID + ' li{margin-top:4px}' +
+        // Trailing space in a CSS \HEX escape is the terminator (consumed),
+        // so add literal spaces after it for the actual gap.
+        '#' + INJECTED_PANEL_ID + ' li.warn::marker{content:"\\26A0   "}' +
+        '#' + INJECTED_PANEL_ID + ' li.block::marker{content:"\\2715   "}' +
+        '#' + INJECTED_PANEL_ID + ' .rule-msg{display:block}' +
+        '#' + INJECTED_PANEL_ID + ' .rule-cite{font-style:italic;opacity:0.8;font-size:12px}';
+      return s;
+    });
+  }
+
+  function ensureInjectedPanel() {
+    var submit = pdoc.querySelector(SUBMIT_SEL);
+    if (!submit) return null;
+    var footer = submit.closest(FOOTER_SEL) || submit.parentElement;
+    if (!footer || !footer.parentElement) return null;
+    var existing = pdoc.getElementById(INJECTED_PANEL_ID);
+    if (existing && existing.isConnected) return existing;
+    var panel = pdoc.createElement('div');
+    panel.id = INJECTED_PANEL_ID;
+    panel.hidden = true;
+    panel.innerHTML = '<h4 class="__title"></h4><ul class="__list"></ul>';
+    footer.parentElement.insertBefore(panel, footer);
+    return panel;
+  }
+
+  function cardFor(questionName) {
+    var title = QUESTION_TITLES[questionName];
+    if (!title) return null;
+    var titleArea = pdoc.querySelector('[aria-label="' + title.replace(/"/g, '\\"') + '"]');
+    return titleArea ? titleArea.closest('.wrapper') : null;
+  }
+
+  function normalize(s) {
+    var v = String(s).trim().toLowerCase();
+    if (v === 'yes' || v === 'y' || v === 'true' || v === '1') return 'yes';
+    if (v === 'no'  || v === 'n' || v === 'false' || v === '0') return 'no';
+    return null;
+  }
+
+  // Two independent paths so a future tweak that breaks one still leaves the
+  // other working — see DOM contract block at the top.
+  function selectedValue(questionName) {
+    var card = cardFor(questionName);
+    if (!card) return null;
+    var activeLabel = card.querySelector('label.label-active');
+    if (activeLabel) {
+      var textSpan = activeLabel.querySelector('.label-text__text');
+      var raw = (textSpan ? textSpan.textContent : activeLabel.textContent) || '';
+      var n = normalize(raw.trim());
+      if (n) return n;
+    }
+    var checkedInput = card.querySelector('input[type="checkbox"]:checked');
+    if (checkedInput && checkedInput.name) return normalize(checkedInput.name);
+    return null;
+  }
+
+  function evaluate() {
+    var hits = [];
+    for (var i = 0; i < RULES.length; i++) {
+      var r = RULES[i];
+      if (selectedValue(r.when_question) !== r.when_value) continue;
+      var thenVal = selectedValue(r.then_question);
+      if (thenVal === null) continue;  // dependent not answered yet
+      if (thenVal !== r.then_value) hits.push(r);
+    }
+    return hits;
+  }
+
+  function render(hits) {
+    ensureInjectedStyle();
+    var panel = ensureInjectedPanel();
+    if (!panel) return;
+
+    var listEl = panel.querySelector('.__list');
+    var titleEl = panel.querySelector('.__title');
+
+    if (hits.length === 0) {
+      panel.hidden = true;
+      panel.className = '';
+      listEl.innerHTML = '';
+      return;
+    }
+
+    var hasBlock = hits.some(function (h) { return h.severity === 'block'; });
+    panel.className = hasBlock ? 'block' : 'warn';
+    titleEl.textContent = hasBlock
+      ? 'Please resolve the following before submitting:'
+      : 'Please reconsider:';
+
+    listEl.innerHTML = '';
+    hits.forEach(function (h) {
+      var li = pdoc.createElement('li');
+      li.className = h.severity;
+      var msg = pdoc.createElement('span');
+      msg.className = 'rule-msg';
+      msg.textContent = h.message;
+      li.appendChild(msg);
+      var cite = pdoc.createElement('span');
+      cite.className = 'rule-cite';
+      cite.textContent =
+        '(' + h.when_question + ' = ' + h.when_value +
+        ' but ' + h.then_question + ' = ' + (h.then_value === 'yes' ? 'no' : 'yes') + ')';
+      li.appendChild(cite);
+      listEl.appendChild(li);
+    });
+
+    panel.hidden = false;
+  }
+
+  // Disable rather than hide — keep the control visible so the annotator
+  // understands why submit isn't responding.
+  function applySubmitGate(hasBlocked) {
+    var btns = pdoc.querySelectorAll(SUBMIT_SEL);
+    for (var i = 0; i < btns.length; i++) {
+      var b = btns[i];
+      if (hasBlocked) {
+        if (!b.dataset.constraintBlocked) {
+          b.dataset.constraintBlocked = '1';
+          b.dataset.prevTitle = b.title || '';
+          b.disabled = true;
+          b.setAttribute('aria-disabled', 'true');
+          b.title = 'Resolve the constraint violations above before submitting.';
+          b.style.opacity = '0.5';
+          b.style.cursor = 'not-allowed';
+        }
+      } else if (b.dataset.constraintBlocked) {
+        delete b.dataset.constraintBlocked;
+        b.disabled = false;
+        b.removeAttribute('aria-disabled');
+        b.title = b.dataset.prevTitle || '';
+        delete b.dataset.prevTitle;
+        b.style.opacity = '';
+        b.style.cursor = '';
+      }
+    }
+  }
+
+  // Collapse the iframe's own host box — the visible panel lives in parent DOM
+  // above the footer now, so the iframe just runs the script.
+  function hideHostBox() {
+    try {
+      var frame = window.frameElement;
+      if (!frame) return;
+      var host = frame.closest('.custom_field_component');
+      if (host) host.style.display = 'none';
+    } catch (e) {}
+  }
+
+  // Skip re-rendering when nothing the user-visible state depends on has
+  // changed. Without this, every observed class change in the parent app
+  // would write `panel.className = ''` again, fire its own mutation, and
+  // burn frames in a self-driving loop.
+  var lastSig = null;
+  function tick() {
+    var hits = evaluate();
+    var hasBlock = false;
+    var sig = '';
+    for (var i = 0; i < hits.length; i++) {
+      sig += hits[i].rule_id + '|';
+      if (hits[i].severity === 'block') hasBlock = true;
+    }
+    sig += hasBlock ? '1' : '0';
+    if (sig === lastSig) return;
+    lastSig = sig;
+    render(hits);
+    applySubmitGate(hasBlock);
+  }
+
+  var pending = false;
+  function schedule() {
+    if (pending) return;
+    pending = true;
+    requestAnimationFrame(function () { pending = false; tick(); });
+  }
+
+  // Setup. The MutationObserver target needs to exist; if pdoc.body isn't
+  // populated yet we retry next frame. attributeFilter:['class'] is narrow
+  // enough to skip the worst of Argilla's per-frame attribute churn.
+  var observer = null;
+  function attachObserver() {
+    var target = pdoc.body || pdoc.documentElement;
+    if (!target) return window.requestAnimationFrame(attachObserver);
+    observer = new MutationObserver(schedule);
+    observer.observe(target, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['class'],
+    });
+    target.addEventListener('change', schedule, true);
+    target.addEventListener('click', schedule, true);
+  }
+
+  // Clean up across iframe reloads. Argilla re-renders the iframe's srcdoc
+  // when the underlying record changes, so without this each navigation
+  // would orphan a listener on parent body — accumulating over a session.
+  window.addEventListener('pagehide', function () {
+    if (observer) observer.disconnect();
+    var target = pdoc.body || pdoc.documentElement;
+    if (target) {
+      target.removeEventListener('change', schedule, true);
+      target.removeEventListener('click', schedule, true);
+    }
+  });
+
+  hideHostBox();
+  tick();
+  attachObserver();
+  window.addEventListener('load', function () { hideHostBox(); tick(); });
+})();
+</script>
+</body>
+</html>

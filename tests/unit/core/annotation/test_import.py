@@ -91,6 +91,7 @@ class TestBuildRetrievalRecords:
         assert rec.fields["chunk"] == pair.chunks[0].text
         assert rec.fields["generated_answer"] == {"text": pair.answer}
         assert rec.fields["discard_flow"] == {"text": ""}
+        assert rec.fields["constraints_panel"] == {"text": ""}
         assert "answer" not in rec.fields  # must NOT use "answer"
 
     def test_metadata_record_uuid(self) -> None:
@@ -148,6 +149,7 @@ class TestBuildGroundingRecord:
         assert rec.fields["context_set"] == pair.context_set
         assert rec.fields["query"] == {"text": pair.query}
         assert rec.fields["discard_flow"] == {"text": ""}
+        assert rec.fields["constraints_panel"] == {"text": ""}
 
     def test_metadata_record_uuid(self) -> None:
         rec = build_grounding_record(_make_pair(), _UUID)
@@ -183,6 +185,7 @@ class TestBuildGenerationRecord:
         assert rec.fields["answer"] == pair.answer
         assert rec.fields["context_set"] == {"text": pair.context_set}
         assert rec.fields["discard_flow"] == {"text": ""}
+        assert rec.fields["constraints_panel"] == {"text": ""}
 
     def test_metadata_record_uuid(self) -> None:
         rec = build_generation_record(_make_pair(), _UUID)

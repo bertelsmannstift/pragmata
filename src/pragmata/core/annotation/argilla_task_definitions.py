@@ -11,12 +11,24 @@ dataset creation time.
 """
 
 import functools
+import json
 from importlib.resources import files
 from string import Template
 
 import argilla as rg
 
+from pragmata.core.annotation.constraint_rules import CONSTRAINT_RULES
 from pragmata.core.schemas.annotation_task import DiscardReason, Task
+
+# Static placeholder values seeded on every record for widget-only CustomFields.
+# Argilla's frontend silently skips rendering a CustomField when the record has
+# no value for that field, so even pure UI widgets need a placeholder. This is
+# the SSOT mirror of the widget CustomField names below.
+WIDGET_FIELD_PLACEHOLDERS: dict[str, dict[str, str]] = {
+    "discard_flow": {"text": ""},
+    "constraints_panel": {"text": ""},
+}
+
 
 DATASET_NAMES: dict[Task, str] = {
     Task.RETRIEVAL: "retrieval",
@@ -62,6 +74,17 @@ def _discard_questions() -> list[rg.LabelQuestion | rg.TextQuestion]:
     ]
 
 
+def _render_constraints_template(task: Task, questions: list, template_text: str) -> str:
+    """Substitute the rule + question-title payload into ``constraints_field.html``."""
+    rules = CONSTRAINT_RULES[task]
+    referenced = {q for r in rules for q in (r.when_question, r.then_question)}
+    titles = {q.name: q.title for q in questions if isinstance(q, rg.LabelQuestion) and q.name in referenced}
+    return Template(template_text).substitute(
+        CONSTRAINTS_JSON=json.dumps([r.to_widget_payload() for r in rules], ensure_ascii=False),
+        QUESTION_TITLES_JSON=json.dumps(titles, ensure_ascii=False),
+    )
+
+
 @functools.cache
 def build_task_settings() -> dict[Task, rg.Settings]:
     """Build Argilla Settings for each annotation task.
@@ -71,6 +94,9 @@ def build_task_settings() -> dict[Task, rg.Settings]:
     """
     template_text = files("pragmata.core.annotation").joinpath("collapsible_field.html").read_text(encoding="utf-8")
     discard_template = files("pragmata.core.annotation").joinpath("discard_flow.html").read_text(encoding="utf-8")
+    constraints_template = (
+        files("pragmata.core.annotation").joinpath("constraints_field.html").read_text(encoding="utf-8")
+    )
 
     # Fresh CustomField per task — FieldBase carries a `_dataset` attribute that
     # Argilla's Settings/Dataset plumbing mutates, so sharing one instance across
@@ -84,36 +110,122 @@ def build_task_settings() -> dict[Task, rg.Settings]:
             required=False,
         )
 
+    def constraints_field(task: Task, questions: list) -> rg.CustomField:
+        # Always present on every task. Argilla requires every CustomField to
+        # have a value on every record; WIDGET_FIELD_PLACEHOLDERS supplies one
+        # for `constraints_panel`. When CONSTRAINT_RULES[task] is empty the
+        # widget evaluates to no hits and stays hidden.
+        return rg.CustomField(
+            name="constraints_panel",
+            title="Constraint checks",
+            template=_render_constraints_template(task, questions, constraints_template),
+            advanced_mode=True,
+            required=False,
+        )
+
+    retrieval_questions: list = [
+        rg.LabelQuestion(
+            name="topically_relevant",
+            title="Does this passage contain information that is substantively relevant to the query?",
+            labels=["yes", "no"],
+            required=True,
+        ),
+        rg.LabelQuestion(
+            name="evidence_sufficient",
+            title="Does this passage provide sufficient evidence to support answering the query?",
+            labels=["yes", "no"],
+            required=True,
+        ),
+        rg.LabelQuestion(
+            name="misleading",
+            title="Could this passage plausibly lead to an incorrect or distorted answer?",
+            labels=["yes", "no"],
+            required=True,
+        ),
+        rg.TextQuestion(name="notes", title="Notes (optional)", required=False),
+        *_discard_questions(),
+    ]
+
+    grounding_questions: list = [
+        rg.LabelQuestion(
+            name="support_present",
+            title="Is at least one claim in the answer supported by the provided context?",
+            labels=["yes", "no"],
+            required=True,
+        ),
+        rg.LabelQuestion(
+            name="unsupported_claim_present",
+            title="Does the answer contain claims not supported by the provided context?",
+            labels=["yes", "no"],
+            required=True,
+        ),
+        rg.LabelQuestion(
+            name="contradicted_claim_present",
+            title="Does the provided context contradict any claim in the answer?",
+            labels=["yes", "no"],
+            required=True,
+        ),
+        rg.LabelQuestion(
+            name="source_cited",
+            title="Does the answer contain a citation marker?",
+            labels=["yes", "no"],
+            required=True,
+        ),
+        rg.LabelQuestion(
+            name="fabricated_source",
+            title="Does the answer cite a source not present in the retrieved context?",
+            labels=["yes", "no"],
+            required=True,
+        ),
+        rg.TextQuestion(name="notes", title="Notes (optional)", required=False),
+        *_discard_questions(),
+    ]
+
+    generation_questions: list = [
+        rg.LabelQuestion(
+            name="proper_action",
+            title="Did the system choose the appropriate action for this query?",
+            labels=["yes", "no"],
+            required=True,
+        ),
+        rg.LabelQuestion(
+            name="response_on_topic",
+            title="Does the response substantively address the user's query?",
+            labels=["yes", "no"],
+            required=True,
+        ),
+        rg.LabelQuestion(
+            name="helpful",
+            title="Would this response enable a typical user to make progress on their task?",
+            labels=["yes", "no"],
+            required=True,
+        ),
+        rg.LabelQuestion(
+            name="incomplete",
+            title="Does the response fail to cover required parts of the query?",
+            labels=["yes", "no"],
+            required=True,
+        ),
+        rg.LabelQuestion(
+            name="unsafe_content",
+            title="Does the response contain unsafe or policy-violating content?",
+            labels=["yes", "no"],
+            required=True,
+        ),
+        rg.TextQuestion(name="notes", title="Notes (optional)", required=False),
+        *_discard_questions(),
+    ]
+
     return {
         Task.RETRIEVAL: rg.Settings(
             fields=[
                 rg.TextField(name="query", title="Query", required=True),
                 rg.TextField(name="chunk", title="Chunk", required=True),
                 _collapsible_field("generated_answer", "Generated answer", template_text),
+                constraints_field(Task.RETRIEVAL, retrieval_questions),
                 discard_field(),
             ],
-            questions=[
-                rg.LabelQuestion(
-                    name="topically_relevant",
-                    title="Does this passage contain information that is substantively relevant to the query?",
-                    labels=["yes", "no"],
-                    required=True,
-                ),
-                rg.LabelQuestion(
-                    name="evidence_sufficient",
-                    title="Does this passage provide sufficient evidence to support answering the query?",
-                    labels=["yes", "no"],
-                    required=True,
-                ),
-                rg.LabelQuestion(
-                    name="misleading",
-                    title="Could this passage plausibly lead to an incorrect or distorted answer?",
-                    labels=["yes", "no"],
-                    required=True,
-                ),
-                rg.TextQuestion(name="notes", title="Notes (optional)", required=False),
-                *_discard_questions(),
-            ],
+            questions=retrieval_questions,
             metadata=[
                 rg.TermsMetadataProperty("record_uuid", visible_for_annotators=False),
                 rg.TermsMetadataProperty("language", visible_for_annotators=False),
@@ -128,42 +240,10 @@ def build_task_settings() -> dict[Task, rg.Settings]:
                 rg.TextField(name="answer", title="Answer", required=True),
                 rg.TextField(name="context_set", title="Context set", required=True),
                 _collapsible_field("query", "Query", template_text),
+                constraints_field(Task.GROUNDING, grounding_questions),
                 discard_field(),
             ],
-            questions=[
-                rg.LabelQuestion(
-                    name="support_present",
-                    title="Is at least one claim in the answer supported by the provided context?",
-                    labels=["yes", "no"],
-                    required=True,
-                ),
-                rg.LabelQuestion(
-                    name="unsupported_claim_present",
-                    title="Does the answer contain claims not supported by the provided context?",
-                    labels=["yes", "no"],
-                    required=True,
-                ),
-                rg.LabelQuestion(
-                    name="contradicted_claim_present",
-                    title="Does the provided context contradict any claim in the answer?",
-                    labels=["yes", "no"],
-                    required=True,
-                ),
-                rg.LabelQuestion(
-                    name="source_cited",
-                    title="Does the answer contain a citation marker?",
-                    labels=["yes", "no"],
-                    required=True,
-                ),
-                rg.LabelQuestion(
-                    name="fabricated_source",
-                    title="Does the answer cite a source not present in the retrieved context?",
-                    labels=["yes", "no"],
-                    required=True,
-                ),
-                rg.TextQuestion(name="notes", title="Notes (optional)", required=False),
-                *_discard_questions(),
-            ],
+            questions=grounding_questions,
             metadata=[
                 rg.TermsMetadataProperty("record_uuid", visible_for_annotators=False),
                 rg.TermsMetadataProperty("language", visible_for_annotators=False),
@@ -175,42 +255,10 @@ def build_task_settings() -> dict[Task, rg.Settings]:
                 rg.TextField(name="query", title="Query", required=True),
                 rg.TextField(name="answer", title="Answer", required=True),
                 _collapsible_field("context_set", "Context set", template_text),
+                constraints_field(Task.GENERATION, generation_questions),
                 discard_field(),
             ],
-            questions=[
-                rg.LabelQuestion(
-                    name="proper_action",
-                    title="Did the system choose the appropriate action for this query?",
-                    labels=["yes", "no"],
-                    required=True,
-                ),
-                rg.LabelQuestion(
-                    name="response_on_topic",
-                    title="Does the response substantively address the user's query?",
-                    labels=["yes", "no"],
-                    required=True,
-                ),
-                rg.LabelQuestion(
-                    name="helpful",
-                    title="Would this response enable a typical user to make progress on their task?",
-                    labels=["yes", "no"],
-                    required=True,
-                ),
-                rg.LabelQuestion(
-                    name="incomplete",
-                    title="Does the response fail to cover required parts of the query?",
-                    labels=["yes", "no"],
-                    required=True,
-                ),
-                rg.LabelQuestion(
-                    name="unsafe_content",
-                    title="Does the response contain unsafe or policy-violating content?",
-                    labels=["yes", "no"],
-                    required=True,
-                ),
-                rg.TextQuestion(name="notes", title="Notes (optional)", required=False),
-                *_discard_questions(),
-            ],
+            questions=generation_questions,
             metadata=[
                 rg.TermsMetadataProperty("record_uuid", visible_for_annotators=False),
                 rg.TermsMetadataProperty("language", visible_for_annotators=False),

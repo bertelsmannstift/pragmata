@@ -240,3 +240,62 @@ class TestDiscardFlowHtmlEnumSync:
         option_values = set(re.findall(r'<option value="([^"]+)"', html))
         option_values.discard("")  # ignore placeholder "-- select --" option
         assert option_values == {r.value for r in DiscardReason}
+
+
+class TestConstraintsField:
+    """The constraints_panel CustomField wires CONSTRAINT_RULES into the annotator UI."""
+
+    def test_present_on_every_task(self):
+        # Even Generation (no rules) gets the field: every record carries a
+        # constraints_panel placeholder value, and Argilla rejects records
+        # whose field keys don't all exist on the dataset.
+        for settings in (_RETRIEVAL, _GROUNDING, _GENERATION):
+            assert _get_field(settings, "constraints_panel") is not None
+
+    def test_generation_widget_payload_has_no_rules(self):
+        # Generation has no constraints — the widget should serialise an empty
+        # rules array, so it evaluates to no hits and stays hidden.
+        template = _get_field(_GENERATION, "constraints_panel").template
+        assert "var RULES = [];" in template
+
+    def test_is_advanced_custom_field(self):
+        field = _get_field(_RETRIEVAL, "constraints_panel")
+        assert isinstance(field, rg.CustomField)
+        assert field.advanced_mode is True
+        assert field.required is False
+
+    def test_template_substitutions_are_resolved(self):
+        # The widget receives both placeholders — verify nothing was left
+        # unsubstituted (would be a hard-to-debug runtime JS error).
+        for settings in (_RETRIEVAL, _GROUNDING):
+            template = _get_field(settings, "constraints_panel").template
+            assert "@@CONSTRAINTS_JSON" not in template
+            assert "@@QUESTION_TITLES_JSON" not in template
+
+    def test_template_contains_rule_messages(self):
+        # Rule messages must round-trip into the widget so the annotator sees them.
+        from pragmata.core.annotation.constraint_rules import CONSTRAINT_RULES
+
+        for task, settings in ((Task.RETRIEVAL, _RETRIEVAL), (Task.GROUNDING, _GROUNDING)):
+            template = _get_field(settings, "constraints_panel").template
+            for rule in CONSTRAINT_RULES[task]:
+                # First few words is enough — full message has punctuation/escaping noise.
+                assert rule.message.split(".")[0][:30] in template
+
+    def test_template_carries_question_titles_used_by_rules(self):
+        # Aria-label probing relies on these titles matching the dataset's questions.
+        from pragmata.core.annotation.constraint_rules import CONSTRAINT_RULES
+
+        for task, settings in ((Task.RETRIEVAL, _RETRIEVAL), (Task.GROUNDING, _GROUNDING)):
+            template = _get_field(settings, "constraints_panel").template
+            for rule in CONSTRAINT_RULES[task]:
+                for qname in (rule.when_question, rule.then_question):
+                    title = _get_question(settings, qname).title
+                    assert title in template
+
+    def test_field_is_below_content_above_discard(self):
+        # The panel should sit right before the discard field so it's adjacent
+        # to the submit action area.
+        for settings in (_RETRIEVAL, _GROUNDING):
+            names = _field_names(settings)
+            assert names.index("constraints_panel") == names.index("discard_flow") - 1
