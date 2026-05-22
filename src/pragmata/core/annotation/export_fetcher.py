@@ -11,7 +11,7 @@ from uuid import UUID
 import argilla as rg
 
 from pragmata.core.annotation.argilla_task_definitions import dataset_name
-from pragmata.core.annotation.constraints import CONSTRAINT_CHECKERS
+from pragmata.core.annotation.export_constraint_checks import CONSTRAINT_CHECKERS
 from pragmata.core.schemas.annotation_export import (
     GenerationAnnotation,
     GroundingAnnotation,

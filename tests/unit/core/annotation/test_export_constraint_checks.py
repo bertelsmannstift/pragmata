@@ -1,8 +1,8 @@
-"""Unit tests for annotation constraint validation."""
+"""Unit tests for export-time constraint validation."""
 
 from datetime import datetime, timezone
 
-from pragmata.core.annotation.constraints import (
+from pragmata.core.annotation.export_constraint_checks import (
     CONSTRAINT_CHECKERS,
     check_generation,
     check_grounding,

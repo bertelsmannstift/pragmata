@@ -1,8 +1,19 @@
-"""Post-hoc constraint validation for exported annotation rows.
+"""Export-time constraint validation for submitted annotation rows.
 
-Task-keyed convenience checkers over :mod:`logical_constraints`. The
-constraint definitions in :mod:`logical_constraints` are the single source
-of truth.
+Logical constraints are validated twice:
+
+1. **Annotation time** (live UI): the constraints widget
+   (``constraints_field.html``, wired up in :mod:`argilla_task_definitions`)
+   evaluates each rule against the annotator's currently-selected answers
+   and shows a warn/block banner. This is the enforcement layer.
+2. **Export time** (post-hoc audit): this module re-evaluates the same rules
+   on every submitted row when building the export. Violations are recorded
+   in ``constraint_summary`` and ``constraint_details``. This is the audit
+   layer that catches anything the UI did not enforce (warn-severity rules,
+   client-side JS failures, etc.).
+
+Both halves consume the same definitions in :mod:`logical_constraints`
+(the SSOT), so they cannot drift.
 """
 
 from typing import Callable
