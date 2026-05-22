@@ -1,11 +1,11 @@
-"""Declarative constraint rules (SSOT for export-time checks AND the annotator-time UI widget).
+"""Declarative logical constraints (SSOT for export-time checks AND the annotator-time UI widget).
 
-A rule is a binary implication on label values: when one question is answered
-with a specific yes/no value, another question is constrained to a specific
-yes/no value. The same rule definitions drive:
+A logical constraint is a binary implication on label values: when one question
+is answered with a specific yes/no value, another question is constrained to a
+specific yes/no value. The same definitions drive:
 
 1. Export-time validation (``constraints.check_*`` returns violation strings)
-2. Annotation-time UI warnings/blocks (rules serialised into ``constraints_field.html``)
+2. Annotation-time UI warnings/blocks (constraints serialised into ``constraints_field.html``)
 
 Keeping both consumers off one definition guarantees they cannot drift.
 """
@@ -19,17 +19,17 @@ Severity = Literal["warn", "block"]
 
 
 @dataclass(frozen=True)
-class ConstraintRule:
+class LogicalConstraint:
     """Binary implication: ``<when_question>=<when_value>`` requires ``<then_question>=<then_value>``.
 
-    ``rule_id`` is a stable short identifier used downstream (export
+    ``constraint_id`` is a stable short identifier used downstream (export
     ``constraint_summary`` key); ``message`` is the annotator-facing
     explanation rendered by the UI widget. ``severity`` controls whether
     the widget warns or blocks submission.
     """
 
     task: Task
-    rule_id: str
+    constraint_id: str
     when_question: str
     when_value: bool
     then_question: str
@@ -38,7 +38,7 @@ class ConstraintRule:
     message: str
 
     def applies(self, row: Any) -> bool:
-        """Return True if the antecedent matches (i.e. the rule is relevant to this row)."""
+        """Return True if the antecedent matches (i.e. the constraint is relevant to this row)."""
         return getattr(row, self.when_question, None) is self.when_value
 
     def violated_by(self, row: Any) -> bool:
@@ -54,7 +54,7 @@ class ConstraintRule:
         )
 
     def to_widget_payload(self) -> dict[str, Any]:
-        """Serialisable rule shape for the JS widget — uses string yes/no values."""
+        """Serialisable constraint shape for the JS widget - uses string yes/no values."""
         payload = asdict(self)
         payload["task"] = self.task.value
         payload["when_value"] = "yes" if self.when_value else "no"
@@ -62,11 +62,11 @@ class ConstraintRule:
         return payload
 
 
-CONSTRAINT_RULES: dict[Task, list[ConstraintRule]] = {
+LOGICAL_CONSTRAINTS: dict[Task, list[LogicalConstraint]] = {
     Task.RETRIEVAL: [
-        ConstraintRule(
+        LogicalConstraint(
             task=Task.RETRIEVAL,
-            rule_id="evidence_requires_relevance",
+            constraint_id="evidence_requires_relevance",
             when_question="evidence_sufficient",
             when_value=True,
             then_question="topically_relevant",
@@ -76,9 +76,9 @@ CONSTRAINT_RULES: dict[Task, list[ConstraintRule]] = {
                 "If a passage provides sufficient evidence to answer the query, it must also be topically relevant."
             ),
         ),
-        ConstraintRule(
+        LogicalConstraint(
             task=Task.RETRIEVAL,
-            rule_id="evidence_excludes_misleading",
+            constraint_id="evidence_excludes_misleading",
             when_question="evidence_sufficient",
             when_value=True,
             then_question="misleading",
@@ -92,9 +92,9 @@ CONSTRAINT_RULES: dict[Task, list[ConstraintRule]] = {
         ),
     ],
     Task.GROUNDING: [
-        ConstraintRule(
+        LogicalConstraint(
             task=Task.GROUNDING,
-            rule_id="contradiction_requires_unsupported",
+            constraint_id="contradiction_requires_unsupported",
             when_question="contradicted_claim_present",
             when_value=True,
             then_question="unsupported_claim_present",
@@ -105,9 +105,9 @@ CONSTRAINT_RULES: dict[Task, list[ConstraintRule]] = {
                 "so 'unsupported claim present' must also be yes."
             ),
         ),
-        ConstraintRule(
+        LogicalConstraint(
             task=Task.GROUNDING,
-            rule_id="fabricated_requires_cited",
+            constraint_id="fabricated_requires_cited",
             when_question="fabricated_source",
             when_value=True,
             then_question="source_cited",
