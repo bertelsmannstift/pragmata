@@ -69,6 +69,8 @@
     return panel;
   }
 
+  // Depends on Argilla v2 showing one record at a time — `pdoc.querySelector`
+  // matches the first element in parent DOM. Same assumption holds in discard_flow.html.
   function cardFor(questionName) {
     var title = QUESTION_TITLES[questionName];
     if (!title) return null;
@@ -143,9 +145,11 @@
       li.appendChild(msg);
       var cite = pdoc.createElement('span');
       cite.className = 'constraint-cite';
+      var whenTitle = QUESTION_TITLES[h.when_question] || h.when_question;
+      var thenTitle = QUESTION_TITLES[h.then_question] || h.then_question;
       cite.textContent =
-        '(' + h.when_question + ' = ' + h.when_value +
-        ' but ' + h.then_question + ' = ' + (h.then_value === 'yes' ? 'no' : 'yes') + ')';
+        '(' + whenTitle + ' = ' + h.when_value +
+        ' but ' + thenTitle + ' = ' + (h.then_value === 'yes' ? 'no' : 'yes') + ')';
       li.appendChild(cite);
       listEl.appendChild(li);
     });
@@ -189,7 +193,9 @@
       if (!frame) return;
       var host = frame.closest('.custom_field_component');
       if (host) host.style.display = 'none';
-    } catch (e) {}
+    } catch (e) {
+      console.warn('constraints widget: hideHostBox failed', e);
+    }
   }
 
   // Skip re-rendering when nothing the user-visible state depends on has
@@ -206,7 +212,14 @@
       if (hits[i].severity === 'block') hasBlock = true;
     }
     sig += hasBlock ? '1' : '0';
-    if (sig === lastSig) return;
+    if (sig === lastSig) {
+      // Visible state unchanged, but the submit button may have mounted after
+      // the previous tick (e.g. block hit on the very first evaluation against
+      // a pre-populated draft). Re-apply the gate if its state has drifted.
+      var btn = pdoc.querySelector(SUBMIT_SEL);
+      var btnBlocked = !!(btn && btn.dataset.constraintBlocked);
+      if (btnBlocked === hasBlock) return;
+    }
     lastSig = sig;
     render(hits);
     applySubmitGate(hasBlock);
