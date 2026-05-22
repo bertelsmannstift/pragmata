@@ -86,7 +86,7 @@ CONSTRAINT_RULES: dict[Task, list[ConstraintRule]] = {
             severity="warn",
             message=(
                 "A passage marked as providing sufficient evidence is usually not also "
-                "misleading. Double-check this combination — keep it only if the passage "
+                "misleading. Double-check this combination. Keep it only if the passage "
                 "genuinely supports the answer while still being plausibly misleading."
             ),
         ),
