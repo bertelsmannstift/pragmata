@@ -133,7 +133,7 @@ def build_task_settings(settings: AnnotationSettings) -> dict[Task, rg.Settings]
 
     def assemble(task: Task, content_fields: list, questions: list, metadata: list, guidelines: str) -> rg.Settings:
         # Constraints panel sits last in fields so it renders right above the
-        # discard panel — adjacent to the submit area where the annotator acts.
+        # discard panel, adjacent to the submit area where the annotator acts.
         fields = [*content_fields, constraints_field(task, questions), discard_field()]
         return rg.Settings(fields=fields, questions=questions, metadata=metadata, guidelines=guidelines)
 
