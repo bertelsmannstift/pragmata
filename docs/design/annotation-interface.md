@@ -183,7 +183,7 @@ The same logical constraints validated at export time (see [Annotation Protocol]
 - **Warns** (yellow banner) — inline explanation, submission still allowed; for soft/heuristic constraints
 - **Blocks** (red banner + native Submit button disabled) — submission is prevented until the violation is resolved; for hard logical constraints
 
-Both consumers (export-time Python checks and annotation-time JS widget) read from one declarative rule list (`pragmata.core.annotation.constraint_rules.CONSTRAINT_RULES`), so they cannot drift.
+Both consumers (export-time Python checks and annotation-time JS widget) read from one declarative rule list (`pragmata.core.annotation.logical_constraints.LOGICAL_CONSTRAINTS`), so they cannot drift.
 
 
 ## Design Rationale

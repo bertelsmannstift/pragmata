@@ -55,6 +55,8 @@ def implication_constraint():
         when_value=True,
         then_question="topically_relevant",
         then_value=True,
+        severity="block",
+        message="If evidence is sufficient the chunk must also be relevant.",
     )
 
 
