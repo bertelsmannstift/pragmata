@@ -69,6 +69,17 @@ class AnnotationSettings(ResolveSettings):
     overridden — see module docstring for the inheritance model. Task definitions
     (Argilla ``rg.Settings`` per task) are hardcoded; see
     ``core/annotation/argilla_task_definitions.py``.
+
+    Attributes:
+        production_min_submitted: Argilla ``min_submitted`` for the production
+            dataset (typically 1; >1 enables full overlap on production).
+            Inherited by workspaces/tasks.
+        calibration_min_submitted: Argilla ``min_submitted`` for the calibration
+            dataset, or ``None`` to disable calibration for that scope. Default
+            3 covers Krippendorff alpha plus pairwise Cohen kappa for IAA.
+            Inherited by workspaces/tasks.
+        calibration_fraction: Fraction of records routed to a separate
+            calibration dataset for IAA (0.0 disables; deployment-level only).
     """
 
     argilla: ArgillaSettings = Field(default_factory=ArgillaSettings)
