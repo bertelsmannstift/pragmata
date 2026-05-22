@@ -12,6 +12,7 @@ import argilla as rg
 
 from pragmata.core.annotation.argilla_task_definitions import dataset_name
 from pragmata.core.annotation.export_constraint_checks import CONSTRAINT_CHECKERS
+from pragmata.core.annotation.logical_constraints import LogicalConstraint
 from pragmata.core.schemas.annotation_export import (
     GenerationAnnotation,
     GroundingAnnotation,
@@ -98,7 +99,7 @@ def fetch_task(
     user_lookup: dict[UUID, str],
     *,
     include_discarded: bool,
-) -> list[tuple[AnnotationModel, list[str]]]:
+) -> list[tuple[AnnotationModel, list[LogicalConstraint]]]:
     """Fetch records for a task across calibration and production datasets.
 
     Iterates the production dataset (always present) and the calibration
@@ -123,7 +124,7 @@ def fetch_task(
     query = rg.Query(filter=rg.Filter([("response.status", "in", statuses)]))
     check_constraints = CONSTRAINT_CHECKERS[task]
 
-    rows: list[tuple[AnnotationModel, list[str]]] = []
+    rows: list[tuple[AnnotationModel, list[LogicalConstraint]]] = []
     missing_uuid_count = 0
 
     for calibration in purposes:
