@@ -7,7 +7,7 @@ by the annotator-time UI widget. See :mod:`logical_constraints`.
 
 from typing import Callable
 
-from pragmata.core.annotation.logical_constraints import LOGICAL_CONSTRAINTS, LogicalConstraint
+from pragmata.core.annotation.logical_constraints import LOGICAL_CONSTRAINTS
 from pragmata.core.schemas.annotation_export import (
     GenerationAnnotation,
     GroundingAnnotation,
@@ -40,8 +40,3 @@ CONSTRAINT_CHECKERS: dict[Task, Callable] = {
     Task.GROUNDING: check_grounding,
     Task.GENERATION: check_generation,
 }
-
-
-def violated_constraints(task: Task, row: object) -> list[LogicalConstraint]:
-    """Return the constraints a row violates (the structured form, for callers that need severity)."""
-    return [c for c in LOGICAL_CONSTRAINTS[task] if c.violated_by(row)]
