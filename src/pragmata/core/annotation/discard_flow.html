@@ -33,41 +33,47 @@
 <body>
 
 <details class="discard-panel" id="panel">
-  <summary>&#9888; Discard this record</summary>
-  <p style="margin-top:8px;font-size:13px;color:#555">
-    Use this if the record is unsuitable for annotation
-    (e.g. invalid, unclear, or outside your expertise).
-  </p>
+  <summary><span data-i18n="panel_summary"></span></summary>
+  <p data-i18n="panel_help" style="margin-top:8px;font-size:13px;color:#555"></p>
 
-  <label>Reason:
-    <select id="reason">
-      <option value="">&#8212; select &#8212;</option>
-      <option value="invalid_or_unrealistic">Invalid or unrealistic record</option>
-      <option value="unclear">Unclear query/context/answer relationship</option>
-      <option value="outside_reviewer_expertise">Outside my domain expertise</option>
-    </select>
+  <label><span data-i18n="reason_label"></span>
+    <select id="reason"></select>
   </label>
 
-  <label>Optional notes:
-    <textarea id="discard-notes" rows="3"
-      placeholder="Any extra context (optional)"></textarea>
+  <label><span data-i18n="notes_label"></span>
+    <textarea id="discard-notes" rows="3"></textarea>
   </label>
 
   <button class="discard-btn" id="discard-go" disabled>
-    Discard
+    <span data-i18n="button_label"></span>
   </button>
 </details>
 
 <script>
 (function() {
+  // --- Locale + i18n payload (substituted at dataset creation time) ---
+  // Shape:
+  //   I18N = {
+  //     "en": {
+  //       "panel_summary": "...", "panel_help": "...",
+  //       "reason_label": "...", "reason_placeholder": "...",
+  //       "notes_label": "...", "notes_placeholder": "...",
+  //       "button_label": "...",
+  //       "discard_reason_title": "Discard reason",     // for aria-label probe
+  //       "discard_notes_title":  "Discard notes (optional)",
+  //       "reason_options": [{value, text}, ...]
+  //     },
+  //     "de": { ... },
+  //     ...
+  //   }
+  // SUPPORTED_LOCALES is the list of keys above, ordered with the
+  // dataset's creation locale first (so aria-label probing prefers it).
+  var I18N = @@I18N_JSON;
+  var SUPPORTED_LOCALES = @@SUPPORTED_LOCALES_JSON;
+  var DEFAULT_LOCALE = @@DEFAULT_LOCALE_JSON;
+
   var pdoc = window.parent.document;
-  // Argilla-internal selectors — will need to re-verify on Argilla upgrade.
-  var CARD_TITLE_SEL = '.title-area';
-  var CARD_SEL = '.wrapper';
   var NATIVE_DISCARD_SEL = '.button--discard';
-  var REASON_TITLE = 'Discard reason';
-  var NOTES_TITLE = 'Discard notes (optional)';
-  var HIDDEN_TITLES = [REASON_TITLE, NOTES_TITLE];
   // Delay after writing hidden question values before firing native discard,
   // so Vue has a tick to register the input/change events.
   var DISCARD_SUBMIT_DELAY_MS = 80;
@@ -79,26 +85,85 @@
     pdoc.head.appendChild(s);
   }
 
-  function cardFor(title) {
-    var areas = pdoc.querySelectorAll(CARD_TITLE_SEL);
-    for (var i = 0; i < areas.length; i++) {
-      if ((areas[i].innerText || '').trim() === title) return areas[i].closest(CARD_SEL);
+  // --- Active locale detection --------------------------------------
+  // Order of preference:
+  //   1. window.parent.$nuxt.$i18n.locale  (Argilla's nuxt-i18n state)
+  //   2. <html lang> attribute on the parent page
+  //   3. DEFAULT_LOCALE (the dataset's creation locale)
+  function currentLocale() {
+    try {
+      var nuxtLocale = window.parent.$nuxt && window.parent.$nuxt.$i18n && window.parent.$nuxt.$i18n.locale;
+      if (nuxtLocale && I18N[nuxtLocale]) return nuxtLocale;
+    } catch (e) {}
+    try {
+      var htmlLang = (pdoc.documentElement.getAttribute('lang') || '').toLowerCase().split('-')[0];
+      if (htmlLang && I18N[htmlLang]) return htmlLang;
+    } catch (e) {}
+    return DEFAULT_LOCALE;
+  }
+
+  function strings() { return I18N[currentLocale()] || I18N[DEFAULT_LOCALE]; }
+
+  // --- Render ------------------------------------------------------
+  function applyText() {
+    var s = strings();
+    var nodes = document.querySelectorAll('[data-i18n]');
+    for (var i = 0; i < nodes.length; i++) {
+      var key = nodes[i].getAttribute('data-i18n');
+      if (s[key] != null) nodes[i].textContent = s[key];
+    }
+
+    var sel = document.getElementById('reason');
+    var prev = sel.value;
+    sel.innerHTML = '';
+    var placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = s.reason_placeholder;
+    sel.appendChild(placeholder);
+    for (var j = 0; j < s.reason_options.length; j++) {
+      var opt = document.createElement('option');
+      opt.value = s.reason_options[j].value;
+      opt.textContent = s.reason_options[j].text;
+      sel.appendChild(opt);
+    }
+    if (prev) sel.value = prev;
+
+    document.getElementById('discard-notes').setAttribute('placeholder', s.notes_placeholder);
+  }
+
+  // --- Argilla card discovery (aria-label probing) -----------------
+  // Find a hidden helper question's card by trying every supported
+  // locale's title for it. This works even when the user has toggled
+  // Argilla's chrome to a different language than the dataset was
+  // created in — Argilla stamps the aria-label from the title stored
+  // on the dataset, which is fixed at creation.
+  function cardByQuestion(questionTitleKey) {
+    for (var i = 0; i < SUPPORTED_LOCALES.length; i++) {
+      var title = (I18N[SUPPORTED_LOCALES[i]] || {})[questionTitleKey];
+      if (!title) continue;
+      var titleArea = pdoc.querySelector('[aria-label="' + title.replace(/"/g, '\\"') + '"]');
+      if (titleArea) {
+        var card = titleArea.closest('.wrapper');
+        if (card) return card;
+      }
     }
     return null;
   }
 
   function hideStaleQuestions() {
-    HIDDEN_TITLES.forEach(function(title) {
-      var card = cardFor(title);
+    var keys = ['discard_reason_title', 'discard_notes_title'];
+    for (var i = 0; i < keys.length; i++) {
+      var card = cardByQuestion(keys[i]);
       if (card && card.style.display !== 'none') card.style.display = 'none';
-    });
+    }
   }
 
+  // --- Sizing -----------------------------------------------------
   function resizeSelf() {
     try {
       var frame = window.frameElement;
       if (!frame) return;
-      // scrollHeight is clamped to >=  iframe viewport, so shrink to
+      // scrollHeight is clamped to >= iframe viewport, so shrink to
       // 0 first then remeasure — otherwise the iframe grows but can't
       // shrink back on collapse.
       frame.style.height = '0px';
@@ -121,6 +186,7 @@
     } catch (e) {}
   }
 
+  // --- Wire up -----------------------------------------------------
   var panel = document.getElementById('panel');
   var reasonSel = document.getElementById('reason');
   var notesTa = document.getElementById('discard-notes');
@@ -136,8 +202,8 @@
     var notes = notesTa.value;
     if (!reason) return;
 
-    var reasonCard = cardFor(REASON_TITLE);
-    var notesCard = cardFor(NOTES_TITLE);
+    var reasonCard = cardByQuestion('discard_reason_title');
+    var notesCard = cardByQuestion('discard_notes_title');
     if (reasonCard) reasonCard.style.display = '';
     if (notesCard) notesCard.style.display = '';
 
@@ -174,6 +240,7 @@
   });
 
   function applyHiding() { hideStaleQuestions(); hideFieldTitle(); }
+  function rerender() { applyText(); resizeSelf(); }
 
   // Coalesce mutation bursts to one apply per paint frame — Argilla's Vue
   // app fires many mutations per render, and applyHiding is now idempotent.
@@ -184,7 +251,15 @@
     requestAnimationFrame(function () { pendingApply = false; applyHiding(); });
   }
 
-  resizeSelf();
+  // Live-react to Argilla's chrome locale toggle.
+  try {
+    var i18n = window.parent.$nuxt && window.parent.$nuxt.$i18n;
+    if (i18n && typeof i18n.onLanguageSwitched === 'function') {
+      i18n.onLanguageSwitched(rerender);
+    }
+  } catch (e) {}
+
+  rerender();
   applyHiding();
   try {
     new MutationObserver(scheduleApply).observe(pdoc.body, { childList: true, subtree: true });
