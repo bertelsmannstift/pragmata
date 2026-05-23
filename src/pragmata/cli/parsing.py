@@ -57,13 +57,13 @@ def parse_locale(raw: str | None) -> "Locale | None":
     Returns None when no locale is supplied, leaving locale selection to
     the downstream default. Raises ``ValueError`` if the locale is unknown.
     """
-    from pragmata.core.annotation.locales.registry import CATALOGS
+    from pragmata.annotation import SUPPORTED_LOCALES
 
     if raw is None:
         return None
     locale = raw.strip()
-    if locale not in CATALOGS:
-        raise ValueError(f"Unknown locale: {locale!r}. Supported: {sorted(CATALOGS)}")
+    if locale not in SUPPORTED_LOCALES:
+        raise ValueError(f"Unknown locale: {locale!r}. Supported: {sorted(SUPPORTED_LOCALES)}")
     return locale
 
 
