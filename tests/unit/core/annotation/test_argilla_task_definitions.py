@@ -242,6 +242,33 @@ class TestDiscardFlowHtmlEnumSync:
         assert option_values == {r.value for r in DiscardReason}
 
 
+class TestYesNoCatalogSync:
+    """Guard against drift between rg.LabelQuestion definitions and the
+    loader's ``_YES_NO_QUESTIONS_BY_TASK`` map that drives ``.yes`` / ``.no``
+    catalog keys. Both sides must enumerate the same yes/no question set per
+    task; otherwise label lookup silently breaks at dataset creation.
+    """
+
+    @pytest.mark.parametrize(
+        ("task", "settings"),
+        [
+            (Task.RETRIEVAL, _RETRIEVAL),
+            (Task.GROUNDING, _GROUNDING),
+            (Task.GENERATION, _GENERATION),
+        ],
+        ids=["retrieval", "grounding", "generation"],
+    )
+    def test_yes_no_questions_match_loader_map(self, task, settings):
+        from pragmata.core.annotation.locales.loader import _YES_NO_QUESTIONS_BY_TASK
+
+        yes_no_question_names = {
+            q.name
+            for q in settings.questions
+            if isinstance(q, rg.LabelQuestion) and set(q.labels) == {"yes", "no"}
+        }
+        assert yes_no_question_names == set(_YES_NO_QUESTIONS_BY_TASK[task])
+
+
 class TestCatalogDrivesRenderedOutput:
     """The catalog is the source of truth for user-visible strings.
 
