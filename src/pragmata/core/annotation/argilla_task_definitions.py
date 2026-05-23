@@ -20,13 +20,15 @@ dataset creation time.
 import json
 from importlib.resources import files
 from string import Template
+from typing import Any
 
 import argilla as rg
 
-from pragmata.core.annotation.locales.registry import get_catalog
+from pragmata.core.annotation.locales.loader import DISCARD_WIDGET_KEYS
+from pragmata.core.annotation.locales.registry import CATALOGS, get_catalog
 from pragmata.core.annotation.locales.types import Catalog, CatalogKind
 from pragmata.core.annotation.logical_constraints import LOGICAL_CONSTRAINTS
-from pragmata.core.schemas.annotation_task import DiscardReason, Task
+from pragmata.core.schemas.annotation_task import DiscardReason, Locale, Task
 from pragmata.core.settings.annotation_settings import AnnotationSettings
 
 # Static placeholder values seeded on every record for widget-only CustomFields.
@@ -37,6 +39,20 @@ WIDGET_FIELD_PLACEHOLDERS: dict[str, dict[str, str]] = {
     "discard_flow": {"text": ""},
     "constraints_panel": {"text": ""},
 }
+
+
+class _DiscardTemplate(Template):
+    """``string.Template`` with ``@@`` delimiter; JS body uses ``$nuxt``/``$i18n``.
+
+    The discard_flow.html template body contains literal ``$``-references
+    (``$nuxt``, ``$i18n``, ``$el``); switching the delimiter to ``@@``
+    keeps those intact. When editing discard_flow.html, do not introduce
+    ``@@`` tokens in the JS or HTML body unless you intend them as
+    substitution placeholders.
+    """
+
+    delimiter = "@@"
+
 
 DATASET_NAMES: dict[Task, str] = {
     Task.RETRIEVAL: "retrieval",
@@ -97,6 +113,43 @@ def _discard_questions(task: Task, catalog: Catalog) -> list[rg.LabelQuestion | 
     ]
 
 
+def _discard_i18n_payload_for_locale(loc: Locale, task: Task) -> dict[str, Any]:
+    """Per-locale block of strings the discard widget JS reads at runtime.
+
+    Includes the widget's own chrome strings, the discard-reason option
+    list (value + display text), and the two helper-question titles the
+    widget uses for ``aria-label`` matching when scoping the native
+    Argilla cards it hides.
+    """
+    catalog = CATALOGS[loc]
+    payload: dict[str, Any] = {key: catalog[(task, "widget", f"discard.{key}")] for key in DISCARD_WIDGET_KEYS}
+    payload["discard_reason_title"] = catalog[(task, "question", "discard_reason")]
+    payload["discard_notes_title"] = catalog[(task, "question", "discard_notes")]
+    payload["reason_options"] = [
+        {"value": r.value, "text": catalog[(task, "label", f"discard_reason.{r.value}")]} for r in DiscardReason
+    ]
+    return payload
+
+
+def _render_discard_template(template_text: str, task: Task, dataset_locale: Locale) -> str:
+    """Substitute the all-locales i18n payload into ``discard_flow.html``.
+
+    The widget JS picks the active locale at runtime (Argilla's chrome
+    locale, with a fallback chain). All supported locales are shipped so
+    the switch is instant. ``SUPPORTED_LOCALES`` is ordered with the
+    dataset's creation locale first; this is defensive only -- the JS
+    iterates every locale when matching ``aria-label`` attributes and
+    EN/DE titles do not collide today.
+    """
+    locales_in_order = [dataset_locale] + [loc for loc in sorted(CATALOGS) if loc != dataset_locale]
+    i18n_payload = {loc: _discard_i18n_payload_for_locale(loc, task) for loc in locales_in_order}
+    return _DiscardTemplate(template_text).substitute(
+        I18N_JSON=json.dumps(i18n_payload, ensure_ascii=False),
+        SUPPORTED_LOCALES_JSON=json.dumps(locales_in_order),
+        DEFAULT_LOCALE_JSON=json.dumps(dataset_locale),
+    )
+
+
 def _render_constraints_template(
     task: Task, questions: list, template_text: str, settings: AnnotationSettings, workspace_name: str
 ) -> str:
@@ -146,10 +199,11 @@ def build_task_settings(settings: AnnotationSettings) -> dict[Task, rg.Settings]
     # Argilla's Settings/Dataset plumbing mutates, so sharing one instance across
     # three rg.Settings risks cross-task coupling on future SDK changes.
     def discard_field(task: Task, catalog: Catalog) -> rg.CustomField:
+        locale = settings.resolved_task(task_to_ws[task], task).locale
         return rg.CustomField(
             name="discard_flow",
             title=catalog[(task, "field", "discard_flow")],
-            template=discard_template,
+            template=_render_discard_template(discard_template, task, locale),
             advanced_mode=True,
             required=False,
         )
