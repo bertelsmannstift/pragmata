@@ -262,9 +262,7 @@ class TestYesNoCatalogSync:
         from pragmata.core.annotation.locales.loader import _YES_NO_QUESTIONS_BY_TASK
 
         yes_no_question_names = {
-            q.name
-            for q in settings.questions
-            if isinstance(q, rg.LabelQuestion) and set(q.labels) == {"yes", "no"}
+            q.name for q in settings.questions if isinstance(q, rg.LabelQuestion) and set(q.labels) == {"yes", "no"}
         }
         assert yes_no_question_names == set(_YES_NO_QUESTIONS_BY_TASK[task])
 
