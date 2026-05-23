@@ -12,12 +12,10 @@ BUNDLED_EN = Path(registry.__file__).parent / "en.yaml"
 
 
 @pytest.fixture
-def isolated_catalogs(monkeypatch):
+def isolated_catalogs():
     """Restore CATALOGS after each test so registrations don't leak."""
     snapshot = dict(registry.CATALOGS)
-    yield registry.CATALOGS
-    monkeypatch.setattr(registry, "CATALOGS", snapshot)
-    # Mutations went into the live dict; rebuild it from the snapshot in place.
+    yield
     registry.CATALOGS.clear()
     registry.CATALOGS.update(snapshot)
 
