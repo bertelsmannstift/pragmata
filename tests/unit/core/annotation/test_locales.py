@@ -142,8 +142,11 @@ class TestDiscardWidgetI18n:
         de_template = _discard_field("de").template
         # Both EN and DE title strings present so the widget can find the
         # hidden cards regardless of which chrome locale is currently active.
-        assert "Discard reason" in de_template
-        assert "Verwerfungsgrund" in de_template
+        for locale in _ALL_LOCALES:
+            title = get_catalog(locale)[(Task.GROUNDING, "question", "discard_reason")]
+            assert title in de_template, (
+                f"Rendered widget (dataset locale=de) missing {locale} discard_reason title {title!r}"
+            )
 
 
 def _titles(settings: rg.Settings) -> dict[str, str]:
