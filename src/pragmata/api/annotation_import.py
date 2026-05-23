@@ -9,6 +9,7 @@ from pathlib import Path
 from pragmata.api._error_log import error_log
 from pragmata.core.annotation.client import resolve_argilla_client
 from pragmata.core.annotation.loaders import RecordInput, resolve_records
+from pragmata.core.annotation.locales.registry import register_catalog_dir
 from pragmata.core.annotation.record_builder import (
     RecordError,
     assign_partitions,
@@ -132,6 +133,8 @@ def import_records(
             "locale": locale,
         },
     )
+    if settings.locale_catalog_dir is not None:
+        register_catalog_dir(settings.locale_catalog_dir)
 
     api_key = api_key if isinstance(api_key, str) else resolve_api_key("argilla")
     client = resolve_argilla_client(settings.argilla.api_url, api_key)

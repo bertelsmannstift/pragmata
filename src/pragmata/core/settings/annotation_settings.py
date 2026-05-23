@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, NonNegativeInt, PositiveInt, model_validator
+from pydantic import BaseModel, ConfigDict, Field, NonNegativeInt, PositiveInt, field_validator, model_validator
 
 from pragmata.core.schemas.annotation_task import Locale, Task
 from pragmata.core.settings.settings_base import INHERIT, Inherit, ResolveSettings
@@ -82,6 +82,11 @@ class AnnotationSettings(ResolveSettings):
         locale: Display locale for Argilla dataset strings (titles, guidelines,
             label option text). Inherited by workspaces/tasks. Identities and
             label values remain stable across locales so exports merge cleanly.
+        locale_catalog_dir: Optional directory of user-provided locale YAML
+            files. When set, any ``*.yaml`` in this directory is layered on
+            top of the bundled catalogs (user wins on stem collision), so a
+            deployment can add or override locales without modifying the
+            installed package. Must exist if set.
         calibration_fraction: Fraction of records routed to a separate
             calibration dataset for IAA (0.0 disables; deployment-level only).
     """
@@ -92,6 +97,7 @@ class AnnotationSettings(ResolveSettings):
     production_min_submitted: PositiveInt = 1
     calibration_min_submitted: PositiveInt | None = 3
     locale: Locale = "en"
+    locale_catalog_dir: Path | None = None
     calibration_fraction: float = Field(0.1, ge=0.0, le=1.0)
     calibration_partition_seed: NonNegativeInt = 0
     include_discarded: bool = False
@@ -136,6 +142,13 @@ class AnnotationSettings(ResolveSettings):
             calibration_min_submitted=calibration,
             locale=locale,
         )
+
+    @field_validator("locale_catalog_dir", mode="after")
+    @classmethod
+    def _check_locale_catalog_dir_exists(cls, value: Path | None) -> Path | None:
+        if value is not None and not value.is_dir():
+            raise ValueError(f"locale_catalog_dir does not exist or is not a directory: {value}")
+        return value
 
     @model_validator(mode="after")
     def _validate_task_uniqueness(self) -> Self:

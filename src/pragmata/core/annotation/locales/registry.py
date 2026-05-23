@@ -1,16 +1,12 @@
 """Catalog registry: auto-discovers locale YAML files at import.
 
-Scope: bundled catalogs only. The registry scans ``*.yaml`` files in this
-package directory at import time and keys them by file stem
-(``en.yaml`` -> ``"en"``). Adding a locale upstream is therefore a
-zero-Python-edit change: drop the YAML file alongside ``en.yaml`` and the
-locale is registered automatically.
-
-Adding a locale from outside the installed package (user-provided catalog
-directory) is not yet supported; a deployment that needs a custom locale
-or wants to override a bundled one currently has to vendor or contribute
-the YAML upstream. Extending discovery to a configurable directory is
-planned as a follow-up.
+Bundled catalogs are loaded eagerly from this package directory at import
+time, keyed by file stem (``en.yaml`` -> ``"en"``). A deployment can
+additionally register catalogs from any user-provided directory by
+calling :func:`register_catalog_dir` (typically wired in from the api/
+layer after settings resolution). User-provided files override bundled
+entries on stem collision, matching the layering convention of standard
+i18n stacks (gettext, i18next).
 """
 
 from pathlib import Path
@@ -19,11 +15,23 @@ from pragmata.core.annotation.locales.loader import load_catalog
 from pragmata.core.annotation.locales.types import Catalog
 from pragmata.core.schemas.annotation_task import Locale
 
+
+def _load_dir(directory: Path) -> dict[Locale, Catalog]:
+    return {yaml_file.stem: load_catalog(yaml_file) for yaml_file in sorted(directory.glob("*.yaml"))}
+
+
 _LOCALES_DIR = Path(__file__).parent
 
-CATALOGS: dict[Locale, Catalog] = {
-    yaml_file.stem: load_catalog(yaml_file) for yaml_file in sorted(_LOCALES_DIR.glob("*.yaml"))
-}
+CATALOGS: dict[Locale, Catalog] = _load_dir(_LOCALES_DIR)
+
+
+def register_catalog_dir(directory: Path) -> None:
+    """Layer ``*.yaml`` catalogs from ``directory`` over the bundled set.
+
+    Idempotent: same directory registered twice yields the same end state.
+    On stem collision the user file wins (last write through the dict).
+    """
+    CATALOGS.update(_load_dir(directory))
 
 SUPPORTED_LOCALES: frozenset[Locale] = frozenset(CATALOGS)
 

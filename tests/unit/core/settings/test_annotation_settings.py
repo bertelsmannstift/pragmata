@@ -109,6 +109,25 @@ class TestAnnotationSettingsResolve:
             AnnotationSettings(dataset_id=bad)
 
 
+class TestLocaleCatalogDirValidator:
+    def test_none_is_default(self):
+        assert AnnotationSettings().locale_catalog_dir is None
+
+    def test_existing_dir_accepted(self, tmp_path):
+        s = AnnotationSettings(locale_catalog_dir=tmp_path)
+        assert s.locale_catalog_dir == tmp_path
+
+    def test_missing_dir_rejected(self, tmp_path):
+        with pytest.raises(ValidationError, match=r"locale_catalog_dir"):
+            AnnotationSettings(locale_catalog_dir=tmp_path / "does-not-exist")
+
+    def test_file_rejected(self, tmp_path):
+        f = tmp_path / "not-a-dir.yaml"
+        f.write_text("")
+        with pytest.raises(ValidationError, match=r"locale_catalog_dir"):
+            AnnotationSettings(locale_catalog_dir=f)
+
+
 def _disabled_topology() -> dict[str, WorkspaceSettings]:
     """Workspaces where every task explicitly disables calibration."""
     return {
