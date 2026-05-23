@@ -30,9 +30,11 @@ _YES_NO_QUESTIONS_BY_TASK: dict[Task, list[str]] = {
 def load_catalog(path: Path) -> Catalog:
     """Build a Catalog from a YAML translation file.
 
-    Raises ``KeyError`` if a required top-level section, task, field, question,
-    or label value is missing — fail-loud is intentional so a typo in a locale
-    file surfaces at import time, not at first widget render.
+    Fails loud on any malformed locale file: ``KeyError`` for missing
+    keys, ``ValueError`` for unknown task or discard-reason values, plus
+    any error raised by the underlying YAML parser. This is intentional
+    so a typo in a locale file surfaces at import time rather than at
+    first widget render.
     """
     data = load_config_file(path)
     catalog: Catalog = {}
