@@ -261,6 +261,42 @@ class TestResolvedTask:
         assert ws.production_min_submitted is INHERIT
         assert ws.tasks[Task.RETRIEVAL].production_min_submitted is INHERIT
 
+    def test_locale_resolves_from_deployment_when_unset(self):
+        s = AnnotationSettings(
+            locale="de",
+            workspaces={"r": WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings()})},
+        )
+        assert s.resolved_task("r", Task.RETRIEVAL).locale == "de"
+
+    def test_locale_resolves_from_workspace_when_task_unset(self):
+        s = AnnotationSettings(
+            workspaces={
+                "r": WorkspaceSettings(
+                    locale="de",
+                    tasks={Task.RETRIEVAL: TaskSettings()},
+                ),
+            },
+        )
+        assert s.resolved_task("r", Task.RETRIEVAL).locale == "de"
+
+    def test_locale_task_override_wins_over_workspace_and_deployment(self):
+        s = AnnotationSettings(
+            locale="en",
+            workspaces={
+                "r": WorkspaceSettings(
+                    locale="de",
+                    tasks={Task.RETRIEVAL: TaskSettings(locale="en")},
+                ),
+            },
+        )
+        assert s.resolved_task("r", Task.RETRIEVAL).locale == "en"
+
+    def test_locale_default_resolves_to_en(self):
+        s = AnnotationSettings(
+            workspaces={"r": WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings()})},
+        )
+        assert s.resolved_task("r", Task.RETRIEVAL).locale == "en"
+
 
 class TestTaskUniquenessValidator:
     def test_same_task_in_two_workspaces_rejected(self):
