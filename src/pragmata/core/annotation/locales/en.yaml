@@ -24,36 +24,37 @@ fields:
 questions:
   retrieval:
     topically_relevant: >-
-      Does this passage contain information that is substantively relevant to
+      Does this chunk contain information that is substantively relevant to
       the query?
     evidence_sufficient: >-
-      Does this passage provide sufficient evidence to support answering the
+      Does this chunk provide sufficient evidence to support answering the
       query?
     misleading: >-
-      Could this passage plausibly lead to an incorrect or distorted answer?
+      Could this chunk plausibly lead to an incorrect or distorted answer?
     notes: Notes (optional)
     discard_reason: Discard reason
     discard_notes: Discard notes (optional)
   grounding:
     support_present: >-
-      Is at least one claim in the answer supported by the provided context?
+      Is at least one claim in the answer supported by the context set?
     unsupported_claim_present: >-
-      Does the answer contain claims not supported by the provided context?
+      Does the answer contain claims not supported by the context set?
     contradicted_claim_present: >-
-      Does the provided context contradict any claim in the answer?
+      Does the context set contradict any claim in the answer?
     source_cited: Does the answer contain a citation marker?
     fabricated_source: >-
-      Does the answer cite a source not present in the retrieved context?
+      Does the answer cite a source not present in the context set?
     notes: Notes (optional)
     discard_reason: Discard reason
     discard_notes: Discard notes (optional)
   generation:
-    proper_action: Did the system choose the appropriate action for this query?
-    response_on_topic: Does the response substantively address the user's query?
+    proper_action: >-
+      Does the answer reflect the appropriate response type for the query?
+    response_on_topic: Does the answer substantively address the user's query?
     helpful: >-
-      Would this response enable a typical user to make progress on their task?
-    incomplete: Does the response fail to cover required parts of the query?
-    unsafe_content: Does the response contain unsafe or policy-violating content?
+      Does this answer enable a typical user to make progress on their task?
+    incomplete: Does the answer fail to cover required parts of the query?
+    unsafe_content: Does the answer contain unsafe or harmful content?
     notes: Notes (optional)
     discard_reason: Discard reason
     discard_notes: Discard notes (optional)
