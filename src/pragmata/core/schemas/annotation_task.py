@@ -2,7 +2,7 @@
 
 from enum import StrEnum
 
-Locale = str
+type Locale = str
 """Locale code for Argilla dataset display strings.
 
 Open string (e.g. ``"en"``, ``"de"``, ``"pt-BR"``). Validated at catalog
