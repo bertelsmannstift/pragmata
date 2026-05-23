@@ -1,8 +1,16 @@
-"""Catalog registry — auto-discovers locale YAML files at import.
+"""Catalog registry: auto-discovers locale YAML files at import.
 
-A deployment adds a locale by dropping ``<code>.yaml`` into this directory;
-the registry picks it up at import with no Python edit required. The locale
-code is the file stem (``en.yaml`` → ``"en"``).
+Scope: bundled catalogs only. The registry scans ``*.yaml`` files in this
+package directory at import time and keys them by file stem
+(``en.yaml`` -> ``"en"``). Adding a locale upstream is therefore a
+zero-Python-edit change: drop the YAML file alongside ``en.yaml`` and the
+locale is registered automatically.
+
+Adding a locale from outside the installed package (user-provided catalog
+directory) is not yet supported; a deployment that needs a custom locale
+or wants to override a bundled one currently has to vendor or contribute
+the YAML upstream. Extending discovery to a configurable directory is
+planned as a follow-up.
 """
 
 from pathlib import Path
