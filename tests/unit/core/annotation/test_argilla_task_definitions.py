@@ -243,10 +243,13 @@ class TestDiscardFlowHtmlEnumSync:
 
 
 class TestYesNoCatalogSync:
-    """Guard against drift between rg.LabelQuestion definitions and the
-    loader's ``_YES_NO_QUESTIONS_BY_TASK`` map that drives ``.yes`` / ``.no``
-    catalog keys. Both sides must enumerate the same yes/no question set per
-    task; otherwise label lookup silently breaks at dataset creation.
+    """Guard the yes/no question set against drift between the two encodings.
+
+    The set lives in two places: ``rg.LabelQuestion`` definitions in
+    ``argilla_task_definitions`` and ``_YES_NO_QUESTIONS_BY_TASK`` in
+    ``loader.py`` (which drives ``.yes`` / ``.no`` catalog keys). Both sides
+    must enumerate the same yes/no question set per task; otherwise label
+    lookup silently breaks at dataset creation.
     """
 
     @pytest.mark.parametrize(
