@@ -17,6 +17,8 @@ __all__ = [
     "ExportResult",
     "IaaReport",
     "ImportResult",
+    "Locale",
+    "SUPPORTED_LOCALES",
     "SetupResult",
     "Task",
     "UserSpec",
@@ -31,6 +33,8 @@ _LAZY: dict[str, tuple[str, str]] = {
     "ExportResult": ("pragmata.core.annotation.export_runner", "ExportResult"),
     "IaaReport": ("pragmata.core.schemas.iaa_report", "IaaReport"),
     "ImportResult": ("pragmata.api.annotation_import", "ImportResult"),
+    "Locale": ("pragmata.core.schemas.annotation_task", "Locale"),
+    "SUPPORTED_LOCALES": ("pragmata.core.annotation.locales.registry", "SUPPORTED_LOCALES"),
     "SetupResult": ("pragmata.core.annotation.setup", "SetupResult"),
     "Task": ("pragmata.core.schemas.annotation_task", "Task"),
     "UserSpec": ("pragmata.core.settings.annotation_settings", "UserSpec"),
@@ -64,7 +68,9 @@ if TYPE_CHECKING:
     from pragmata.api.annotation_setup import setup as setup
     from pragmata.api.annotation_setup import teardown as teardown
     from pragmata.core.annotation.export_runner import ExportResult as ExportResult
+    from pragmata.core.annotation.locales.registry import SUPPORTED_LOCALES as SUPPORTED_LOCALES
     from pragmata.core.annotation.setup import SetupResult as SetupResult
+    from pragmata.core.schemas.annotation_task import Locale as Locale
     from pragmata.core.schemas.annotation_task import Task as Task
     from pragmata.core.schemas.iaa_report import IaaReport as IaaReport
     from pragmata.core.settings.annotation_settings import UserSpec as UserSpec

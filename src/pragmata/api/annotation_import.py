@@ -22,6 +22,7 @@ from pragmata.core.paths.annotation_paths import (
     resolve_import_paths,
 )
 from pragmata.core.paths.paths import WorkspacePaths
+from pragmata.core.schemas.annotation_task import Locale
 from pragmata.core.settings.annotation_settings import AnnotationSettings
 from pragmata.core.settings.settings_base import UNSET, Unset, load_config_file, resolve_api_key
 
@@ -65,6 +66,7 @@ def import_records(
     base_dir: str | Path | Unset = UNSET,
     config_path: str | Path | Unset = UNSET,
     calibration_fraction: float | Unset = UNSET,
+    locale: Locale | Unset = UNSET,
 ) -> ImportResult:
     """Validate and fan out records to per-purpose Argilla annotation datasets.
 
@@ -91,6 +93,9 @@ def import_records(
     Credential resolution:
     - ``api_url``: kwarg > ``ARGILLA_API_URL`` env > config (``argilla.api_url``)
     - ``api_key``: kwarg > ``ARGILLA_API_KEY`` env (secrets never live in config)
+    - ``locale``: kwarg > ``--config`` file (``annotation.locale``) > default
+      EN. Cascades to per-workspace/per-task overrides defined in the YAML
+      config.
 
     Args:
         records: Input data — list[dict], file path (str/Path), HF Dataset,
@@ -106,6 +111,10 @@ def import_records(
             dataset for this import. Falls through to YAML config and the
             built-in default (0.1) when omitted. Set to 0.0 for
             production-only batches.
+        locale: Deployment-level UI locale for Argilla dataset
+            titles/questions/guidelines used when auto-creating datasets.
+            Cascades to workspaces/tasks unless they carve out their own
+            value in YAML.
 
     Returns:
         ImportResult with totals, per-dataset counts, partition counts, and
@@ -120,6 +129,7 @@ def import_records(
             "dataset_id": dataset_id,
             "base_dir": base_dir,
             "calibration_fraction": calibration_fraction,
+            "locale": locale,
         },
     )
 
