@@ -3,7 +3,7 @@
 import typer
 
 from pragmata.api import UNSET
-from pragmata.cli.parsing import parse_tasks, parse_user_specs
+from pragmata.cli.parsing import parse_locale, parse_tasks, parse_user_specs
 
 annotation_app = typer.Typer(help="Annotation pipeline commands.")
 
@@ -97,6 +97,13 @@ def import_command(
         "Falls through to YAML config and built-in default (0.1) when omitted; "
         "set to 0.0 for production-only batches.",
     ),
+    locale: str | None = typer.Option(
+        None,
+        "--locale",
+        help="Deployment-level UI locale for Argilla dataset titles/questions/guidelines "
+        "(en, de). Cascades to workspaces/tasks unless they carve out a value in YAML. "
+        "Falls back to config, then 'en'.",
+    ),
 ) -> None:
     """Validate and import records into annotation datasets.
 
@@ -115,6 +122,7 @@ def import_command(
         base_dir=UNSET if base_dir is None else base_dir,
         config_path=UNSET if config is None else config,
         calibration_fraction=UNSET if calibration_fraction is None else calibration_fraction,
+        locale=parse_locale(locale) or UNSET,
     )
     typer.echo(f"Total records: {result.total_records}")
     typer.echo(

@@ -25,6 +25,8 @@ CATALOGS: dict[Locale, Catalog] = {
     yaml_file.stem: load_catalog(yaml_file) for yaml_file in sorted(_LOCALES_DIR.glob("*.yaml"))
 }
 
+SUPPORTED_LOCALES: frozenset[Locale] = frozenset(CATALOGS)
+
 
 def get_catalog(locale: Locale) -> Catalog:
     """Return the display-string catalog for a locale.
