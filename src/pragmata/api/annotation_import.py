@@ -67,6 +67,8 @@ def import_records(
     base_dir: str | Path | Unset = UNSET,
     config_path: str | Path | Unset = UNSET,
     calibration_fraction: float | Unset = UNSET,
+    calibration_min_submitted: int | None | Unset = UNSET,
+    calibration_partition_seed: int | Unset = UNSET,
     locale: Locale | Unset = UNSET,
     locale_catalog_dir: str | Path | None | Unset = UNSET,
 ) -> ImportResult:
@@ -113,6 +115,14 @@ def import_records(
             dataset for this import. Falls through to YAML config and the
             built-in default (0.1) when omitted. Set to 0.0 for
             production-only batches.
+        calibration_min_submitted: Deployment-level overlap requirement for
+            the calibration dataset. ``None`` disables calibration entirely
+            (must be paired with ``calibration_fraction=0.0``). Inherits to
+            workspaces/tasks unless they override it.
+        calibration_partition_seed: Deterministic seed used to assign new
+            records to calibration vs production buckets. Existing
+            assignments are locked by the partition manifest; this only
+            affects records not yet seen.
         locale: Deployment-level UI locale for Argilla dataset
             titles/questions/guidelines used when auto-creating datasets.
             Cascades to workspaces/tasks unless they carve out their own
@@ -134,6 +144,8 @@ def import_records(
             "dataset_id": dataset_id,
             "base_dir": base_dir,
             "calibration_fraction": calibration_fraction,
+            "calibration_min_submitted": calibration_min_submitted,
+            "calibration_partition_seed": calibration_partition_seed,
             "locale": locale,
             "locale_catalog_dir": locale_catalog_dir,
         },
