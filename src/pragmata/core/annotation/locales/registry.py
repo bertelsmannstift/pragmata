@@ -33,12 +33,13 @@ def register_catalog_dir(directory: Path) -> None:
     """
     CATALOGS.update(_load_dir(directory))
 
-SUPPORTED_LOCALES: frozenset[Locale] = frozenset(CATALOGS)
-
 
 def get_catalog(locale: Locale) -> Catalog:
     """Return the display-string catalog for a locale.
 
-    Raises ``KeyError`` if the locale has no registered catalog.
+    Raises ``ValueError`` if the locale has no registered catalog (bundled
+    or user-provided via :func:`register_catalog_dir`).
     """
+    if locale not in CATALOGS:
+        raise ValueError(f"Unknown locale: {locale!r}. Supported: {sorted(CATALOGS)}")
     return CATALOGS[locale]

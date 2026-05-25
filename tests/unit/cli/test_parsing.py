@@ -50,18 +50,16 @@ class TestParseLocale:
     def test_none_returns_none(self) -> None:
         assert parse_locale(None) is None
 
-    def test_valid_locale_en(self) -> None:
+    def test_normalises_string(self) -> None:
         assert parse_locale("en") == "en"
-
-    def test_valid_locale_de(self) -> None:
-        assert parse_locale("de") == "de"
 
     def test_whitespace_tolerant(self) -> None:
         assert parse_locale("  en  ") == "en"
 
-    def test_invalid_locale_raises(self) -> None:
-        with pytest.raises(ValueError, match="Unknown locale"):
-            parse_locale("xx")
+    def test_unknown_locale_not_rejected_here(self) -> None:
+        # Validation moved to the api layer (after user catalog directories
+        # are registered); parse_locale is now a pure normaliser.
+        assert parse_locale("xx") == "xx"
 
 
 class TestParseUserSpecs:
