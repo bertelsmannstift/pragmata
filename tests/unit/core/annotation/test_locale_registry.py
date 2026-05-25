@@ -65,3 +65,13 @@ class TestRegisterCatalogDir:
         registry.register_catalog_dir(tmp_path)
 
         assert build_task_settings.cache_info().currsize == 0
+
+    def test_missing_dir_raises(self, tmp_path):
+        with pytest.raises(ValueError, match="locale_catalog_dir"):
+            registry.register_catalog_dir(tmp_path / "does-not-exist")
+
+    def test_file_path_raises(self, tmp_path):
+        not_a_dir = tmp_path / "file.yaml"
+        not_a_dir.write_text("")
+        with pytest.raises(ValueError, match="locale_catalog_dir"):
+            registry.register_catalog_dir(not_a_dir)

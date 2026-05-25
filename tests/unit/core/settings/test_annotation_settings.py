@@ -109,23 +109,14 @@ class TestAnnotationSettingsResolve:
             AnnotationSettings(dataset_id=bad)
 
 
-class TestLocaleCatalogDirValidator:
+class TestLocaleCatalogDirField:
     def test_none_is_default(self):
         assert AnnotationSettings().locale_catalog_dir is None
 
-    def test_existing_dir_accepted(self, tmp_path):
-        s = AnnotationSettings(locale_catalog_dir=tmp_path)
-        assert s.locale_catalog_dir == tmp_path
-
-    def test_missing_dir_rejected(self, tmp_path):
-        with pytest.raises(ValidationError, match=r"locale_catalog_dir"):
-            AnnotationSettings(locale_catalog_dir=tmp_path / "does-not-exist")
-
-    def test_file_rejected(self, tmp_path):
-        f = tmp_path / "not-a-dir.yaml"
-        f.write_text("")
-        with pytest.raises(ValidationError, match=r"locale_catalog_dir"):
-            AnnotationSettings(locale_catalog_dir=f)
+    def test_path_accepted_without_existence_check(self, tmp_path):
+        # Existence is validated by the consumer (register_catalog_dir), not the field.
+        s = AnnotationSettings(locale_catalog_dir=tmp_path / "does-not-exist")
+        assert s.locale_catalog_dir == tmp_path / "does-not-exist"
 
 
 def _disabled_topology() -> dict[str, WorkspaceSettings]:

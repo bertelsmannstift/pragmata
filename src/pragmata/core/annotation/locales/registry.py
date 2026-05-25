@@ -33,9 +33,15 @@ def register_catalog_dir(directory: Path) -> None:
     locale build sees the updated catalog (otherwise a second
     ``import_records`` call in the same process with a different
     ``locale_catalog_dir`` would silently reuse stale ``rg.Settings``).
+
+    Raises ``ValueError`` if ``directory`` does not exist or is not a
+    directory - fail loud rather than silently registering nothing, since
+    ``Path.glob`` on a missing path yields no entries.
     """
     from pragmata.core.annotation.argilla_task_definitions import build_task_settings
 
+    if not directory.is_dir():
+        raise ValueError(f"locale_catalog_dir does not exist or is not a directory: {directory}")
     CATALOGS.update(_load_dir(directory))
     build_task_settings.cache_clear()
 
