@@ -29,8 +29,15 @@ def register_catalog_dir(directory: Path) -> None:
     """Layer ``*.yaml`` catalogs from ``directory`` over the bundled set.
 
     Idempotent: same directory registered twice yields the same end state.
+    Clears the downstream ``build_task_settings`` cache so a subsequent
+    locale build sees the updated catalog (otherwise a second
+    ``import_records`` call in the same process with a different
+    ``locale_catalog_dir`` would silently reuse stale ``rg.Settings``).
     """
+    from pragmata.core.annotation.argilla_task_definitions import build_task_settings
+
     CATALOGS.update(_load_dir(directory))
+    build_task_settings.cache_clear()
 
 
 def get_catalog(locale: Locale) -> Catalog:

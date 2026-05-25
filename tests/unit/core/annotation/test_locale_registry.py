@@ -13,7 +13,12 @@ BUNDLED_EN = Path(registry.__file__).parent / "en.yaml"
 
 @pytest.fixture(autouse=True)
 def _isolate_catalogs(monkeypatch):
+    from pragmata.core.annotation.argilla_task_definitions import build_task_settings
+
     monkeypatch.setattr(registry, "CATALOGS", dict(registry.CATALOGS))
+    build_task_settings.cache_clear()
+    yield
+    build_task_settings.cache_clear()
 
 
 class TestRegisterCatalogDir:
@@ -50,3 +55,13 @@ class TestRegisterCatalogDir:
         registry.register_catalog_dir(tmp_path)
 
         assert registry.CATALOGS == before
+
+    def test_invalidates_build_task_settings_cache(self, tmp_path):
+        from pragmata.core.annotation.argilla_task_definitions import build_task_settings
+
+        build_task_settings("en")
+        assert build_task_settings.cache_info().currsize == 1
+
+        registry.register_catalog_dir(tmp_path)
+
+        assert build_task_settings.cache_info().currsize == 0
