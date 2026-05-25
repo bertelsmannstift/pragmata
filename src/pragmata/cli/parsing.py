@@ -54,9 +54,8 @@ def parse_tasks(raw: str | None) -> "list[Task] | None":
 def parse_locale(raw: str | None) -> "Locale | None":
     """Normalise a locale string (e.g. ``en``, ``de``).
 
-    Returns None when no locale is supplied. Catalog membership is validated
-    in the api layer after any user catalog directory has been registered
-    (see ``api.annotation_import.import_records``).
+    Returns None when no locale is supplied. Does not validate catalog
+    membership.
     """
     if raw is None:
         return None

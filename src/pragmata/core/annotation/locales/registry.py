@@ -29,7 +29,6 @@ def register_catalog_dir(directory: Path) -> None:
     """Layer ``*.yaml`` catalogs from ``directory`` over the bundled set.
 
     Idempotent: same directory registered twice yields the same end state.
-    On stem collision the user file wins (last write through the dict).
     """
     CATALOGS.update(_load_dir(directory))
 

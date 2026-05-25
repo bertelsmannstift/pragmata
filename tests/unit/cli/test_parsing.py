@@ -57,8 +57,6 @@ class TestParseLocale:
         assert parse_locale("  en  ") == "en"
 
     def test_unknown_locale_not_rejected_here(self) -> None:
-        # Validation moved to the api layer (after user catalog directories
-        # are registered); parse_locale is now a pure normaliser.
         assert parse_locale("xx") == "xx"
 
 
