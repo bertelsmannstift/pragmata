@@ -2,7 +2,7 @@
 
 import typer
 
-from pragmata.api import UNSET, Unset
+from pragmata.api import UNSET
 from pragmata.cli.parsing import parse_locale, parse_tasks, parse_user_specs
 
 annotation_app = typer.Typer(help="Annotation pipeline commands.")
@@ -132,15 +132,6 @@ def import_command(
         )
         raise typer.Exit(code=2)
 
-    resolved_calibration_fraction: float | Unset
-    resolved_calibration_min_submitted: int | None | Unset
-    if no_calibration:
-        resolved_calibration_fraction = 0.0
-        resolved_calibration_min_submitted = None
-    else:
-        resolved_calibration_fraction = UNSET if calibration_fraction is None else calibration_fraction
-        resolved_calibration_min_submitted = UNSET
-
     result = annotation.import_records(
         records,
         api_url=UNSET if api_url is None else api_url,
@@ -149,8 +140,10 @@ def import_command(
         dataset_id=UNSET if dataset_id is None else dataset_id,
         base_dir=UNSET if base_dir is None else base_dir,
         config_path=UNSET if config is None else config,
-        calibration_fraction=resolved_calibration_fraction,
-        calibration_min_submitted=resolved_calibration_min_submitted,
+        calibration_fraction=(
+            0.0 if no_calibration else UNSET if calibration_fraction is None else calibration_fraction
+        ),
+        calibration_min_submitted=None if no_calibration else UNSET,
         calibration_partition_seed=UNSET if calibration_partition_seed is None else calibration_partition_seed,
         locale=parse_locale(locale) or UNSET,
     )
