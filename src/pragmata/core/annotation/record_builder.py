@@ -19,13 +19,14 @@ from argilla.records._dataset_records import RecordErrorHandling  # no public re
 
 from pragmata.core.annotation.argilla_ops import create_dataset
 from pragmata.core.annotation.argilla_task_definitions import build_task_settings, dataset_name
+from pragmata.core.annotation.locales.registry import CATALOGS
 from pragmata.core.schemas.annotation_import import (
     PartitionManifest,
     PartitionManifestEntry,
     QueryResponsePair,
 )
-from pragmata.core.schemas.annotation_task import Task
-from pragmata.core.settings.annotation_settings import AnnotationSettings, TaskOverlap
+from pragmata.core.schemas.annotation_task import Locale, Task
+from pragmata.core.settings.annotation_settings import AnnotationSettings
 
 logger = logging.getLogger(__name__)
 
@@ -150,15 +151,9 @@ def build_generation_record(pair: QueryResponsePair, record_uuid: str) -> rg.Rec
     )
 
 
-def _invert_workspace_map(
-    workspace_dataset_map: dict[str, dict[Task, TaskOverlap]],
-) -> dict[Task, tuple[str, TaskOverlap]]:
-    """Invert workspace_dataset_map to task → (workspace_base, overlap)."""
-    task_to_ws: dict[Task, tuple[str, TaskOverlap]] = {}
-    for ws_base, task_overlaps in workspace_dataset_map.items():
-        for task, overlap in task_overlaps.items():
-            task_to_ws[task] = (ws_base, overlap)
-    return task_to_ws
+def _invert_workspace_map(settings: AnnotationSettings) -> dict[Task, str]:
+    """Invert workspaces topology to task → workspace_base."""
+    return {task: ws_base for ws_base, ws in settings.workspaces.items() for task in ws.tasks}
 
 
 # ---------------------------------------------------------------------------
@@ -277,6 +272,32 @@ def _build_batches(
     return batches
 
 
+def _detect_dataset_locale(dataset: rg.Dataset, task: Task) -> Locale | None:
+    """Infer an existing Argilla dataset's creation locale from its label displays.
+
+    Probes the first ``LabelQuestion``'s value→display map (via the private
+    ``_model.settings.options`` — public ``.labels`` is lossy, returns keys
+    only) against each per-locale catalog. Returns ``None`` if no locale
+    matches — e.g. when the dataset was provisioned outside pragmata.
+    """
+    question = next(
+        (q for q in dataset.settings.questions if isinstance(q, rg.LabelQuestion)),
+        None,
+    )
+    if question is None:
+        return None
+    try:
+        options = question._model.settings.options
+    except AttributeError:
+        return None
+    existing = {opt["value"]: opt["text"] for opt in options}
+    for loc, catalog in CATALOGS.items():
+        rendered = {v: catalog.get((task, "label", f"{question.name}.{v}")) for v in existing}
+        if all(rendered.values()) and rendered == existing:
+            return loc
+    return None
+
+
 def _ensure_dataset(
     client: rg.Argilla,
     *,
@@ -286,8 +307,15 @@ def _ensure_dataset(
     ws_base: str,
     dataset_id: str,
     task_settings_map: dict[Task, rg.Settings],
+    locale: Locale,
 ) -> rg.Dataset:
-    """Resolve or create the Argilla dataset for a (task, purpose) pair."""
+    """Resolve or create the Argilla dataset for a (task, purpose) pair.
+
+    When an existing dataset is found, its creation locale is probed against
+    the configured ``locale``. A mismatch is logged as a warning and the
+    import proceeds — label *values* are locale-invariant so data integrity
+    is preserved (only display text differs).
+    """
     ds_name = dataset_name(task, calibration=calibration, dataset_id=dataset_id)
     workspace = client.workspaces(ws_base)
     if workspace is None:
@@ -303,6 +331,18 @@ def _ensure_dataset(
     dataset, ds_created = create_dataset(client, ds_name, ws_base, task_cfg)
     if ds_created:
         logger.info("Auto-created dataset %r in workspace %r", ds_name, ws_base)
+    else:
+        existing_locale = _detect_dataset_locale(dataset, task)
+        if existing_locale is not None and existing_locale != locale:
+            logger.warning(
+                "Locale mismatch on dataset %r (workspace %r): existing dataset was created "
+                "with locale=%r but this import uses locale=%r. Appending records (label "
+                "values are locale-invariant; only display text differs).",
+                ds_name,
+                ws_base,
+                existing_locale,
+                locale,
+            )
     return dataset
 
 
@@ -331,8 +371,7 @@ def fan_out_records(
         vs production totals are computable from ``assignments`` and stay in
         the api layer.
     """
-    task_to_ws = _invert_workspace_map(settings.workspace_dataset_map)
-    task_settings_map = build_task_settings()
+    task_to_ws = _invert_workspace_map(settings)
     batches = _build_batches(records, assignments)
 
     dataset_counts: dict[str, int] = {}
@@ -340,22 +379,23 @@ def fan_out_records(
     for (task, calibration), rg_records in batches.items():
         if not rg_records:
             continue
-        binding = task_to_ws.get(task)
-        if binding is None:
-            logger.warning("Task %r not in workspace_dataset_map - skipping", task)
+        ws_base = task_to_ws.get(task)
+        if ws_base is None:
+            logger.warning("Task %r not in workspaces topology - skipping", task)
             continue
-        ws_base, overlap = binding
+        resolved = settings.resolved_task(ws_base, task)
         if calibration:
-            if overlap.calibration_min_submitted is None:
-                # Defensive: should not happen because assign_partitions only
-                # assigns calibration when topology supports it. Surface as an
-                # error rather than silently route to production.
+            if resolved.calibration_min_submitted is None:
+                # assign_partitions only assigns calibration when topology supports
+                # it; surfacing as an error rather than silently routing to production.
                 raise RuntimeError(
                     f"Task {task.value} has calibration records assigned but topology disables calibration"
                 )
-            min_submitted = overlap.calibration_min_submitted
+            min_submitted = resolved.calibration_min_submitted
         else:
-            min_submitted = overlap.production_min_submitted
+            min_submitted = resolved.production_min_submitted
+        locale = resolved.locale
+        task_settings_map = build_task_settings(locale)
         dataset = _ensure_dataset(
             client,
             task=task,
@@ -364,6 +404,7 @@ def fan_out_records(
             ws_base=ws_base,
             dataset_id=settings.dataset_id,
             task_settings_map=task_settings_map,
+            locale=locale,
         )
         dataset.records.log(rg_records, on_error=RecordErrorHandling.WARN)
         ds_name = dataset.name

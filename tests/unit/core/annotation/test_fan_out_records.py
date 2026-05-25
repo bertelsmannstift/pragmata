@@ -11,7 +11,7 @@ import pytest
 from pragmata.core.annotation.record_builder import fan_out_records
 from pragmata.core.schemas.annotation_import import Chunk, QueryResponsePair
 from pragmata.core.schemas.annotation_task import Task
-from pragmata.core.settings.annotation_settings import AnnotationSettings, TaskOverlap
+from pragmata.core.settings.annotation_settings import AnnotationSettings, TaskSettings, WorkspaceSettings
 
 
 def _make_pair(query: str) -> QueryResponsePair:
@@ -24,16 +24,18 @@ def _make_pair(query: str) -> QueryResponsePair:
 
 
 def _settings(*, calibration_enabled: bool = True) -> AnnotationSettings:
-    overlap = TaskOverlap(calibration_min_submitted=3 if calibration_enabled else None)
+    def _task() -> TaskSettings:
+        return TaskSettings(calibration_min_submitted=3 if calibration_enabled else None)
+
     return AnnotationSettings(
         dataset_id="run1",
         # When calibration_min_submitted=None for every task, calibration_fraction
         # must be 0 to satisfy the AnnotationSettings model validator.
         calibration_fraction=0.5 if calibration_enabled else 0.0,
-        workspace_dataset_map={
-            "retrieval": {Task.RETRIEVAL: overlap},
-            "grounding": {Task.GROUNDING: overlap},
-            "generation": {Task.GENERATION: overlap},
+        workspaces={
+            "retrieval": WorkspaceSettings(tasks={Task.RETRIEVAL: _task()}),
+            "grounding": WorkspaceSettings(tasks={Task.GROUNDING: _task()}),
+            "generation": WorkspaceSettings(tasks={Task.GENERATION: _task()}),
         },
     )
 
@@ -148,14 +150,14 @@ class TestFanOutRecords:
         assert cal_total == 3 * 3  # 3 cal records * 3 tasks
         assert prod_total == 2 * 3  # 2 prod records * 3 tasks
 
-    def test_skips_tasks_not_in_workspace_dataset_map(self, patched_create_dataset, caplog) -> None:
+    def test_skips_tasks_not_in_workspaces_topology(self, patched_create_dataset, caplog) -> None:
         client = MagicMock()
         _, created = patched_create_dataset
 
         # Topology only declares retrieval; grounding/generation are absent.
         partial_settings = AnnotationSettings(
             dataset_id="run1",
-            workspace_dataset_map={"retrieval": {Task.RETRIEVAL: TaskOverlap()}},
+            workspaces={"retrieval": WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings()})},
         )
         records = [_make_pair("q0")]
         from pragmata.core.annotation.record_builder import derive_record_uuid
@@ -168,4 +170,59 @@ class TestFanOutRecords:
         # Only retrieval gets a dataset; grounding and generation are skipped with a warning.
         assert len(result) == 1
         assert any(ds_name.startswith("retrieval_") for (_, ds_name) in created)
-        assert "not in workspace_dataset_map" in caplog.text
+        assert "not in workspaces topology" in caplog.text
+
+
+class TestImportLocaleConflict:
+    """Re-importing into an existing dataset with a different locale logs a warning and proceeds.
+
+    Label *values* are locale-invariant, so the data is still safe to append;
+    only the displayed text differs. The mismatch is surfaced as a warning so
+    operators can investigate, not raised.
+    """
+
+    def test_relocale_warn_append(self, fake_dataset_factory, caplog) -> None:
+        import argilla as rg
+
+        from pragmata.core.annotation.argilla_task_definitions import build_task_settings, dataset_name
+        from pragmata.core.annotation.record_builder import derive_record_uuid
+
+        # Build an EN-flavoured existing dataset; _detect_dataset_locale will
+        # match its label displays against the EN catalog.
+        en_settings = build_task_settings("en")[Task.RETRIEVAL]
+        ds_name = dataset_name(Task.RETRIEVAL, calibration=False, dataset_id="run1")
+        fake_dataset = fake_dataset_factory(ds_name)
+        fake_dataset.settings = rg.Settings(
+            fields=en_settings.fields,
+            questions=en_settings.questions,
+            metadata=en_settings.metadata,
+            guidelines=en_settings.guidelines,
+        )
+
+        def _create(client, name, ws_base, task_cfg):
+            # Simulate an existing dataset: ds_created=False, returning the EN-flavoured one.
+            return fake_dataset, False
+
+        records = [_make_pair("q0")]
+        assignments = {derive_record_uuid(records[0]): False}
+
+        # DE-locale settings — mismatch against the EN existing dataset.
+        settings_de = AnnotationSettings(
+            dataset_id="run1",
+            locale="de",
+            calibration_fraction=0.0,
+            workspaces={"retrieval": WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings()})},
+        )
+
+        with patch("pragmata.core.annotation.record_builder.create_dataset", side_effect=_create):
+            with caplog.at_level("WARNING", logger="pragmata.core.annotation.record_builder"):
+                result = fan_out_records(MagicMock(), records=records, settings=settings_de, assignments=assignments)
+
+        # Records were appended (no error raised), and a warning was logged.
+        # Assert against locale .name rather than the %r-formatted .value so the
+        # test isn't tied to the log formatter's quote style.
+        assert len(result) == 1
+        assert "Locale mismatch" in caplog.text
+        assert "en" in caplog.text
+        assert "de" in caplog.text
+        fake_dataset.records.log.assert_called_once()

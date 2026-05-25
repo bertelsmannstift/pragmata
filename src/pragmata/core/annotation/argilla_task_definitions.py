@@ -5,18 +5,44 @@ schemas (those live in core/schemas/) or configurable settings (those live in
 core/settings/). They encode the annotation protocol (fields, questions, labels)
 and are hardcoded per ADR-0009.
 
+Display strings (titles, guidelines, and label option text) are looked up
+from per-locale catalogs in :mod:`pragmata.core.annotation.locales`.
+Identities (field/question ``name=``) and label *values* (``"yes"``,
+``"no"``, ``DiscardReason.*.value``) are stable across locales — exports
+carry the value, not the display text, so they merge cleanly across
+multi-language deployments.
+
 Distribution (min_submitted) is intentionally omitted — it is an operational
-setting controlled by AnnotationSettings.workspace_dataset_map and applied at
+setting controlled by AnnotationSettings.workspaces and applied at
 dataset creation time.
 """
 
 import functools
+import json
 from importlib.resources import files
 from string import Template
+from typing import Any
 
 import argilla as rg
 
-from pragmata.core.schemas.annotation_task import DiscardReason, Task
+from pragmata.core.annotation.locales.loader import DISCARD_WIDGET_KEYS
+from pragmata.core.annotation.locales.registry import CATALOGS, get_catalog
+from pragmata.core.annotation.locales.types import Catalog, CatalogKind
+from pragmata.core.schemas.annotation_task import DiscardReason, Locale, Task
+
+
+class _DiscardTemplate(Template):
+    """``string.Template`` with ``@@`` delimiter; JS body uses ``$nuxt``/``$i18n``.
+
+    The discard_flow.html template body contains literal ``$``-references
+    (``$nuxt``, ``$i18n``, ``$el``); switching the delimiter to ``@@``
+    keeps those intact. When editing discard_flow.html, do not introduce
+    ``@@`` tokens in the JS or HTML body unless you intend them as
+    substitution placeholders.
+    """
+
+    delimiter = "@@"
+
 
 DATASET_NAMES: dict[Task, str] = {
     Task.RETRIEVAL: "retrieval",
@@ -50,69 +76,128 @@ def _collapsible_field(name: str, title: str, template_text: str) -> rg.CustomFi
     )
 
 
-def _discard_questions() -> list[rg.LabelQuestion | rg.TextQuestion]:
+def _localised_labels(catalog: Catalog, task: Task, question: str, values: list[str]) -> dict[str, str]:
+    """Build the value→display-text map Argilla's LabelQuestion accepts as ``labels=``.
+
+    The stored value (dict key) is the machine identifier — what lands in
+    exports. The display text (dict value) is what the annotator sees in
+    the UI. Catalog key: ``(task, "label", "<question>.<value>")``.
+    """
+    return {value: catalog[(task, "label", f"{question}.{value}")] for value in values}
+
+
+def _discard_questions(task: Task, catalog: Catalog) -> list[rg.LabelQuestion | rg.TextQuestion]:
+    discard_reason_values = [r.value for r in DiscardReason]
     return [
         rg.LabelQuestion(
             name="discard_reason",
-            title="Discard reason",
-            labels=[r.value for r in DiscardReason],
+            title=catalog[(task, "question", "discard_reason")],
+            labels=_localised_labels(catalog, task, "discard_reason", discard_reason_values),
             required=False,
         ),
-        rg.TextQuestion(name="discard_notes", title="Discard notes (optional)", required=False),
+        rg.TextQuestion(
+            name="discard_notes",
+            title=catalog[(task, "question", "discard_notes")],
+            required=False,
+        ),
     ]
 
 
+def _discard_i18n_payload_for_locale(loc: Locale, task: Task) -> dict[str, Any]:
+    """Per-locale block of strings the discard widget JS reads at runtime.
+
+    Includes the widget's own chrome strings, the discard-reason option
+    list (value + display text), and the two helper-question titles the
+    widget uses for ``aria-label`` matching when scoping the native
+    Argilla cards it hides.
+    """
+    catalog = CATALOGS[loc]
+    payload: dict[str, Any] = {key: catalog[(task, "widget", f"discard.{key}")] for key in DISCARD_WIDGET_KEYS}
+    payload["discard_reason_title"] = catalog[(task, "question", "discard_reason")]
+    payload["discard_notes_title"] = catalog[(task, "question", "discard_notes")]
+    payload["reason_options"] = [
+        {"value": r.value, "text": catalog[(task, "label", f"discard_reason.{r.value}")]} for r in DiscardReason
+    ]
+    return payload
+
+
+def _render_discard_template(template_text: str, task: Task, dataset_locale: Locale) -> str:
+    """Substitute the all-locales i18n payload into ``discard_flow.html``.
+
+    The widget JS picks the active locale at runtime (Argilla's chrome
+    locale, with a fallback chain). All supported locales are shipped so
+    the switch is instant. ``SUPPORTED_LOCALES`` is ordered with the
+    dataset's creation locale first; this is defensive only -- the JS
+    iterates every locale when matching ``aria-label`` attributes and
+    EN/DE titles do not collide today.
+    """
+    locales_in_order = [dataset_locale] + [loc for loc in sorted(CATALOGS) if loc != dataset_locale]
+    i18n_payload = {loc: _discard_i18n_payload_for_locale(loc, task) for loc in locales_in_order}
+    return _DiscardTemplate(template_text).substitute(
+        I18N_JSON=json.dumps(i18n_payload, ensure_ascii=False),
+        SUPPORTED_LOCALES_JSON=json.dumps(locales_in_order),
+        DEFAULT_LOCALE_JSON=json.dumps(dataset_locale),
+    )
+
+
 @functools.cache
-def build_task_settings() -> dict[Task, rg.Settings]:
-    """Build Argilla Settings for each annotation task.
+def build_task_settings(locale: Locale = "en") -> dict[Task, rg.Settings]:
+    """Build Argilla Settings for each annotation task, in the given locale.
 
     Deferred construction — call after an Argilla client is connected
-    (or with a mock client in tests). Cached after first call.
+    (or with a mock client in tests). Cached per locale after first call.
     """
+    catalog = get_catalog(locale)
     template_text = files("pragmata.core.annotation").joinpath("collapsible_field.html").read_text(encoding="utf-8")
     discard_template = files("pragmata.core.annotation").joinpath("discard_flow.html").read_text(encoding="utf-8")
 
     # Fresh CustomField per task — FieldBase carries a `_dataset` attribute that
     # Argilla's Settings/Dataset plumbing mutates, so sharing one instance across
     # three rg.Settings risks cross-task coupling on future SDK changes.
-    def discard_field() -> rg.CustomField:
+    def discard_field(task: Task) -> rg.CustomField:
         return rg.CustomField(
             name="discard_flow",
-            title="Discard this record",
-            template=discard_template,
+            title=catalog[(task, "field", "discard_flow")],
+            template=_render_discard_template(discard_template, task, locale),
             advanced_mode=True,
             required=False,
         )
 
+    def t(task: Task, kind: CatalogKind, name: str) -> str:
+        return catalog[(task, kind, name)]
+
+    def _yes_no(task: Task, question: str) -> dict[str, str]:
+        return _localised_labels(catalog, task, question, ["yes", "no"])
+
     return {
         Task.RETRIEVAL: rg.Settings(
             fields=[
-                rg.TextField(name="query", title="Query", required=True),
-                rg.TextField(name="chunk", title="Chunk", required=True),
-                _collapsible_field("generated_answer", "Generated answer", template_text),
-                discard_field(),
+                rg.TextField(name="query", title=t(Task.RETRIEVAL, "field", "query"), required=True),
+                rg.TextField(name="chunk", title=t(Task.RETRIEVAL, "field", "chunk"), required=True),
+                _collapsible_field("generated_answer", t(Task.RETRIEVAL, "field", "generated_answer"), template_text),
+                discard_field(Task.RETRIEVAL),
             ],
             questions=[
                 rg.LabelQuestion(
                     name="topically_relevant",
-                    title="Does this passage contain information that is substantively relevant to the query?",
-                    labels=["yes", "no"],
+                    title=t(Task.RETRIEVAL, "question", "topically_relevant"),
+                    labels=_yes_no(Task.RETRIEVAL, "topically_relevant"),
                     required=True,
                 ),
                 rg.LabelQuestion(
                     name="evidence_sufficient",
-                    title="Does this passage provide sufficient evidence to support answering the query?",
-                    labels=["yes", "no"],
+                    title=t(Task.RETRIEVAL, "question", "evidence_sufficient"),
+                    labels=_yes_no(Task.RETRIEVAL, "evidence_sufficient"),
                     required=True,
                 ),
                 rg.LabelQuestion(
                     name="misleading",
-                    title="Could this passage plausibly lead to an incorrect or distorted answer?",
-                    labels=["yes", "no"],
+                    title=t(Task.RETRIEVAL, "question", "misleading"),
+                    labels=_yes_no(Task.RETRIEVAL, "misleading"),
                     required=True,
                 ),
-                rg.TextQuestion(name="notes", title="Notes (optional)", required=False),
-                *_discard_questions(),
+                rg.TextQuestion(name="notes", title=t(Task.RETRIEVAL, "question", "notes"), required=False),
+                *_discard_questions(Task.RETRIEVAL, catalog),
             ],
             metadata=[
                 rg.TermsMetadataProperty("record_uuid", visible_for_annotators=False),
@@ -121,100 +206,100 @@ def build_task_settings() -> dict[Task, rg.Settings]:
                 rg.TermsMetadataProperty("doc_id", visible_for_annotators=False),
                 rg.IntegerMetadataProperty("chunk_rank", min=1, visible_for_annotators=False),
             ],
-            guidelines="Retrieval. TODO: Revisit after first annotation iteration.",
+            guidelines=t(Task.RETRIEVAL, "guidelines", ""),
         ),
         Task.GROUNDING: rg.Settings(
             fields=[
-                rg.TextField(name="answer", title="Answer", required=True),
-                rg.TextField(name="context_set", title="Context set", required=True),
-                _collapsible_field("query", "Query", template_text),
-                discard_field(),
+                rg.TextField(name="answer", title=t(Task.GROUNDING, "field", "answer"), required=True),
+                rg.TextField(name="context_set", title=t(Task.GROUNDING, "field", "context_set"), required=True),
+                _collapsible_field("query", t(Task.GROUNDING, "field", "query"), template_text),
+                discard_field(Task.GROUNDING),
             ],
             questions=[
                 rg.LabelQuestion(
                     name="support_present",
-                    title="Is at least one claim in the answer supported by the provided context?",
-                    labels=["yes", "no"],
+                    title=t(Task.GROUNDING, "question", "support_present"),
+                    labels=_yes_no(Task.GROUNDING, "support_present"),
                     required=True,
                 ),
                 rg.LabelQuestion(
                     name="unsupported_claim_present",
-                    title="Does the answer contain claims not supported by the provided context?",
-                    labels=["yes", "no"],
+                    title=t(Task.GROUNDING, "question", "unsupported_claim_present"),
+                    labels=_yes_no(Task.GROUNDING, "unsupported_claim_present"),
                     required=True,
                 ),
                 rg.LabelQuestion(
                     name="contradicted_claim_present",
-                    title="Does the provided context contradict any claim in the answer?",
-                    labels=["yes", "no"],
+                    title=t(Task.GROUNDING, "question", "contradicted_claim_present"),
+                    labels=_yes_no(Task.GROUNDING, "contradicted_claim_present"),
                     required=True,
                 ),
                 rg.LabelQuestion(
                     name="source_cited",
-                    title="Does the answer contain a citation marker?",
-                    labels=["yes", "no"],
+                    title=t(Task.GROUNDING, "question", "source_cited"),
+                    labels=_yes_no(Task.GROUNDING, "source_cited"),
                     required=True,
                 ),
                 rg.LabelQuestion(
                     name="fabricated_source",
-                    title="Does the answer cite a source not present in the retrieved context?",
-                    labels=["yes", "no"],
+                    title=t(Task.GROUNDING, "question", "fabricated_source"),
+                    labels=_yes_no(Task.GROUNDING, "fabricated_source"),
                     required=True,
                 ),
-                rg.TextQuestion(name="notes", title="Notes (optional)", required=False),
-                *_discard_questions(),
+                rg.TextQuestion(name="notes", title=t(Task.GROUNDING, "question", "notes"), required=False),
+                *_discard_questions(Task.GROUNDING, catalog),
             ],
             metadata=[
                 rg.TermsMetadataProperty("record_uuid", visible_for_annotators=False),
                 rg.TermsMetadataProperty("language", visible_for_annotators=False),
             ],
-            guidelines="Grounding. TODO: Revisit after first annotation iteration.",
+            guidelines=t(Task.GROUNDING, "guidelines", ""),
         ),
         Task.GENERATION: rg.Settings(
             fields=[
-                rg.TextField(name="query", title="Query", required=True),
-                rg.TextField(name="answer", title="Answer", required=True),
-                _collapsible_field("context_set", "Context set", template_text),
-                discard_field(),
+                rg.TextField(name="query", title=t(Task.GENERATION, "field", "query"), required=True),
+                rg.TextField(name="answer", title=t(Task.GENERATION, "field", "answer"), required=True),
+                _collapsible_field("context_set", t(Task.GENERATION, "field", "context_set"), template_text),
+                discard_field(Task.GENERATION),
             ],
             questions=[
                 rg.LabelQuestion(
                     name="proper_action",
-                    title="Did the system choose the appropriate action for this query?",
-                    labels=["yes", "no"],
+                    title=t(Task.GENERATION, "question", "proper_action"),
+                    labels=_yes_no(Task.GENERATION, "proper_action"),
                     required=True,
                 ),
                 rg.LabelQuestion(
                     name="response_on_topic",
-                    title="Does the response substantively address the user's query?",
-                    labels=["yes", "no"],
+                    title=t(Task.GENERATION, "question", "response_on_topic"),
+                    labels=_yes_no(Task.GENERATION, "response_on_topic"),
                     required=True,
                 ),
                 rg.LabelQuestion(
                     name="helpful",
-                    title="Would this response enable a typical user to make progress on their task?",
-                    labels=["yes", "no"],
+                    title=t(Task.GENERATION, "question", "helpful"),
+                    labels=_yes_no(Task.GENERATION, "helpful"),
                     required=True,
                 ),
                 rg.LabelQuestion(
                     name="incomplete",
-                    title="Does the response fail to cover required parts of the query?",
-                    labels=["yes", "no"],
+                    title=t(Task.GENERATION, "question", "incomplete"),
+                    labels=_yes_no(Task.GENERATION, "incomplete"),
                     required=True,
                 ),
                 rg.LabelQuestion(
                     name="unsafe_content",
-                    title="Does the response contain unsafe or policy-violating content?",
-                    labels=["yes", "no"],
+                    title=t(Task.GENERATION, "question", "unsafe_content"),
+                    labels=_yes_no(Task.GENERATION, "unsafe_content"),
                     required=True,
                 ),
-                rg.TextQuestion(name="notes", title="Notes (optional)", required=False),
-                *_discard_questions(),
+                rg.TextQuestion(name="notes", title=t(Task.GENERATION, "question", "notes"), required=False),
+                *_discard_questions(Task.GENERATION, catalog),
             ],
             metadata=[
                 rg.TermsMetadataProperty("record_uuid", visible_for_annotators=False),
                 rg.TermsMetadataProperty("language", visible_for_annotators=False),
             ],
-            guidelines="Generation. TODO: Revisit after first annotation iteration.",
+            guidelines=t(Task.GENERATION, "guidelines", ""),
         ),
     }

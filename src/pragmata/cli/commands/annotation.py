@@ -3,7 +3,7 @@
 import typer
 
 from pragmata.api import UNSET
-from pragmata.cli.parsing import parse_tasks, parse_user_specs
+from pragmata.cli.parsing import parse_locale, parse_tasks, parse_user_specs
 
 annotation_app = typer.Typer(help="Annotation pipeline commands.")
 
@@ -35,7 +35,7 @@ def setup_command(
 
     Datasets are created automatically on import, not here. Per-task overlap
     (production and calibration ``min_submitted``) is configured via
-    ``workspace_dataset_map`` in the YAML config (``--config``).
+    ``workspaces`` in the YAML config (``--config``).
     """
     from pragmata import annotation
 
@@ -97,6 +97,25 @@ def import_command(
         "Falls through to YAML config and built-in default (0.1) when omitted; "
         "set to 0.0 for production-only batches.",
     ),
+    no_calibration: bool = typer.Option(
+        False,
+        "--no-calibration",
+        help="Disable calibration entirely for this batch: sets calibration_min_submitted=None "
+        "and calibration_fraction=0.0. Cannot be combined with --calibration-fraction > 0.",
+    ),
+    calibration_partition_seed: int | None = typer.Option(
+        None,
+        "--calibration-partition-seed",
+        help="Deterministic seed for assigning new records to calibration vs production. "
+        "Existing assignments are locked by the partition manifest.",
+    ),
+    locale: str | None = typer.Option(
+        None,
+        "--locale",
+        help="Deployment-level UI locale for Argilla dataset titles/questions/guidelines "
+        "(en, de). Inherits to workspaces/tasks unless they carve out a value in YAML. "
+        "Falls back to config, then 'en'.",
+    ),
 ) -> None:
     """Validate and import records into annotation datasets.
 
@@ -106,6 +125,13 @@ def import_command(
     """
     from pragmata import annotation
 
+    if no_calibration and calibration_fraction is not None and calibration_fraction > 0:
+        typer.echo(
+            "Error: --no-calibration cannot be combined with --calibration-fraction > 0.",
+            err=True,
+        )
+        raise typer.Exit(code=2)
+
     result = annotation.import_records(
         records,
         api_url=UNSET if api_url is None else api_url,
@@ -114,7 +140,12 @@ def import_command(
         dataset_id=UNSET if dataset_id is None else dataset_id,
         base_dir=UNSET if base_dir is None else base_dir,
         config_path=UNSET if config is None else config,
-        calibration_fraction=UNSET if calibration_fraction is None else calibration_fraction,
+        calibration_fraction=(
+            0.0 if no_calibration else UNSET if calibration_fraction is None else calibration_fraction
+        ),
+        calibration_min_submitted=None if no_calibration else UNSET,
+        calibration_partition_seed=UNSET if calibration_partition_seed is None else calibration_partition_seed,
+        locale=parse_locale(locale) or UNSET,
     )
     typer.echo(f"Total records: {result.total_records}")
     typer.echo(

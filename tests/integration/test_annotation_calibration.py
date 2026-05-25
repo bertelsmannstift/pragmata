@@ -16,7 +16,7 @@ from pragmata.core.paths.annotation_paths import resolve_import_paths
 from pragmata.core.paths.paths import WorkspacePaths
 from pragmata.core.schemas.annotation_import import PartitionManifest
 from pragmata.core.schemas.annotation_task import Task
-from pragmata.core.settings.annotation_settings import AnnotationSettings
+from pragmata.core.settings.annotation_settings import AnnotationSettings, TaskSettings, WorkspaceSettings
 
 pytestmark = [pytest.mark.integration, pytest.mark.annotation]
 
@@ -219,3 +219,58 @@ def test_records_carry_calibration_metadata_to_argilla(client: rg.Argilla, base_
             assert cal_record_uuids == cal_uuids
     finally:
         teardown_resources(client, auto_settings)
+
+
+class TestPerWorkspaceMinSubmitted:
+    """Inherited carve-out reaches the live Argilla dataset's distribution config."""
+
+    def test_workspace_carve_out_creates_correct_dataset_min_submitted(
+        self, client: rg.Argilla, base_dir: Path
+    ) -> None:
+        """Per-task ``production_min_submitted`` carve-out flows into the dataset's distribution.
+
+        Deployment default is 1; the retrieval workspace overrides to 2; the
+        retrieval task carves out 4. The created Argilla dataset's
+        ``distribution.min_submitted`` must reflect the inherited value (4).
+        """
+        auto_id = "testcarveout"
+        carved_settings = AnnotationSettings(
+            dataset_id=auto_id,
+            production_min_submitted=1,
+            workspaces={
+                "retrieval": WorkspaceSettings(
+                    production_min_submitted=2,
+                    tasks={Task.RETRIEVAL: TaskSettings(production_min_submitted=4)},
+                ),
+                "grounding": WorkspaceSettings(tasks={Task.GROUNDING: TaskSettings()}),
+                "generation": WorkspaceSettings(tasks={Task.GENERATION: TaskSettings()}),
+            },
+        )
+        teardown_resources(client, carved_settings)
+        setup_workspaces(client, carved_settings)
+
+        try:
+            records = [_make_raw(i) for i in range(3)]
+            import_records(
+                records,
+                dataset_id=auto_id,
+                base_dir=base_dir,
+                calibration_fraction=0.0,
+                **_CREDS,
+            )
+
+            prod_name = dataset_name(Task.RETRIEVAL, calibration=False, dataset_id=auto_id)
+            prod_ds = client.datasets(prod_name, workspace="retrieval")
+            assert prod_ds is not None
+            # Task-level carve-out (4) wins over workspace (2) and deployment (1).
+            assert prod_ds.distribution.min_submitted == 4
+
+            # Sibling workspace inherits deployment default (1).
+            grounding_prod = client.datasets(
+                dataset_name(Task.GROUNDING, calibration=False, dataset_id=auto_id),
+                workspace="grounding",
+            )
+            assert grounding_prod is not None
+            assert grounding_prod.distribution.min_submitted == 1
+        finally:
+            teardown_resources(client, carved_settings)

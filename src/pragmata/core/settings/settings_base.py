@@ -24,6 +24,29 @@ UNSET: Final[_UnsetType] = _UnsetType()
 type Unset = _UnsetType
 
 
+class Inherit:
+    """Sentinel meaning 'inherit from parent scope' on nested settings models.
+
+    Distinct from ``Unset``: ``Unset`` is stripped pre-validation by
+    ``prune_unset``; ``Inherit`` persists through validation as a raw
+    specified value. CSS-style: child scopes store ``INHERIT`` until a
+    read-time resolver walks the scope chain and returns the computed value.
+    """
+
+    __slots__ = ()
+
+    def __repr__(self) -> str:
+        """Render the sentinel as ``INHERIT`` for logs and error messages."""
+        return "INHERIT"
+
+    def __bool__(self) -> bool:
+        """Forbid implicit truthiness; require explicit identity comparison."""
+        raise TypeError("INHERIT has no truth value. Use `x is INHERIT`.")
+
+
+INHERIT: Final[Inherit] = Inherit()
+
+
 API_KEY_ENV_VARS: Final[dict[str, str]] = {
     "mistralai": "MISTRAL_API_KEY",
     "cohere": "COHERE_API_KEY",
