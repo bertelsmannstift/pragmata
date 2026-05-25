@@ -1,0 +1,91 @@
+# German catalog of Argilla dataset display strings.
+#
+# All visible strings — including the discard widget chrome, the discard
+# helper-question titles, and the discard-reason option labels — are
+# translated. Identities (field/question name=) and label values stay
+# in English; see en.yaml for the key set every locale must define.
+
+fields:
+  retrieval:
+    query: Anfrage
+    chunk: Textabschnitt
+    generated_answer: Generierte Antwort
+    discard_flow: Diesen Eintrag verwerfen
+  grounding:
+    answer: Antwort
+    context_set: Kontextsammlung
+    query: Anfrage
+    discard_flow: Diesen Eintrag verwerfen
+  generation:
+    query: Anfrage
+    answer: Antwort
+    context_set: Kontextsammlung
+    discard_flow: Diesen Eintrag verwerfen
+
+questions:
+  retrieval:
+    topically_relevant: >-
+      Enthält dieser Textabschnitt Informationen, die für die Anfrage
+      inhaltlich relevant sind?
+    evidence_sufficient: >-
+      Liefert dieser Textabschnitt genügend Belege, um die Anfrage zu
+      beantworten?
+    misleading: >-
+      Könnte dieser Textabschnitt eine falsche oder verzerrte Antwort
+      begünstigen?
+    notes: Anmerkungen (optional)
+    discard_reason: Grund für das Verwerfen
+    discard_notes: Anmerkungen zum Verwerfen (optional)
+  grounding:
+    support_present: >-
+      Wird mindestens eine Aussage in der Antwort durch die angezeigte
+      Kontextsammlung gestützt?
+    unsupported_claim_present: >-
+      Enthält die Antwort Aussagen, die nicht durch die angezeigte
+      Kontextsammlung gestützt werden?
+    contradicted_claim_present: >-
+      Widerspricht die angezeigte Kontextsammlung einer Aussage in der Antwort?
+    source_cited: Enthält die Antwort einen Quellenverweis?
+    fabricated_source: >-
+      Zitiert die Antwort eine Quelle, die nicht in der angezeigten
+      Kontextsammlung enthalten ist?
+    notes: Anmerkungen (optional)
+    discard_reason: Grund für das Verwerfen
+    discard_notes: Anmerkungen zum Verwerfen (optional)
+  generation:
+    proper_action: >-
+      Ist die Art der Antwort für diese Anfrage angemessen?
+    response_on_topic: >-
+      Geht die Antwort inhaltlich auf die Anfrage des Nutzers ein?
+    helpful: >-
+      Hilft die Antwort einem typischen Nutzer, bei seiner Aufgabe
+      voranzukommen?
+    incomplete: Lässt die Antwort notwendige Teile der Anfrage offen?
+    unsafe_content: Enthält die Antwort unangemessene oder gefährliche Inhalte?
+    notes: Anmerkungen (optional)
+    discard_reason: Grund für das Verwerfen
+    discard_notes: Anmerkungen zum Verwerfen (optional)
+
+guidelines:
+  retrieval: "Retrieval. TODO: Nach erster Annotationsiteration überarbeiten."
+  grounding: "Grounding. TODO: Nach erster Annotationsiteration überarbeiten."
+  generation: "Generation. TODO: Nach erster Annotationsiteration überarbeiten."
+
+labels:
+  yes_display: "Ja"
+  no_display: "Nein"
+  discard_reasons:
+    invalid_or_unrealistic: Ungültiger oder unrealistischer Eintrag
+    unclear: Unklarer Zusammenhang zwischen Anfrage/Kontext/Antwort
+    outside_reviewer_expertise: Außerhalb meines Fachgebiets
+
+widget:
+  panel_summary: Diesen Eintrag verwerfen
+  panel_help: >-
+    Wählen Sie diese Option, wenn der Eintrag nicht zur Annotation geeignet
+    ist (z. B. ungültig, unklar oder außerhalb Ihres Fachgebiets).
+  reason_label: "Grund:"
+  reason_placeholder: "— auswählen —"
+  notes_label: "Optionale Anmerkungen:"
+  notes_placeholder: Zusätzlicher Kontext (optional)
+  button_label: Verwerfen

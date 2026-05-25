@@ -171,3 +171,58 @@ class TestFanOutRecords:
         assert len(result) == 1
         assert any(ds_name.startswith("retrieval_") for (_, ds_name) in created)
         assert "not in workspaces topology" in caplog.text
+
+
+class TestImportLocaleConflict:
+    """Re-importing into an existing dataset with a different locale logs a warning and proceeds.
+
+    Label *values* are locale-invariant, so the data is still safe to append;
+    only the displayed text differs. The mismatch is surfaced as a warning so
+    operators can investigate, not raised.
+    """
+
+    def test_relocale_warn_append(self, fake_dataset_factory, caplog) -> None:
+        import argilla as rg
+
+        from pragmata.core.annotation.argilla_task_definitions import build_task_settings, dataset_name
+        from pragmata.core.annotation.record_builder import derive_record_uuid
+
+        # Build an EN-flavoured existing dataset; _detect_dataset_locale will
+        # match its label displays against the EN catalog.
+        en_settings = build_task_settings("en")[Task.RETRIEVAL]
+        ds_name = dataset_name(Task.RETRIEVAL, calibration=False, dataset_id="run1")
+        fake_dataset = fake_dataset_factory(ds_name)
+        fake_dataset.settings = rg.Settings(
+            fields=en_settings.fields,
+            questions=en_settings.questions,
+            metadata=en_settings.metadata,
+            guidelines=en_settings.guidelines,
+        )
+
+        def _create(client, name, ws_base, task_cfg):
+            # Simulate an existing dataset: ds_created=False, returning the EN-flavoured one.
+            return fake_dataset, False
+
+        records = [_make_pair("q0")]
+        assignments = {derive_record_uuid(records[0]): False}
+
+        # DE-locale settings — mismatch against the EN existing dataset.
+        settings_de = AnnotationSettings(
+            dataset_id="run1",
+            locale="de",
+            calibration_fraction=0.0,
+            workspaces={"retrieval": WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings()})},
+        )
+
+        with patch("pragmata.core.annotation.record_builder.create_dataset", side_effect=_create):
+            with caplog.at_level("WARNING", logger="pragmata.core.annotation.record_builder"):
+                result = fan_out_records(MagicMock(), records=records, settings=settings_de, assignments=assignments)
+
+        # Records were appended (no error raised), and a warning was logged.
+        # Assert against locale .name rather than the %r-formatted .value so the
+        # test isn't tied to the log formatter's quote style.
+        assert len(result) == 1
+        assert "Locale mismatch" in caplog.text
+        assert "en" in caplog.text
+        assert "de" in caplog.text
+        fake_dataset.records.log.assert_called_once()

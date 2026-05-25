@@ -1,0 +1,84 @@
+# English catalog of Argilla dataset display strings (source-of-truth locale).
+#
+# Identities (field/question name=) and label values are locale-invariant and
+# live in code — only the strings here are translated. Every locale must
+# define the same key set as en.yaml (enforced by tests).
+
+fields:
+  retrieval:
+    query: Query
+    chunk: Chunk
+    generated_answer: Generated answer
+    discard_flow: Discard this record
+  grounding:
+    answer: Answer
+    context_set: Context set
+    query: Query
+    discard_flow: Discard this record
+  generation:
+    query: Query
+    answer: Answer
+    context_set: Context set
+    discard_flow: Discard this record
+
+questions:
+  retrieval:
+    topically_relevant: >-
+      Does this chunk contain information that is substantively relevant to
+      the query?
+    evidence_sufficient: >-
+      Does this chunk provide sufficient evidence to support answering the
+      query?
+    misleading: >-
+      Could this chunk plausibly lead to an incorrect or distorted answer?
+    notes: Notes (optional)
+    discard_reason: Discard reason
+    discard_notes: Discard notes (optional)
+  grounding:
+    support_present: >-
+      Is at least one claim in the answer supported by the context set?
+    unsupported_claim_present: >-
+      Does the answer contain claims not supported by the context set?
+    contradicted_claim_present: >-
+      Does the context set contradict any claim in the answer?
+    source_cited: Does the answer contain a citation marker?
+    fabricated_source: >-
+      Does the answer cite a source not present in the context set?
+    notes: Notes (optional)
+    discard_reason: Discard reason
+    discard_notes: Discard notes (optional)
+  generation:
+    proper_action: >-
+      Does the answer reflect the appropriate response type for the query?
+    response_on_topic: Does the answer substantively address the user's query?
+    helpful: >-
+      Does this answer enable a typical user to make progress on their task?
+    incomplete: Does the answer fail to cover required parts of the query?
+    unsafe_content: Does the answer contain unsafe or harmful content?
+    notes: Notes (optional)
+    discard_reason: Discard reason
+    discard_notes: Discard notes (optional)
+
+guidelines:
+  retrieval: "Retrieval. TODO: Revisit after first annotation iteration."
+  grounding: "Grounding. TODO: Revisit after first annotation iteration."
+  generation: "Generation. TODO: Revisit after first annotation iteration."
+
+labels:
+  yes_display: "Yes"
+  no_display: "No"
+  discard_reasons:
+    invalid_or_unrealistic: Invalid or unrealistic record
+    unclear: Unclear query/context/answer relationship
+    outside_reviewer_expertise: Outside reviewer expertise
+
+widget:
+  panel_summary: Discard this record
+  panel_help: >-
+    Use this if the record is unsuitable for annotation (e.g. invalid,
+    unclear, or outside your expertise).
+  reason_label: "Reason:"
+  reason_placeholder: "— select —"
+  notes_label: "Optional notes:"
+  notes_placeholder: Any extra context (optional)
+  button_label: Discard
