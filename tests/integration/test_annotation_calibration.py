@@ -81,10 +81,11 @@ def test_explicit_fraction_creates_both_datasets(client: rg.Argilla, base_dir: P
     assert client.datasets(prod_name, workspace="retrieval") is not None
     assert client.datasets(cal_name, workspace="retrieval") is not None
 
-    assert result.calibration_count > 0
-    assert result.production_count > 0
-    assert result.calibration_count + result.production_count == len(records)
-    assert result.calibration_fraction == 0.5
+    # Grounding is 1:1 with records — direct count comparison.
+    assert result.calibration_count[Task.GROUNDING] > 0
+    assert result.production_count[Task.GROUNDING] > 0
+    assert result.calibration_count[Task.GROUNDING] + result.production_count[Task.GROUNDING] == len(records)
+    assert result.calibration_fraction[Task.GROUNDING] == 0.5
 
 
 def test_default_fraction_resolves_from_settings(client: rg.Argilla, base_dir: Path) -> None:
@@ -97,8 +98,8 @@ def test_default_fraction_resolves_from_settings(client: rg.Argilla, base_dir: P
     try:
         # No calibration_fraction kwarg - settings default (0.1) wins.
         result = import_records([_make_raw(i) for i in range(50)], dataset_id=auto_id, base_dir=base_dir, **_CREDS)
-        assert result.calibration_fraction == 0.1
-        assert result.calibration_count >= 1  # 0.1 of 50 records ~ 5 expected
+        assert result.calibration_fraction[Task.GROUNDING] == 0.1
+        assert result.calibration_count[Task.GROUNDING] >= 1  # 0.1 of 50 records ~ 5 expected
     finally:
         teardown_resources(client, auto_settings)
 
@@ -123,8 +124,8 @@ def test_calibration_fraction_zero_skips_calibration_dataset(client: rg.Argilla,
         cal_name = dataset_name(Task.RETRIEVAL, calibration=True, dataset_id=auto_id)
         assert client.datasets(prod_name, workspace="retrieval") is not None
         assert client.datasets(cal_name, workspace="retrieval") is None
-        assert result.calibration_count == 0
-        assert result.production_count == 5
+        assert all(v == 0 for v in result.calibration_count.values())
+        assert result.production_count[Task.GROUNDING] == 5
     finally:
         teardown_resources(client, auto_settings)
 
@@ -142,7 +143,7 @@ def test_reimport_locks_partition_assignments(client: rg.Argilla, base_dir: Path
         first = import_records(records, dataset_id=auto_id, base_dir=base_dir, calibration_fraction=0.5, **_CREDS)
         second = import_records(records, dataset_id=auto_id, base_dir=base_dir, calibration_fraction=0.0, **_CREDS)
 
-        # Same input + locked manifest = identical assignments
+        # Same input + locked manifest = identical assignments (per task).
         assert first.calibration_count == second.calibration_count
         assert first.production_count == second.production_count
 
@@ -176,9 +177,10 @@ def test_growing_batch_partitions_new_records_only(client: rg.Argilla, base_dir:
         manifest = PartitionManifest.model_validate_json(manifest_path.read_text())
         assert len(manifest.assignments) == 20
 
-        # second.calibration_count must equal first.calibration_count (no new cal records)
-        assert second.calibration_count == first.calibration_count
-        assert second.production_count == 20 - first.calibration_count
+        # second.calibration_count must equal first.calibration_count (no new cal records).
+        # Per-task assertion on grounding (1:1 with records).
+        assert second.calibration_count[Task.GROUNDING] == first.calibration_count[Task.GROUNDING]
+        assert second.production_count[Task.GROUNDING] == 20 - first.calibration_count[Task.GROUNDING]
     finally:
         teardown_resources(client, auto_settings)
 
