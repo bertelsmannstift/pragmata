@@ -42,25 +42,38 @@ def _or_none(value: float) -> float | None:
     return None if math.isnan(value) else value
 
 
+def _item_key(row: AnnotationBase, task: Task) -> str:
+    """IAA unit key — composite (record_uuid, chunk_id) for retrieval, record_uuid otherwise.
+
+    Retrieval fans out one record into one row per chunk; each (record_uuid, chunk_id)
+    is an independent annotation item whose labels must not collide in the pivot.
+    Grounding and generation have one row per record_uuid.
+    """
+    if task == Task.RETRIEVAL:
+        return f"{row.record_uuid}:{row.chunk_id}"  # type: ignore[attr-defined]
+    return row.record_uuid
+
+
 def _pivot_task(
-    rows: list[AnnotationBase], labels: list[str]
+    rows: list[AnnotationBase], task: Task, labels: list[str]
 ) -> tuple[dict[str, np.ndarray], list[str], dict[str, dict[str, dict[str, bool]]]]:
     """Pivot all labels for a task in a single pass over rows.
 
     Returns:
         Tuple of (label -> (annotators x items) matrix, sorted annotator IDs,
-        parsed records structure for pairwise kappa).
+        parsed records structure for pairwise kappa). Outer key of the records
+        dict is the IAA item key (see ``_item_key``).
     """
     annotators: set[str] = set()
-    # record_uuid -> annotator_id -> {label: bool}
+    # item_key -> annotator_id -> {label: bool}
     records: dict[str, dict[str, dict[str, bool]]] = {}
     for row in rows:
-        rid = row.record_uuid
+        key = _item_key(row, task)
         aid = row.annotator_id
         annotators.add(aid)
-        records.setdefault(rid, {}).setdefault(aid, {})
+        records.setdefault(key, {}).setdefault(aid, {})
         for lab in labels:
-            records[rid][aid][lab] = getattr(row, lab)
+            records[key][aid][lab] = getattr(row, lab)
 
     ann_list = sorted(annotators)
     item_list = sorted(records.keys())
@@ -69,8 +82,8 @@ def _pivot_task(
     matrices: dict[str, np.ndarray] = {}
     for lab in labels:
         data = np.full((len(ann_list), len(item_list)), np.nan)
-        for j, rid in enumerate(item_list):
-            for aid, vals in records[rid].items():
+        for j, key in enumerate(item_list):
+            for aid, vals in records[key].items():
                 data[ann_idx[aid], j] = float(vals[lab])
         matrices[lab] = data
 
@@ -83,16 +96,16 @@ def _compute_pairwise_kappa(
     """Compute mean Cohen's kappa across labels for each annotator pair."""
     pairs: list[AnnotatorPair] = []
     for a, b in combinations(annotators, 2):
-        shared = sorted(rid for rid, anns in records.items() if a in anns and b in anns)
+        shared = sorted(key for key, anns in records.items() if a in anns and b in anns)
         if not shared:
             continue
         kappas = []
         for lab in labels:
-            arr_a = np.array([records[r][a][lab] for r in shared], dtype=np.int8)
-            arr_b = np.array([records[r][b][lab] for r in shared], dtype=np.int8)
-            k = cohen_kappa(arr_a, arr_b)
-            if not np.isnan(k):
-                kappas.append(k)
+            arr_a = np.array([records[k][a][lab] for k in shared], dtype=np.int8)
+            arr_b = np.array([records[k][b][lab] for k in shared], dtype=np.int8)
+            kappa = cohen_kappa(arr_a, arr_b)
+            if not np.isnan(kappa):
+                kappas.append(kappa)
         if not kappas:
             continue
         mean_kappa = float(np.mean(kappas))
@@ -185,7 +198,7 @@ def run_iaa(
             continue
 
         labels = TASK_LABELS[task]
-        matrices, annotators, records = _pivot_task(rows, labels)
+        matrices, annotators, records = _pivot_task(rows, task, labels)
 
         label_results: list[LabelAgreement] = []
         for label in labels:
