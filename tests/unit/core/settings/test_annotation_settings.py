@@ -349,6 +349,143 @@ class TestCalibrationTopologyResolution:
             )
 
 
+class TestCalibrationFractionInheritance:
+    """``calibration_fraction`` is inheritable across deployment / workspace / task."""
+
+    def test_deployment_default_flows_to_task(self):
+        s = AnnotationSettings(
+            workspaces={"r": WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings()})},
+        )
+        assert s.resolved_task("r", Task.RETRIEVAL).calibration_fraction == 0.1
+
+    def test_workspace_override_wins_over_deployment(self):
+        s = AnnotationSettings(
+            calibration_fraction=0.1,
+            workspaces={
+                "r": WorkspaceSettings(
+                    calibration_fraction=0.05,
+                    tasks={Task.RETRIEVAL: TaskSettings()},
+                ),
+            },
+        )
+        assert s.resolved_task("r", Task.RETRIEVAL).calibration_fraction == 0.05
+
+    def test_task_override_wins_over_workspace_and_deployment(self):
+        s = AnnotationSettings(
+            calibration_fraction=0.1,
+            workspaces={
+                "r": WorkspaceSettings(
+                    calibration_fraction=0.2,
+                    tasks={Task.RETRIEVAL: TaskSettings(calibration_fraction=0.5)},
+                ),
+            },
+        )
+        assert s.resolved_task("r", Task.RETRIEVAL).calibration_fraction == 0.5
+
+    def test_zero_at_task_disables_just_that_task(self):
+        """A task can opt out of calibration without disabling other tasks."""
+        s = AnnotationSettings(
+            calibration_fraction=0.1,
+            workspaces={
+                "r": WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings(calibration_fraction=0.0)}),
+                "g": WorkspaceSettings(tasks={Task.GROUNDING: TaskSettings()}),
+                "x": WorkspaceSettings(tasks={Task.GENERATION: TaskSettings()}),
+            },
+        )
+        assert s.resolved_task("r", Task.RETRIEVAL).calibration_fraction == 0.0
+        assert s.resolved_task("g", Task.GROUNDING).calibration_fraction == 0.1
+
+
+class TestCalibrationMaxRecordsInheritance:
+    """``calibration_max_records`` is inheritable across deployment / workspace / task."""
+
+    def test_deployment_default_is_uncapped(self):
+        s = AnnotationSettings(
+            workspaces={"r": WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings()})},
+        )
+        assert s.resolved_task("r", Task.RETRIEVAL).calibration_max_records is None
+
+    def test_deployment_cap_flows_to_task(self):
+        s = AnnotationSettings(
+            calibration_max_records=200,
+            workspaces={"r": WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings()})},
+        )
+        assert s.resolved_task("r", Task.RETRIEVAL).calibration_max_records == 200
+
+    def test_workspace_cap_overrides_deployment(self):
+        s = AnnotationSettings(
+            calibration_max_records=200,
+            workspaces={
+                "r": WorkspaceSettings(
+                    calibration_max_records=50,
+                    tasks={Task.RETRIEVAL: TaskSettings()},
+                ),
+            },
+        )
+        assert s.resolved_task("r", Task.RETRIEVAL).calibration_max_records == 50
+
+    def test_task_cap_overrides_workspace_and_deployment(self):
+        s = AnnotationSettings(
+            calibration_max_records=200,
+            workspaces={
+                "r": WorkspaceSettings(
+                    calibration_max_records=100,
+                    tasks={Task.RETRIEVAL: TaskSettings(calibration_max_records=20)},
+                ),
+            },
+        )
+        assert s.resolved_task("r", Task.RETRIEVAL).calibration_max_records == 20
+
+    def test_zero_cap_rejected(self):
+        with pytest.raises(ValidationError):
+            AnnotationSettings(calibration_max_records=0)
+
+    def test_negative_cap_rejected(self):
+        with pytest.raises(ValidationError):
+            AnnotationSettings(calibration_max_records=-1)
+
+
+class TestPerTaskTopologyValidator:
+    """``_check_calibration_topology`` walks per-(workspace, task) using resolved values."""
+
+    def test_task_with_zero_fraction_does_not_require_min_submitted(self):
+        """A task with calibration_fraction=0 may have calibration_min_submitted=None."""
+        s = AnnotationSettings(
+            calibration_fraction=0.1,
+            workspaces={
+                "r": WorkspaceSettings(
+                    tasks={
+                        Task.RETRIEVAL: TaskSettings(
+                            calibration_fraction=0.0,
+                            calibration_min_submitted=None,
+                        )
+                    },
+                ),
+                "g": WorkspaceSettings(tasks={Task.GROUNDING: TaskSettings()}),
+                "x": WorkspaceSettings(tasks={Task.GENERATION: TaskSettings()}),
+            },
+        )
+        assert s.resolved_task("r", Task.RETRIEVAL).calibration_min_submitted is None
+
+    def test_task_with_positive_fraction_requires_min_submitted(self):
+        with pytest.raises(ValidationError, match=r"r/retrieval"):
+            AnnotationSettings(
+                calibration_fraction=0.0,  # deployment off
+                workspaces={
+                    "r": WorkspaceSettings(
+                        tasks={
+                            Task.RETRIEVAL: TaskSettings(
+                                calibration_fraction=0.1,  # task overrides to on
+                                calibration_min_submitted=None,  # but no overlap
+                            )
+                        },
+                    ),
+                    "g": WorkspaceSettings(tasks={Task.GROUNDING: TaskSettings()}),
+                    "x": WorkspaceSettings(tasks={Task.GENERATION: TaskSettings()}),
+                },
+            )
+
+
 class TestYamlRoundtrip:
     """Specified values round-trip losslessly; ``resolved_task()`` gives computed values."""
 
