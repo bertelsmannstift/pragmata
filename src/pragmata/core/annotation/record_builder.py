@@ -120,7 +120,7 @@ def build_retrieval_record_for_chunk(
 
 
 def build_retrieval_records(pair: QueryResponsePair, record_uuid: str) -> list[rg.Record]:
-    """One Argilla record per chunk — thin wrapper over the per-chunk helper.
+    """One Argilla record per chunk; thin wrapper over the per-chunk helper.
 
     Retained for callers (and tests) that want all retrieval records for a pair
     in a single list. The fan-out path now routes per chunk via
@@ -249,8 +249,8 @@ def assign_partitions(
     workspace / task overrides for ``calibration_fraction`` and
     ``calibration_max_records`` are honoured.
 
-    Existing manifest entries are reused untouched (manifest lock — re-import
-    stability). New units are bucketed by ``_bucket_calibration`` using
+    Existing manifest entries are reused untouched (manifest lock for
+    re-import stability). New units are bucketed by ``_bucket_calibration`` using
     ``hash(seed || task || unit_id)``; if a per-task cap is in force, eligible
     candidates are sorted by digest ascending and only the first ``remaining``
     win calibration. The rest demote to production.
@@ -258,7 +258,7 @@ def assign_partitions(
     Note on order-dependence under binding cap: when the cap is binding across
     multiple imports, the final calibration set is a function of
     ``(corpus, seed, import_order)``, not ``(corpus, seed)`` alone. This is a
-    consequence of "manifest lock preserved" — once an existing entry is in
+    consequence of "manifest lock preserved": once an existing entry is in
     calibration, a tightened cap on a later import cannot demote it.
 
     Args:
@@ -295,7 +295,7 @@ def assign_partitions(
     for task in Task:
         ws_base = workspace_for_task.get(task)
         if ws_base is None:
-            # Task not in topology — no units to partition; skip and let
+            # Task not in topology: no units to partition; skip and let
             # downstream raise if records get routed here regardless.
             per_task_fraction[task] = 0.0
             per_task_cap[task] = None
@@ -355,7 +355,7 @@ def assign_partitions(
 
 
 def _enumerate_units(rid: str, pair: QueryResponsePair, task: Task) -> list[tuple[str, str | None]]:
-    """Annotation units for this (pair, task) — ``(unit_id, chunk_id_or_None)``."""
+    """Annotation units for this (pair, task) as ``(unit_id, chunk_id_or_None)``."""
     if task == Task.RETRIEVAL:
         return [(f"{rid}:{chunk.chunk_id}", chunk.chunk_id) for chunk in pair.chunks]
     return [(rid, None)]

@@ -43,7 +43,7 @@ def _or_none(value: float) -> float | None:
 
 
 def _item_key(row: AnnotationBase, task: Task) -> str:
-    """IAA unit key — composite (record_uuid, chunk_id) for retrieval, record_uuid otherwise.
+    """IAA unit key: composite (record_uuid, chunk_id) for retrieval, record_uuid otherwise.
 
     Retrieval fans out one record into one row per chunk; each (record_uuid, chunk_id)
     is an independent annotation item whose labels must not collide in the pivot.

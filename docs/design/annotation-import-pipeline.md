@@ -163,7 +163,7 @@ Cap unit is the annotation item: a cap of 200 on retrieval means 200 chunks; on 
 
 ### Deterministic bucketing
 
-Per-(task, unit) digest: `int(sha256(seed‖task.value‖unit_id)[:8], 16)`. Unit is calibration iff `digest < fraction × 2^32`. Mixing the task name into the hash makes per-task draws statistically independent — a chunk that lands in retrieval-calibration is not constrained to also land in grounding-calibration (cleaner under the naive Krippendorff bootstrap pragmata uses).
+Per-(task, unit) digest: `int(sha256(seed‖task.value‖unit_id)[:8], 16)`. Unit is calibration iff `digest < fraction × 2^32`. Mixing the task name into the hash makes per-task draws statistically independent - a chunk that lands in retrieval-calibration is not constrained to also land in grounding-calibration (cleaner under the naive Krippendorff bootstrap pragmata uses).
 
 ### Slot accounting under cap
 
@@ -171,24 +171,24 @@ For each task, per import:
 
 1. Count existing calibration units in the manifest (for retrieval, sum across chunks; for grounding/generation, count records).
 2. Compute `remaining = None if cap is None else max(0, cap - existing)`.
-3. If existing already exceeds cap (config tightened post-hoc), log a warning and treat `remaining = 0` — never demote existing entries (manifest-lock invariant).
+3. If existing already exceeds cap (config tightened post-hoc), log a warning and treat `remaining = 0` - never demote existing entries (manifest-lock invariant).
 4. Bucket new units by fraction; sort eligible candidates by digest ascending; promote the first `remaining` (or all if uncapped). The rest demote to production.
 
 ### Order-dependence under binding cap
 
-Because the manifest is append-only, the calibration set under a binding cap is a function of `(corpus, seed, import_order)`, not `(corpus, seed)` alone. If a corpus arrives across multiple imports and the cap binds, the specific set chosen depends on import order — but cardinality always honours the cap. This is documented in `assign_partitions` and the dedicated test in `tests/unit/core/annotation/test_partition.py::test_cap_under_split_imports_is_order_dependent_by_design`.
+Because the manifest is append-only, the calibration set under a binding cap is a function of `(corpus, seed, import_order)`, not `(corpus, seed)` alone. If a corpus arrives across multiple imports and the cap binds, the specific set chosen depends on import order - but cardinality always honours the cap. This is documented in `assign_partitions` and the dedicated test in `tests/unit/core/annotation/test_partition.py::test_cap_under_split_imports_is_order_dependent_by_design`.
 
 ### Per-record manifest schema
 
 `PartitionManifestEntry` carries:
 
-- `grounding_generation_calibration: dict[Task, bool]` — keys GROUNDING and GENERATION
-- `retrieval_chunk_calibration: dict[str, bool]` — keys are `chunk_id`; entries absent at fan-out time default to production
-- `calibration_fraction_at_import: dict[Task, float]` and `calibration_max_records_at_import: dict[Task, int | None]` — per-task provenance stamped at import time
+- `grounding_generation_calibration: dict[Task, bool]` - keys GROUNDING and GENERATION
+- `retrieval_chunk_calibration: dict[str, bool]` - keys are `chunk_id`; entries absent at fan-out time default to production
+- `calibration_fraction_at_import: dict[Task, float]` and `calibration_max_records_at_import: dict[Task, int | None]` - per-task provenance stamped at import time
 
 ### Backward-compat reading of legacy manifests
 
-Legacy entries with scalar `calibration: bool` and `calibration_fraction_at_import: float` are read via a `@model_validator(mode="before")` that expands them to per-task dicts. Per-chunk retrieval calibration is **not reconstructible** from legacy entries — the migrator leaves `retrieval_chunk_calibration` empty so re-imports assign fresh per-chunk decisions for any chunks the new code encounters.
+Legacy entries with scalar `calibration: bool` and `calibration_fraction_at_import: float` are read via a `@model_validator(mode="before")` that expands them to per-task dicts. Per-chunk retrieval calibration is **not reconstructible** from legacy entries - the migrator leaves `retrieval_chunk_calibration` empty so re-imports assign fresh per-chunk decisions for any chunks the new code encounters.
 
 ## Failure Modes
 
@@ -213,4 +213,4 @@ Legacy entries with scalar `calibration: bool` and `calibration_fraction_at_impo
 - [Export Pipeline](annotation-export-pipeline.md) — export schema and cross-dataset linking via `record_uuid`
 - [Annotation Protocol](../methodology/annotation-protocol.md) — label definitions and annotation units
 - [Annotation Interface](annotation-interface.md) — visibility contract and question wording
-- [ADR-0012: Per-Item Calibration Partition](../decisions/0012-per-item-calibration-partition.md) — design review, statistical rationale, and consequences for the calibration partitioning section above
+- [ADR-0012: Per-Item Calibration Partition](../decisions/0012-per-item-calibration-partition.md) - design review, statistical rationale, and consequences for the calibration partitioning section above
