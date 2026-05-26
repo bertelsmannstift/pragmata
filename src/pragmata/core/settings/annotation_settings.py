@@ -2,9 +2,10 @@
 
 Settings are organised into three scopes — deployment (``AnnotationSettings``),
 workspace (``WorkspaceSettings``), task (``TaskSettings``). The inheritable
-fields (``production_min_submitted``, ``calibration_min_submitted``, ``locale``)
-may be set at any scope; child scopes default to ``INHERIT``. Models hold the **specified**
-values exactly as given (``INHERIT`` survives validation, raw inputs round-trip
+fields (``production_min_submitted``, ``calibration_min_submitted``, ``locale``,
+``calibration_fraction``, ``calibration_max_records``) may be set at any scope;
+child scopes default to ``INHERIT``. Models hold the **specified** values
+exactly as given (``INHERIT`` survives validation, raw inputs round-trip
 losslessly through ``model_dump()``). ``resolved_task(workspace_name, task)``
 returns the **computed** values after walking task → workspace → deployment —
 the CSS "computed value" analogy: first non-``INHERIT`` ancestor wins.
@@ -37,6 +38,8 @@ class TaskSettings(BaseModel):
     production_min_submitted: PositiveInt | Inherit = INHERIT
     calibration_min_submitted: PositiveInt | None | Inherit = INHERIT
     locale: Locale | Inherit = INHERIT
+    calibration_fraction: float | Inherit = INHERIT
+    calibration_max_records: PositiveInt | None | Inherit = INHERIT
 
 
 class WorkspaceSettings(BaseModel):
@@ -52,6 +55,8 @@ class WorkspaceSettings(BaseModel):
     production_min_submitted: PositiveInt | Inherit = INHERIT
     calibration_min_submitted: PositiveInt | None | Inherit = INHERIT
     locale: Locale | Inherit = INHERIT
+    calibration_fraction: float | Inherit = INHERIT
+    calibration_max_records: PositiveInt | None | Inherit = INHERIT
     tasks: dict[Task, TaskSettings]
 
 
@@ -62,6 +67,8 @@ class ResolvedTaskSettings:
     production_min_submitted: int
     calibration_min_submitted: int | None
     locale: Locale
+    calibration_fraction: float
+    calibration_max_records: int | None
 
 
 class AnnotationSettings(ResolveSettings):
@@ -87,8 +94,15 @@ class AnnotationSettings(ResolveSettings):
             top of the bundled catalogs (user wins on stem collision), so a
             deployment can add or override locales without modifying the
             installed package. Must exist if set.
-        calibration_fraction: Fraction of records routed to a separate
-            calibration dataset for IAA (0.0 disables; deployment-level only).
+        calibration_fraction: Fraction of annotation items routed to the
+            calibration dataset for IAA (0.0 disables for that scope).
+            Inherited by workspaces/tasks. Cap unit is the annotation item:
+            for retrieval that's a chunk, for grounding/generation that's
+            a record_uuid.
+        calibration_max_records: Optional absolute cap on calibration
+            annotation items per task. ``None`` is uncapped (just the
+            fractional knob). Smaller of (fraction × N_items, cap) wins.
+            Inherited by workspaces/tasks.
     """
 
     argilla: ArgillaSettings = Field(default_factory=ArgillaSettings)
@@ -99,6 +113,7 @@ class AnnotationSettings(ResolveSettings):
     locale: Locale = "en"
     locale_catalog_dir: Path | None = None
     calibration_fraction: float = Field(0.1, ge=0.0, le=1.0)
+    calibration_max_records: PositiveInt | None = None
     calibration_partition_seed: NonNegativeInt = 0
     include_discarded: bool = False
     workspaces: dict[str, WorkspaceSettings] = Field(
@@ -137,10 +152,24 @@ class AnnotationSettings(ResolveSettings):
         if isinstance(locale, Inherit):
             locale = self.locale
 
+        fraction = ts.calibration_fraction
+        if isinstance(fraction, Inherit):
+            fraction = ws.calibration_fraction
+        if isinstance(fraction, Inherit):
+            fraction = self.calibration_fraction
+
+        max_records = ts.calibration_max_records
+        if isinstance(max_records, Inherit):
+            max_records = ws.calibration_max_records
+        if isinstance(max_records, Inherit):
+            max_records = self.calibration_max_records
+
         return ResolvedTaskSettings(
             production_min_submitted=production,
             calibration_min_submitted=calibration,
             locale=locale,
+            calibration_fraction=fraction,
+            calibration_max_records=max_records,
         )
 
     @model_validator(mode="after")
@@ -158,20 +187,27 @@ class AnnotationSettings(ResolveSettings):
 
     @model_validator(mode="after")
     def _check_calibration_topology(self) -> Self:
-        if self.calibration_fraction <= 0.0:
-            return self
+        """Reject configs where a task wants calibration but its overlap is disabled.
+
+        Walks per-(workspace, task) using ``resolved_task`` so per-scope overrides
+        on ``calibration_fraction`` and ``calibration_min_submitted`` are honoured.
+        A task with resolved ``calibration_fraction > 0`` and resolved
+        ``calibration_min_submitted is None`` is incoherent — calibration items
+        would be routed but no overlap threshold gates them.
+        """
         missing = [
             f"{ws_name}/{task.value}"
             for ws_name, ws in self.workspaces.items()
             for task in ws.tasks
-            if self.resolved_task(ws_name, task).calibration_min_submitted is None
+            if self.resolved_task(ws_name, task).calibration_fraction > 0
+            and self.resolved_task(ws_name, task).calibration_min_submitted is None
         ]
         if missing:
             raise ValueError(
-                f"calibration_fraction={self.calibration_fraction} > 0 but these "
-                f"workspace/task pairs disable calibration: {', '.join(missing)}. "
-                f"Either set calibration_fraction=0.0 or enable calibration at "
-                f"the appropriate scope."
+                f"calibration_fraction > 0 but these workspace/task pairs disable "
+                f"calibration_min_submitted: {', '.join(missing)}. "
+                f"Either set calibration_fraction=0.0 for those scopes or enable "
+                f"calibration_min_submitted at the appropriate scope."
             )
         return self
 
