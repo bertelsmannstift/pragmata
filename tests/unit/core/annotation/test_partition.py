@@ -99,7 +99,10 @@ class TestAssignPartitions:
         assign_partitions([pair], manifest=empty_manifest, fraction=1.0, import_id="imp1")
 
         entry = empty_manifest.assignments[rid]
-        assert entry.calibration_fraction_at_import == 1.0
+        # Schema-migration shim expands the scalar fraction passed by record_builder
+        # to a per-task dict covering all 3 tasks (kept until Commit 4 rewrites the
+        # partitioner to write the per-task shape directly).
+        assert all(v == 1.0 for v in entry.calibration_fraction_at_import.values())
         assert entry.import_id == "imp1"
 
     def test_mixed_existing_and_new_records(self, empty_manifest: PartitionManifest) -> None:
