@@ -136,7 +136,7 @@ _ENTRY_NOW = datetime(2026, 4, 30, 12, 0, tzinfo=timezone.utc)
 
 @pytest.fixture()
 def valid_entry_kwargs():
-    """Legacy-shape kwargs — exercises the backward-compat migrator."""
+    """Legacy-shape kwargs - exercises the backward-compat migrator."""
     return {
         "calibration": True,
         "import_id": "imp1",
@@ -147,7 +147,7 @@ def valid_entry_kwargs():
 
 @pytest.fixture()
 def new_entry_kwargs():
-    """New per-task / per-chunk shape — bypasses the migrator."""
+    """New per-task / per-chunk shape - bypasses the migrator."""
     return {
         "grounding_generation_calibration": {Task.GROUNDING: True, Task.GENERATION: False},
         "retrieval_chunk_calibration": {"chunk_a": True, "chunk_b": False},

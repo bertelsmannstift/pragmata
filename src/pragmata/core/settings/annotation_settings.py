@@ -81,7 +81,7 @@ def _inherit(*candidates):
     for candidate in candidates:
         if not isinstance(candidate, Inherit):
             return candidate
-    raise AssertionError("inheritance chain bottomed out with INHERIT — deployment defaults missing")
+    raise AssertionError("inheritance chain bottomed out with INHERIT; deployment defaults missing")
 
 
 class AnnotationSettings(ResolveSettings):
@@ -178,7 +178,7 @@ class AnnotationSettings(ResolveSettings):
         Walks per-(workspace, task) using ``resolved_task`` so per-scope overrides
         on ``calibration_fraction`` and ``calibration_min_submitted`` are honoured.
         A task with resolved ``calibration_fraction > 0`` and resolved
-        ``calibration_min_submitted is None`` is incoherent — calibration items
+        ``calibration_min_submitted is None`` is incoherent: calibration items
         would be routed but no overlap threshold gates them.
         """
         missing = []

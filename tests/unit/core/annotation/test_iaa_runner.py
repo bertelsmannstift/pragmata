@@ -370,7 +370,7 @@ class TestRunIaa:
 
         report = run_iaa(export_dir, iaa_dir, [Task.RETRIEVAL], n_resamples=50, seed=42)
 
-        # Both chunks survive the pivot — n_items reflects per-chunk granularity, not per-record.
+        # Both chunks survive the pivot: n_items reflects per-chunk granularity, not per-record.
         assert all(la.n_items == 2 for la in report.tasks[0].labels)
         # Pairwise kappa is over the 2 chunks, not 1 collapsed record.
         assert report.tasks[0].pairwise_kappa[0].n_shared_items == 2

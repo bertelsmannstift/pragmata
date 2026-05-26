@@ -81,7 +81,7 @@ def test_explicit_fraction_creates_both_datasets(client: rg.Argilla, base_dir: P
     assert client.datasets(prod_name, workspace="retrieval") is not None
     assert client.datasets(cal_name, workspace="retrieval") is not None
 
-    # Grounding is 1:1 with records — direct count comparison.
+    # Grounding is 1:1 with records - direct count comparison.
     assert result.calibration_count[Task.GROUNDING] > 0
     assert result.production_count[Task.GROUNDING] > 0
     assert result.calibration_count[Task.GROUNDING] + result.production_count[Task.GROUNDING] == len(records)

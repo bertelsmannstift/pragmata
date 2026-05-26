@@ -89,7 +89,7 @@ class PartitionManifestEntry(BaseModel):
         Legacy entries had ``calibration: bool`` and ``calibration_fraction_at_import:
         float`` as scalars (per ``record_uuid``). Expand to the new per-task shape.
         Per-chunk retrieval calibration is *not* reconstructible from legacy
-        entries — leave ``retrieval_chunk_calibration`` empty so re-imports
+        entries - leave ``retrieval_chunk_calibration`` empty so re-imports
         assign fresh per-chunk decisions for any chunks the new code encounters.
         """
         if not isinstance(values, dict):

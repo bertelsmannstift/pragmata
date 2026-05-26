@@ -38,7 +38,7 @@ class ImportResult:
     """Outcome of import_records(): per-task counts, dataset counts, and validation errors.
 
     Per-task dicts are keyed by ``Task`` because partition is per-(task,
-    annotation-item) — retrieval counts chunks; grounding and generation
+    annotation-item): retrieval counts chunks; grounding and generation
     count records. Values fall through to the resolved per-(workspace, task)
     settings when present.
 
@@ -249,7 +249,7 @@ def _total_units_per_task(entries: Iterable[PartitionManifestEntry]) -> dict[Tas
     """Per-task total annotation-unit count across entries.
 
     For retrieval, sums chunks; for grounding/generation, counts records that
-    carry a flag for that task (in practice every record carries both — but
+    carry a flag for that task (in practice every record carries both, but
     guard with ``.get`` for forward-compat).
     """
     totals: dict[Task, int] = {task: 0 for task in Task}
@@ -267,7 +267,7 @@ def _resolve_per_task_settings(
     """Resolve per-task ``calibration_fraction`` and ``calibration_max_records``.
 
     Picks the first workspace that owns each task. Returns zero / None for any
-    task missing from the workspaces topology — surfacing as zero realised
+    task missing from the workspaces topology, surfacing as zero realised
     fraction rather than erroring (matches pre-refactor behaviour for absent
     tasks).
     """

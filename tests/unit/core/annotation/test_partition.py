@@ -75,7 +75,7 @@ class TestBucketCalibration:
         assert 25 < flips < 75, f"seeds look correlated: {flips}/100 disagreements"
 
     def test_per_task_draws_are_independent(self) -> None:
-        """Same unit-id at same fraction can land differently per task (good — proves task is in the hash)."""
+        """Same unit-id at same fraction can land differently per task (good - proves task is in the hash)."""
         # Sample many uuids; assert the per-task results disagree for at least some.
         agreements = 0
         for i in range(100):
@@ -142,7 +142,7 @@ class TestAssignPartitions:
             for entry in result.values()
             if 0 < sum(entry.retrieval_chunk_calibration.values()) < len(entry.retrieval_chunk_calibration)
         )
-        assert mixed > 0, "no pairs had per-chunk mixing — partition might still be per-record"
+        assert mixed > 0, "no pairs had per-chunk mixing - partition might still be per-record"
 
     def test_cap_limits_calibration_count(self, empty_manifest: PartitionManifest) -> None:
         """Per-task cap binds: realised count never exceeds cap."""
@@ -195,7 +195,7 @@ class TestAssignPartitions:
                 calibration_max_records_at_import={t: None for t in Task},
                 assigned_at=now,
             )
-        # New cap is 5 — below the existing 10.
+        # New cap is 5 - below the existing 10.
         settings = AnnotationSettings(
             calibration_fraction=1.0,
             calibration_max_records=5,
@@ -311,7 +311,7 @@ class TestAssignPartitions:
         assign_partitions(pairs, manifest=manifest_b, settings=settings, import_id="imp_b")
 
         # Both orders honour the cap (cardinality invariant). The specific set chosen
-        # may differ under binding cap — documented in assign_partitions.
+        # may differ under binding cap - documented in assign_partitions.
         def _cal_count(m: PartitionManifest) -> int:
             return sum(1 for e in m.assignments.values() if e.grounding_generation_calibration[Task.GROUNDING])
 
