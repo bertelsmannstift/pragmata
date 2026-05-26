@@ -1,10 +1,11 @@
 """Boundary schemas for canonical annotation import records and partition state."""
 
 from datetime import datetime
-from typing import Self
+from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from pragmata.core.schemas.annotation_task import Task
 from pragmata.core.types import NonEmptyStr, SafePathSegment
 
 
@@ -50,21 +51,96 @@ class QueryResponsePair(BaseModel):
 
 
 class PartitionManifestEntry(BaseModel):
-    """One record's calibration vs production assignment with import provenance.
+    """One record's per-task / per-chunk calibration assignment with import provenance.
+
+    Calibration is partitioned at the annotation-item granularity, which differs by
+    task. Grounding and generation produce one annotation item per ``record_uuid``
+    (``grounding_generation_calibration`` is keyed by task). Retrieval produces one
+    annotation item per chunk (``retrieval_chunk_calibration`` is keyed by chunk_id).
 
     Attributes:
-        calibration: True if assigned to the calibration dataset, else production.
+        grounding_generation_calibration: Per-task calibration flag for the two
+            tasks that have one annotation item per ``record_uuid``.
+        retrieval_chunk_calibration: Per-chunk calibration flag for retrieval,
+            keyed by ``chunk_id``. Chunks not present in the manifest at fan-out
+            time default to production.
         import_id: Identifier of the import call that produced this assignment.
-        calibration_fraction_at_import: The fraction in force at that import call.
+        calibration_fraction_at_import: Per-task fraction in force at that
+            import call.
+        calibration_max_records_at_import: Per-task absolute cap in force at
+            that import call (``None`` = uncapped).
         assigned_at: When the assignment was made.
+
+    The transitional ``calibration`` property collapses the per-task / per-chunk
+    flags into a single bool for legacy callers; removed after Commit 4.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    calibration: bool
+    grounding_generation_calibration: dict[Task, bool]
+    retrieval_chunk_calibration: dict[str, bool] = Field(default_factory=dict)
     import_id: NonEmptyStr
-    calibration_fraction_at_import: float = Field(ge=0.0, le=1.0)
+    calibration_fraction_at_import: dict[Task, float]
+    calibration_max_records_at_import: dict[Task, int | None] = Field(default_factory=dict)
     assigned_at: datetime
+
+    @model_validator(mode="before")
+    @classmethod
+    def _migrate_legacy_calibration(cls, values: Any) -> Any:
+        """Read legacy single-bool manifests by expanding to per-task dicts.
+
+        Legacy entries had ``calibration: bool`` and ``calibration_fraction_at_import:
+        float`` as scalars (per ``record_uuid``). Expand to the new per-task shape.
+        Per-chunk retrieval calibration is *not* reconstructible from legacy
+        entries — leave ``retrieval_chunk_calibration`` empty so re-imports
+        assign fresh per-chunk decisions for any chunks the new code encounters.
+        """
+        if not isinstance(values, dict):
+            return values
+        if "calibration" not in values:
+            return values
+        if "grounding_generation_calibration" in values:
+            raise ValueError(
+                "legacy 'calibration' and new 'grounding_generation_calibration' "
+                "are mutually exclusive on a single entry"
+            )
+        legacy_bool = values.pop("calibration")
+        values["grounding_generation_calibration"] = {
+            Task.GROUNDING: legacy_bool,
+            Task.GENERATION: legacy_bool,
+        }
+        values.setdefault("retrieval_chunk_calibration", {})
+        legacy_fraction = values.pop("calibration_fraction_at_import", None)
+        if legacy_fraction is None:
+            raise ValueError(
+                "legacy entry with 'calibration' must also carry 'calibration_fraction_at_import' (no implicit default)"
+            )
+        if isinstance(legacy_fraction, (int, float)):
+            values["calibration_fraction_at_import"] = {task: float(legacy_fraction) for task in Task}
+        else:
+            values["calibration_fraction_at_import"] = legacy_fraction
+        values.setdefault(
+            "calibration_max_records_at_import",
+            {task: None for task in Task},
+        )
+        return values
+
+    @model_validator(mode="after")
+    def _check_fraction_range(self) -> Self:
+        for task, fraction in self.calibration_fraction_at_import.items():
+            if not 0.0 <= fraction <= 1.0:
+                raise ValueError(f"calibration_fraction_at_import[{task.value}]={fraction} must be in [0.0, 1.0]")
+        for task, cap in self.calibration_max_records_at_import.items():
+            if cap is not None and cap < 1:
+                raise ValueError(
+                    f"calibration_max_records_at_import[{task.value}]={cap} must be a positive integer or None"
+                )
+        return self
+
+    @property
+    def calibration(self) -> bool:
+        """Transitional shim — True if any task or chunk is calibration."""
+        return any(self.grounding_generation_calibration.values()) or any(self.retrieval_chunk_calibration.values())
 
 
 class PartitionManifest(BaseModel):
