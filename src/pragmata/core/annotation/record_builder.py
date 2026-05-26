@@ -9,6 +9,7 @@ datasets. The api/ layer resolves settings and delegates here.
 import hashlib
 import json
 import logging
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -289,6 +290,8 @@ def assign_partitions(
     per_task_fraction: dict[Task, float] = {}
     per_task_cap: dict[Task, int | None] = {}
 
+    existing_counts = count_calibration_per_task(manifest.assignments.values())
+
     for task in Task:
         ws_base = workspace_for_task.get(task)
         if ws_base is None:
@@ -303,7 +306,7 @@ def assign_partitions(
         per_task_fraction[task] = fraction
         per_task_cap[task] = cap
 
-        existing_cal = _count_existing_calibration(manifest, task)
+        existing_cal = existing_counts[task]
         if cap is not None and existing_cal > cap:
             logger.warning(
                 "Task %s: existing calibration count %d exceeds cap %d; "
@@ -316,11 +319,13 @@ def assign_partitions(
         else:
             remaining = None if cap is None else max(0, cap - existing_cal)
 
+        threshold = int(fraction * (2**32)) if 0.0 < fraction < 1.0 else None
         candidates: list[tuple[int, str, str | None]] = []  # (digest, rid, chunk_id_or_none)
         for rid, pair in new_pairs.items():
             for unit_id, chunk_id in _enumerate_units(rid, pair, task):
                 digest = _calibration_digest(unit_id, task, seed)
-                if fraction >= 1.0 or (fraction > 0.0 and digest < int(fraction * (2**32))):
+                eligible = fraction >= 1.0 or (threshold is not None and digest < threshold)
+                if eligible:
                     candidates.append((digest, rid, chunk_id))
                 else:
                     _write_unit(per_record_grnd_gen, per_record_retrieval, rid, chunk_id, task, is_cal=False)
@@ -373,16 +378,23 @@ def _write_unit(
         per_record_grnd_gen[rid][task] = is_cal
 
 
-def _count_existing_calibration(manifest: PartitionManifest, task: Task) -> int:
-    """Total calibration units (across the whole manifest) for a given task."""
-    if task == Task.RETRIEVAL:
-        return sum(
-            1
-            for entry in manifest.assignments.values()
-            for is_cal in entry.retrieval_chunk_calibration.values()
-            if is_cal
-        )
-    return sum(1 for entry in manifest.assignments.values() if entry.grounding_generation_calibration.get(task, False))
+def count_calibration_per_task(entries: Iterable[PartitionManifestEntry]) -> dict[Task, int]:
+    """Per-task calibration unit count across a collection of entries.
+
+    Single pass over ``entries``. For retrieval, counts chunks; for grounding
+    and generation, counts records. Used by ``assign_partitions`` to compute
+    existing slots before applying caps, and by the api layer to report
+    realised fractions.
+    """
+    counts: dict[Task, int] = {task: 0 for task in Task}
+    for entry in entries:
+        for task in (Task.GROUNDING, Task.GENERATION):
+            if entry.grounding_generation_calibration.get(task, False):
+                counts[task] += 1
+        for is_cal in entry.retrieval_chunk_calibration.values():
+            if is_cal:
+                counts[Task.RETRIEVAL] += 1
+    return counts
 
 
 # ---------------------------------------------------------------------------

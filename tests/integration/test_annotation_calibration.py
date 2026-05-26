@@ -199,8 +199,15 @@ def test_records_carry_calibration_metadata_to_argilla(client: rg.Argilla, base_
         manifest_path = _manifest_path(base_dir, auto_id)
         manifest = PartitionManifest.model_validate_json(manifest_path.read_text())
 
-        cal_uuids = {rid for rid, entry in manifest.assignments.items() if entry.calibration}
-        prod_uuids = {rid for rid, entry in manifest.assignments.items() if not entry.calibration}
+        # Grounding-side partition: the dataset under test below is the grounding one.
+        cal_uuids = {
+            rid for rid, entry in manifest.assignments.items() if entry.grounding_generation_calibration[Task.GROUNDING]
+        }
+        prod_uuids = {
+            rid
+            for rid, entry in manifest.assignments.items()
+            if not entry.grounding_generation_calibration[Task.GROUNDING]
+        }
 
         prod_ds = client.datasets(
             dataset_name(Task.GROUNDING, calibration=False, dataset_id=auto_id),
