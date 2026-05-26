@@ -93,10 +93,10 @@ def gen_queries_command(
         "--near-duplicate-tolerance",
         help="Similarity tolerance for near-duplicate blueprint removal. Accepts a float in (0, 1].",
     ),
-    no_planning_memory: bool = typer.Option(
-        False,
-        "--no-planning-memory",
-        help="Disable planning memory across runs. Accepts a flag.",
+    enable_planning_memory: bool | None = typer.Option(
+        None,
+        "--enable-planning-memory/--no-enable-planning-memory",
+        help="Enable or disable planning memory for the run. Accepts a boolean flag.",
     ),
 ) -> None:
     """Prepare a synthetic query generation run."""
@@ -125,7 +125,7 @@ def gen_queries_command(
         max_bucket_size=UNSET if max_bucket_size is None else max_bucket_size,
         batch_size=UNSET if batch_size is None else batch_size,
         near_duplicate_tolerance=UNSET if near_duplicate_tolerance is None else near_duplicate_tolerance,
-        enable_planning_memory=False if no_planning_memory else UNSET,
+        enable_planning_memory=UNSET if enable_planning_memory is None else enable_planning_memory,
     )
 
     typer.echo("Synthetic query generation run prepared.")

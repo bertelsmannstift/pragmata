@@ -141,7 +141,7 @@ def test_querygen_cli_forwards_runtime_and_throttle_options(monkeypatch) -> None
             "8",
             "--near-duplicate-tolerance",
             "0.8",
-            "--no-planning-memory",
+            "--no-enable-planning-memory",
         ],
     )
 
@@ -152,6 +152,21 @@ def test_querygen_cli_forwards_runtime_and_throttle_options(monkeypatch) -> None
     assert captured["batch_size"] == 8
     assert captured["near_duplicate_tolerance"] == 0.8
     assert captured["enable_planning_memory"] is False
+
+
+def test_querygen_cli_enable_planning_memory_flag_true(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_gen_queries(**kwargs):
+        captured.update(kwargs)
+        return _PreparedResult()
+
+    monkeypatch.setattr("pragmata.querygen.gen_queries", fake_gen_queries)
+
+    result = runner.invoke(app, ["querygen", "gen-queries", "--enable-planning-memory"])
+
+    assert result.exit_code == 0
+    assert captured["enable_planning_memory"] is True
 
 
 def test_querygen_cli_prints_prepared_run_summary(monkeypatch) -> None:
