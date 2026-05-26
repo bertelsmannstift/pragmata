@@ -152,3 +152,32 @@ class TestImportCommandFlags:
         assert kwargs["calibration_partition_seed"] is UNSET
         assert kwargs["calibration_min_submitted"] is UNSET
         assert kwargs["calibration_fraction"] is UNSET
+
+    @patch("pragmata.annotation.import_records")
+    def test_locale_catalog_dir_threaded_through(self, mock_import, tmp_path):
+        mock_import.return_value = _empty_import_result()
+        records_file = tmp_path / "records.jsonl"
+        records_file.write_text("", encoding="utf-8")
+        catalog_dir = tmp_path / "locales"
+        catalog_dir.mkdir()
+
+        result = runner.invoke(
+            app,
+            ["annotation", "import", str(records_file), "--locale-catalog", str(catalog_dir)],
+        )
+
+        assert result.exit_code == 0
+        kwargs = mock_import.call_args.kwargs
+        assert kwargs["locale_catalog_dir"] == str(catalog_dir)
+
+    @patch("pragmata.annotation.import_records")
+    def test_locale_catalog_dir_default_is_unset(self, mock_import, tmp_path):
+        mock_import.return_value = _empty_import_result()
+        records_file = tmp_path / "records.jsonl"
+        records_file.write_text("", encoding="utf-8")
+
+        result = runner.invoke(app, ["annotation", "import", str(records_file)])
+
+        assert result.exit_code == 0
+        kwargs = mock_import.call_args.kwargs
+        assert kwargs["locale_catalog_dir"] is UNSET
