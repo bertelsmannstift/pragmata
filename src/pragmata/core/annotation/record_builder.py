@@ -21,6 +21,7 @@ from pragmata.core.annotation.argilla_ops import create_dataset
 from pragmata.core.annotation.argilla_task_definitions import build_task_settings, dataset_name
 from pragmata.core.annotation.locales.registry import CATALOGS
 from pragmata.core.schemas.annotation_import import (
+    Chunk,
     PartitionManifest,
     PartitionManifestEntry,
     QueryResponsePair,
@@ -90,31 +91,42 @@ def derive_record_uuid(pair: QueryResponsePair) -> str:
     return hashlib.sha256(canonical.encode()).hexdigest()
 
 
+def build_retrieval_record_for_chunk(
+    pair: QueryResponsePair,
+    record_uuid: str,
+    chunk: Chunk,
+    index: int,
+) -> rg.Record:
+    """One Argilla record for a single (pair, chunk) annotation item."""
+    metadata: dict = {
+        "record_uuid": record_uuid,
+        "chunk_id": chunk.chunk_id,
+        "doc_id": chunk.doc_id,
+        "chunk_rank": chunk.chunk_rank,
+    }
+    if pair.language is not None:
+        metadata["language"] = pair.language
+    return rg.Record(
+        id=f"ret-{record_uuid}-{index}",
+        fields={
+            "query": pair.query,
+            "chunk": chunk.text,
+            "generated_answer": {"text": pair.answer},
+            **_DISCARD_FLOW_FIELD,
+        },
+        metadata=metadata,
+    )
+
+
 def build_retrieval_records(pair: QueryResponsePair, record_uuid: str) -> list[rg.Record]:
-    """One Argilla record per chunk, with shared query and generated answer."""
-    records = []
-    for i, chunk in enumerate(pair.chunks):
-        metadata: dict = {
-            "record_uuid": record_uuid,
-            "chunk_id": chunk.chunk_id,
-            "doc_id": chunk.doc_id,
-            "chunk_rank": chunk.chunk_rank,
-        }
-        if pair.language is not None:
-            metadata["language"] = pair.language
-        records.append(
-            rg.Record(
-                id=f"ret-{record_uuid}-{i}",
-                fields={
-                    "query": pair.query,
-                    "chunk": chunk.text,
-                    "generated_answer": {"text": pair.answer},
-                    **_DISCARD_FLOW_FIELD,
-                },
-                metadata=metadata,
-            )
-        )
-    return records
+    """One Argilla record per chunk — thin wrapper over the per-chunk helper.
+
+    Retained for callers (and tests) that want all retrieval records for a pair
+    in a single list. The fan-out path now routes per chunk via
+    ``build_retrieval_record_for_chunk`` so per-chunk calibration assignment
+    flows through correctly.
+    """
+    return [build_retrieval_record_for_chunk(pair, record_uuid, chunk, i) for i, chunk in enumerate(pair.chunks)]
 
 
 def build_grounding_record(pair: QueryResponsePair, record_uuid: str) -> rg.Record:
@@ -161,14 +173,26 @@ def _invert_workspace_map(settings: AnnotationSettings) -> dict[Task, str]:
 # ---------------------------------------------------------------------------
 
 
-def _bucket_calibration(record_uuid: str, fraction: float, seed: int) -> bool:
-    """Deterministic per-record assignment: hash(seed || uuid) < fraction * 2^32."""
+def _calibration_digest(unit_id: str, task: Task, seed: int) -> int:
+    """Deterministic per-(task, unit) digest in [0, 2^32).
+
+    Hash input mixes seed, task name, and the annotation unit identifier so
+    per-task draws are statistically independent: a unit that lands in
+    retrieval-calibration is not constrained to also land in
+    grounding-calibration. The unit_id is ``record_uuid`` for grounding /
+    generation (one item per record) and ``f"{record_uuid}:{chunk_id}"`` for
+    retrieval (one item per chunk).
+    """
+    return int(hashlib.sha256(f"{seed}\x00{task.value}\x00{unit_id}".encode()).hexdigest()[:8], 16)
+
+
+def _bucket_calibration(unit_id: str, task: Task, fraction: float, seed: int) -> bool:
+    """Eligibility check: per-(task, unit) digest < fraction * 2^32."""
     if fraction <= 0.0:
         return False
     if fraction >= 1.0:
         return True
-    digest = hashlib.sha256(f"{seed}\x00{record_uuid}".encode()).hexdigest()[:8]
-    return int(digest, 16) < int(fraction * (2**32))
+    return _calibration_digest(unit_id, task, seed) < int(fraction * (2**32))
 
 
 # ---------------------------------------------------------------------------
@@ -218,36 +242,152 @@ def assign_partitions(
     pairs: list[QueryResponsePair],
     *,
     manifest: PartitionManifest,
-    fraction: float,
+    settings: AnnotationSettings,
     import_id: str,
-) -> dict[str, bool]:
-    """Resolve each pair's calibration assignment, mutating the manifest in place.
+) -> dict[str, PartitionManifestEntry]:
+    """Resolve per-(task, annotation-item) calibration assignments.
 
-    Existing records keep their prior assignment (re-import safety). New
-    records are bucketed via ``_bucket_calibration`` using the manifest's
-    stored seed and the current import's fraction; the assignment is recorded
-    with import-time provenance.
+    The annotation item differs by task: for grounding and generation, one item
+    per ``record_uuid``; for retrieval, one item per ``(record_uuid, chunk_id)``.
+    Per-task fraction and cap are resolved via ``settings.resolved_task`` so
+    workspace / task overrides for ``calibration_fraction`` and
+    ``calibration_max_records`` are honoured.
 
-    Returns a record_uuid -> calibration map covering every input pair.
+    Existing manifest entries are reused untouched (manifest lock — re-import
+    stability). New units are bucketed by ``_bucket_calibration`` using
+    ``hash(seed || task || unit_id)``; if a per-task cap is in force, eligible
+    candidates are sorted by digest ascending and only the first ``remaining``
+    win calibration. The rest demote to production.
+
+    Note on order-dependence under binding cap: when the cap is binding across
+    multiple imports, the final calibration set is a function of
+    ``(corpus, seed, import_order)``, not ``(corpus, seed)`` alone. This is a
+    consequence of "manifest lock preserved" — once an existing entry is in
+    calibration, a tightened cap on a later import cannot demote it.
+
+    Args:
+        pairs: Validated pairs to partition.
+        manifest: Mutated in place to record new assignments.
+        settings: Resolves per-task fraction and cap via ``resolved_task``.
+        import_id: Stamped on new entries for provenance.
+
+    Returns:
+        record_uuid -> PartitionManifestEntry map covering every input pair
+        (existing + newly assigned).
     """
-    assignments: dict[str, bool] = {}
     now = datetime.now(timezone.utc)
+    seed = manifest.partition_seed
+    workspace_for_task = _invert_workspace_map(settings)
+
+    new_pairs: dict[str, QueryResponsePair] = {}
+    result: dict[str, PartitionManifestEntry] = {}
     for pair in pairs:
         rid = derive_record_uuid(pair)
         existing = manifest.assignments.get(rid)
         if existing is not None:
-            assignments[rid] = existing.calibration
+            result[rid] = existing
+        else:
+            new_pairs[rid] = pair
+
+    per_record_grnd_gen: dict[str, dict[Task, bool]] = {rid: {} for rid in new_pairs}
+    per_record_retrieval: dict[str, dict[str, bool]] = {rid: {} for rid in new_pairs}
+    per_task_fraction: dict[Task, float] = {}
+    per_task_cap: dict[Task, int | None] = {}
+
+    for task in Task:
+        ws_base = workspace_for_task.get(task)
+        if ws_base is None:
+            # Task not in topology — no units to partition; skip and let
+            # downstream raise if records get routed here regardless.
+            per_task_fraction[task] = 0.0
+            per_task_cap[task] = None
             continue
-        is_cal = _bucket_calibration(rid, fraction, manifest.partition_seed)
-        manifest.assignments[rid] = PartitionManifestEntry(
-            calibration=is_cal,
+        resolved = settings.resolved_task(ws_base, task)
+        fraction = resolved.calibration_fraction
+        cap = resolved.calibration_max_records
+        per_task_fraction[task] = fraction
+        per_task_cap[task] = cap
+
+        existing_cal = _count_existing_calibration(manifest, task)
+        if cap is not None and existing_cal > cap:
+            logger.warning(
+                "Task %s: existing calibration count %d exceeds cap %d; "
+                "no new calibration items promoted this run (manifest-lock invariant).",
+                task.value,
+                existing_cal,
+                cap,
+            )
+            remaining: int | None = 0
+        else:
+            remaining = None if cap is None else max(0, cap - existing_cal)
+
+        candidates: list[tuple[int, str, str | None]] = []  # (digest, rid, chunk_id_or_none)
+        for rid, pair in new_pairs.items():
+            for unit_id, chunk_id in _enumerate_units(rid, pair, task):
+                digest = _calibration_digest(unit_id, task, seed)
+                if fraction >= 1.0 or (fraction > 0.0 and digest < int(fraction * (2**32))):
+                    candidates.append((digest, rid, chunk_id))
+                else:
+                    _write_unit(per_record_grnd_gen, per_record_retrieval, rid, chunk_id, task, is_cal=False)
+
+        candidates.sort()
+        promoted = candidates if remaining is None else candidates[:remaining]
+        demoted = [] if remaining is None else candidates[remaining:]
+        for _, rid, chunk_id in promoted:
+            _write_unit(per_record_grnd_gen, per_record_retrieval, rid, chunk_id, task, is_cal=True)
+        for _, rid, chunk_id in demoted:
+            _write_unit(per_record_grnd_gen, per_record_retrieval, rid, chunk_id, task, is_cal=False)
+
+    for rid in new_pairs:
+        entry = PartitionManifestEntry(
+            grounding_generation_calibration=per_record_grnd_gen[rid],
+            retrieval_chunk_calibration=per_record_retrieval[rid],
             import_id=import_id,
-            calibration_fraction_at_import=fraction,
+            calibration_fraction_at_import=per_task_fraction,
+            calibration_max_records_at_import=per_task_cap,
             assigned_at=now,
         )
-        assignments[rid] = is_cal
+        manifest.assignments[rid] = entry
+        result[rid] = entry
+
     manifest.updated_at = now
-    return assignments
+    return result
+
+
+def _enumerate_units(rid: str, pair: QueryResponsePair, task: Task) -> list[tuple[str, str | None]]:
+    """Annotation units for this (pair, task) — ``(unit_id, chunk_id_or_None)``."""
+    if task == Task.RETRIEVAL:
+        return [(f"{rid}:{chunk.chunk_id}", chunk.chunk_id) for chunk in pair.chunks]
+    return [(rid, None)]
+
+
+def _write_unit(
+    per_record_grnd_gen: dict[str, dict[Task, bool]],
+    per_record_retrieval: dict[str, dict[str, bool]],
+    rid: str,
+    chunk_id: str | None,
+    task: Task,
+    *,
+    is_cal: bool,
+) -> None:
+    """Route a per-task assignment into the right per-record bucket."""
+    if task == Task.RETRIEVAL:
+        assert chunk_id is not None  # retrieval always has chunk_id
+        per_record_retrieval[rid][chunk_id] = is_cal
+    else:
+        per_record_grnd_gen[rid][task] = is_cal
+
+
+def _count_existing_calibration(manifest: PartitionManifest, task: Task) -> int:
+    """Total calibration units (across the whole manifest) for a given task."""
+    if task == Task.RETRIEVAL:
+        return sum(
+            1
+            for entry in manifest.assignments.values()
+            for is_cal in entry.retrieval_chunk_calibration.values()
+            if is_cal
+        )
+    return sum(1 for entry in manifest.assignments.values() if entry.grounding_generation_calibration.get(task, False))
 
 
 # ---------------------------------------------------------------------------
@@ -257,18 +397,28 @@ def assign_partitions(
 
 def _build_batches(
     records: list[QueryResponsePair],
-    assignments: dict[str, bool],
+    assignments: dict[str, PartitionManifestEntry],
 ) -> dict[tuple[Task, bool], list[rg.Record]]:
-    """Build Argilla records keyed by (task, calibration) bucket."""
+    """Build Argilla records keyed by (task, calibration) bucket.
+
+    Per-item routing: grounding and generation read their flag from
+    ``entry.grounding_generation_calibration``; each retrieval chunk reads its
+    flag from ``entry.retrieval_chunk_calibration[chunk_id]`` independently so
+    different chunks of one record can land in different buckets.
+    """
     batches: dict[tuple[Task, bool], list[rg.Record]] = {
         (task, is_cal): [] for task in Task for is_cal in (False, True)
     }
     for pair in records:
         record_uuid = derive_record_uuid(pair)
-        is_cal = assignments[record_uuid]
-        batches[(Task.RETRIEVAL, is_cal)].extend(build_retrieval_records(pair, record_uuid))
-        batches[(Task.GROUNDING, is_cal)].append(build_grounding_record(pair, record_uuid))
-        batches[(Task.GENERATION, is_cal)].append(build_generation_record(pair, record_uuid))
+        entry = assignments[record_uuid]
+        grnd_cal = entry.grounding_generation_calibration.get(Task.GROUNDING, False)
+        gen_cal = entry.grounding_generation_calibration.get(Task.GENERATION, False)
+        batches[(Task.GROUNDING, grnd_cal)].append(build_grounding_record(pair, record_uuid))
+        batches[(Task.GENERATION, gen_cal)].append(build_generation_record(pair, record_uuid))
+        for i, chunk in enumerate(pair.chunks):
+            chunk_cal = entry.retrieval_chunk_calibration.get(chunk.chunk_id, False)
+            batches[(Task.RETRIEVAL, chunk_cal)].append(build_retrieval_record_for_chunk(pair, record_uuid, chunk, i))
     return batches
 
 
@@ -351,7 +501,7 @@ def fan_out_records(
     records: list[QueryResponsePair],
     settings: AnnotationSettings,
     *,
-    assignments: dict[str, bool],
+    assignments: dict[str, PartitionManifestEntry],
 ) -> dict[str, int]:
     """Build and log Argilla records to per-purpose datasets.
 
@@ -362,14 +512,15 @@ def fan_out_records(
         client: Argilla client.
         records: Validated input pairs.
         settings: Annotation settings (topology, dataset_id).
-        assignments: Per-record calibration assignment from
-            ``assign_partitions``. The caller has already pinned each record
-            to a bucket via the manifest.
+        assignments: Per-record manifest entries from ``assign_partitions``.
+            Each entry carries per-task and per-chunk calibration flags; the
+            caller has already pinned each annotation item to a bucket via
+            the manifest.
 
     Returns:
-        Mapping of dataset name to record count for that dataset. Calibration
-        vs production totals are computable from ``assignments`` and stay in
-        the api layer.
+        Mapping of dataset name to record count for that dataset. Per-task
+        calibration vs production totals are computable from ``assignments``
+        and stay in the api layer.
     """
     task_to_ws = _invert_workspace_map(settings)
     batches = _build_batches(records, assignments)

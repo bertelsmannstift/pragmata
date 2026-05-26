@@ -14,6 +14,7 @@ import pytest
 from pragmata.api.annotation_import import ImportResult, import_records
 from pragmata.api.annotation_setup import setup, teardown
 from pragmata.core.annotation.setup import SetupResult
+from pragmata.core.schemas.annotation_task import Task
 from pragmata.core.settings.annotation_settings import AnnotationSettings, UserSpec
 
 
@@ -170,8 +171,11 @@ class TestImportRecords:
         assert isinstance(result, ImportResult)
         assert result.total_records == 2
         assert result.dataset_counts == {"ds1": 3, "ds2": 1}
-        assert result.calibration_count == 0
-        assert result.production_count == 2
+        # Per-task dicts: zero calibration (fraction=0) and 2 grounding/generation
+        # production records (one per pair); retrieval count tracks chunks.
+        assert all(v == 0 for v in result.calibration_count.values())
+        assert result.production_count[Task.GROUNDING] == 2
+        assert result.production_count[Task.GENERATION] == 2
         assert result.errors == []
 
     @patch("pragmata.api.annotation_import.fan_out_records")
@@ -383,7 +387,7 @@ class TestImportRecordsCalibrationValidation:
         with patch("pragmata.api.annotation_import.fan_out_records") as mock_fan_out:
             mock_fan_out.return_value = {"retrieval_production": 1}
             result = import_records([_make_raw()], dataset_id="t", calibration_fraction=0.0, config_path=config_path)
-        assert result.calibration_count == 0
+        assert all(v == 0 for v in result.calibration_count.values())
 
     def test_fraction_positive_with_no_calibration_topology_raises(self, tmp_path: Path) -> None:
         config_path = self._no_calibration_config(tmp_path)

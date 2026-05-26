@@ -23,7 +23,8 @@ from pragmata.core.paths.annotation_paths import (
     resolve_import_paths,
 )
 from pragmata.core.paths.paths import WorkspacePaths
-from pragmata.core.schemas.annotation_task import Locale
+from pragmata.core.schemas.annotation_import import PartitionManifestEntry
+from pragmata.core.schemas.annotation_task import Locale, Task
 from pragmata.core.settings.annotation_settings import AnnotationSettings
 from pragmata.core.settings.settings_base import UNSET, Unset, load_config_file, resolve_api_key
 
@@ -32,28 +33,38 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class ImportResult:
-    """Outcome of import_records(): counts per dataset and validation errors.
+    """Outcome of import_records(): per-task counts, dataset counts, and validation errors.
+
+    Per-task dicts are keyed by ``Task`` because partition is per-(task,
+    annotation-item) — retrieval counts chunks; grounding and generation
+    count records. Values fall through to the resolved per-(workspace, task)
+    settings when present.
 
     Attributes:
         total_records: Number of raw dicts received as input.
         dataset_counts: Records submitted per dataset name.
-        calibration_count: Records routed to the calibration dataset.
-        production_count: Records routed to the production dataset.
-        calibration_fraction: Configured fraction used to assign new records
-            this run. May differ from ``realised_calibration_fraction`` on
-            re-imports because prior assignments are locked by the manifest.
-        realised_calibration_fraction: Actual share of records routed to
-            calibration this run, ``calibration_count / (calibration_count +
-            production_count)``. Zero when no records were assigned.
+        calibration_count: Per-task count of annotation items routed to the
+            calibration dataset.
+        production_count: Per-task count of annotation items routed to the
+            production dataset.
+        calibration_fraction: Per-task configured fraction. May differ from
+            ``realised_calibration_fraction`` on re-imports because prior
+            assignments are locked by the manifest, and under a binding cap.
+        realised_calibration_fraction: Per-task actual share of items routed
+            to calibration this run (calibration / (calibration + production)).
+            Zero when no items were assigned for that task.
+        calibration_max_records: Per-task configured absolute cap. ``None`` =
+            uncapped for that task.
         errors: Per-record validation failures (index + detail).
     """
 
     total_records: int
     dataset_counts: dict[str, int]
-    calibration_count: int = 0
-    production_count: int = 0
-    calibration_fraction: float = 0.0
-    realised_calibration_fraction: float = 0.0
+    calibration_count: dict[Task, int] = field(default_factory=dict)
+    production_count: dict[Task, int] = field(default_factory=dict)
+    calibration_fraction: dict[Task, float] = field(default_factory=dict)
+    realised_calibration_fraction: dict[Task, float] = field(default_factory=dict)
+    calibration_max_records: dict[Task, int | None] = field(default_factory=dict)
     errors: list[RecordError] = field(default_factory=list)
 
 
@@ -67,6 +78,7 @@ def import_records(
     base_dir: str | Path | Unset = UNSET,
     config_path: str | Path | Unset = UNSET,
     calibration_fraction: float | Unset = UNSET,
+    calibration_max_records: int | None | Unset = UNSET,
     calibration_min_submitted: int | None | Unset = UNSET,
     calibration_partition_seed: int | Unset = UNSET,
     locale: Locale | Unset = UNSET,
@@ -111,10 +123,16 @@ def import_records(
         dataset_id: Suffix appended to dataset names for run scoping.
         base_dir: Workspace base directory. Defaults to cwd.
         config_path: Path to YAML config file for settings resolution.
-        calibration_fraction: Fraction of records routed to the calibration
-            dataset for this import. Falls through to YAML config and the
-            built-in default (0.1) when omitted. Set to 0.0 for
+        calibration_fraction: Deployment-level fraction of annotation items
+            routed to the calibration dataset (inherited by workspaces/tasks
+            unless overridden in YAML config). Falls through to YAML config
+            and the built-in default (0.1) when omitted. Set to 0.0 for
             production-only batches.
+        calibration_max_records: Deployment-level absolute cap on calibration
+            annotation items per task. ``None`` is uncapped (just the
+            fractional knob). Inherited by workspaces/tasks unless overridden
+            in YAML config. Cap unit is the annotation item: chunks for
+            retrieval, records for grounding / generation.
         calibration_min_submitted: Deployment-level overlap requirement for
             the calibration dataset. ``None`` disables calibration entirely
             (must be paired with ``calibration_fraction=0.0``). Inherits to
@@ -144,6 +162,7 @@ def import_records(
             "dataset_id": dataset_id,
             "base_dir": base_dir,
             "calibration_fraction": calibration_fraction,
+            "calibration_max_records": calibration_max_records,
             "calibration_min_submitted": calibration_min_submitted,
             "calibration_partition_seed": calibration_partition_seed,
             "locale": locale,
@@ -182,14 +201,18 @@ def import_records(
         assignments = assign_partitions(
             validation.valid,
             manifest=manifest,
-            fraction=settings.calibration_fraction,
+            settings=settings,
             import_id=import_id,
         )
 
-        calibration_count = sum(1 for is_cal in assignments.values() if is_cal)
-        production_count = len(assignments) - calibration_count
-        assigned_total = calibration_count + production_count
-        realised = calibration_count / assigned_total if assigned_total else 0.0
+        calibration_count, production_count = _count_per_task(assignments)
+        realised_fraction = {
+            task: (calibration_count[task] / (calibration_count[task] + production_count[task]))
+            if (calibration_count[task] + production_count[task])
+            else 0.0
+            for task in Task
+        }
+        configured_fraction, configured_cap = _resolve_per_task_settings(settings)
 
         # Manifest is written only after fan-out succeeds. On failure, the
         # in-memory assignments are dropped; deterministic hashing ensures the
@@ -198,21 +221,72 @@ def import_records(
         dataset_counts = fan_out_records(client, validation.valid, settings, assignments=assignments)
         write_partition_manifest(import_paths.partition_manifest, manifest)
     logger.info(
-        "Import complete: %d records across %d datasets "
-        "(calibration=%d, production=%d, configured=%.3f, realised=%.3f)",
+        "Import complete: %d records across %d datasets. Per-task calibration: %s",
         len(raw),
         len(dataset_counts),
-        calibration_count,
-        production_count,
-        settings.calibration_fraction,
-        realised,
+        ", ".join(
+            f"{task.value}={calibration_count[task]} "
+            f"(realised={realised_fraction[task]:.3f}, "
+            f"configured={configured_fraction[task]:.3f}, "
+            f"cap={configured_cap[task]})"
+            for task in Task
+        ),
     )
     return ImportResult(
         total_records=len(raw),
         dataset_counts=dataset_counts,
         calibration_count=calibration_count,
         production_count=production_count,
-        calibration_fraction=settings.calibration_fraction,
-        realised_calibration_fraction=realised,
+        calibration_fraction=configured_fraction,
+        realised_calibration_fraction=realised_fraction,
+        calibration_max_records=configured_cap,
         errors=validation.errors,
     )
+
+
+def _count_per_task(
+    assignments: dict[str, PartitionManifestEntry],
+) -> tuple[dict[Task, int], dict[Task, int]]:
+    """Per-task (calibration, production) item counts across all assignments.
+
+    For retrieval, counts chunks; for grounding/generation, counts records.
+    """
+    cal = {task: 0 for task in Task}
+    prod = {task: 0 for task in Task}
+    for entry in assignments.values():
+        for task in (Task.GROUNDING, Task.GENERATION):
+            if entry.grounding_generation_calibration.get(task, False):
+                cal[task] += 1
+            else:
+                prod[task] += 1
+        for is_cal in entry.retrieval_chunk_calibration.values():
+            if is_cal:
+                cal[Task.RETRIEVAL] += 1
+            else:
+                prod[Task.RETRIEVAL] += 1
+    return cal, prod
+
+
+def _resolve_per_task_settings(
+    settings: AnnotationSettings,
+) -> tuple[dict[Task, float], dict[Task, int | None]]:
+    """Resolve per-task ``calibration_fraction`` and ``calibration_max_records``.
+
+    Picks the first workspace that owns each task. Returns zero / None for any
+    task missing from the workspaces topology — surfacing as zero realised
+    fraction rather than erroring (matches pre-refactor behaviour for absent
+    tasks).
+    """
+    fraction: dict[Task, float] = {}
+    cap: dict[Task, int | None] = {}
+    for ws_name, ws in settings.workspaces.items():
+        for task in ws.tasks:
+            if task in fraction:
+                continue
+            resolved = settings.resolved_task(ws_name, task)
+            fraction[task] = resolved.calibration_fraction
+            cap[task] = resolved.calibration_max_records
+    for task in Task:
+        fraction.setdefault(task, 0.0)
+        cap.setdefault(task, None)
+    return fraction, cap
