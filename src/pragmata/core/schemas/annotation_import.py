@@ -70,9 +70,6 @@ class PartitionManifestEntry(BaseModel):
         calibration_max_records_at_import: Per-task absolute cap in force at
             that import call (``None`` = uncapped).
         assigned_at: When the assignment was made.
-
-    The transitional ``calibration`` property collapses the per-task / per-chunk
-    flags into a single bool for legacy callers; removed after Commit 4.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -136,11 +133,6 @@ class PartitionManifestEntry(BaseModel):
                     f"calibration_max_records_at_import[{task.value}]={cap} must be a positive integer or None"
                 )
         return self
-
-    @property
-    def calibration(self) -> bool:
-        """Transitional shim — True if any task or chunk is calibration."""
-        return any(self.grounding_generation_calibration.values()) or any(self.retrieval_chunk_calibration.values())
 
 
 class PartitionManifest(BaseModel):

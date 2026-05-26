@@ -180,7 +180,6 @@ class TestPartitionManifestEntry:
     def test_legacy_constructs_via_migrator(self, valid_entry_kwargs):
         """Legacy single-bool kwargs flow through the mode=before migrator."""
         entry = PartitionManifestEntry(**valid_entry_kwargs)
-        assert entry.calibration is True
         assert entry.import_id == "imp1"
         # Migrator expands the scalar fraction to a per-task dict covering all 3 tasks.
         assert entry.calibration_fraction_at_import == {
@@ -205,17 +204,6 @@ class TestPartitionManifestEntry:
         assert entry.grounding_generation_calibration[Task.GROUNDING] is True
         assert entry.grounding_generation_calibration[Task.GENERATION] is False
         assert entry.retrieval_chunk_calibration["chunk_a"] is True
-        # Computed calibration: any flag in any task or chunk being True.
-        assert entry.calibration is True
-
-    def test_computed_calibration_false_when_all_negative(self, new_entry_kwargs):
-        new_entry_kwargs["grounding_generation_calibration"] = {
-            Task.GROUNDING: False,
-            Task.GENERATION: False,
-        }
-        new_entry_kwargs["retrieval_chunk_calibration"] = {"chunk_a": False}
-        entry = PartitionManifestEntry(**new_entry_kwargs)
-        assert entry.calibration is False
 
     def test_legacy_missing_fraction_rejected(self, valid_entry_kwargs):
         """Legacy entries must carry calibration_fraction_at_import (no implicit default)."""

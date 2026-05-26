@@ -310,24 +310,13 @@ class TestAssignPartitions:
         )
         assign_partitions(pairs, manifest=manifest_b, settings=settings, import_id="imp_b")
 
-        def grounding_cal_set(m: PartitionManifest) -> set[str]:
-            return {rid for rid, e in m.assignments.items() if e.grounding_generation_calibration[Task.GROUNDING]}
+        # Both orders honour the cap (cardinality invariant). The specific set chosen
+        # may differ under binding cap — documented in assign_partitions.
+        def _cal_count(m: PartitionManifest) -> int:
+            return sum(1 for e in m.assignments.values() if e.grounding_generation_calibration[Task.GROUNDING])
 
-        # Both orders honour the cap.
-        cal_set_a = grounding_cal_set(manifest_a)
-        cal_set_b = grounding_cal_set(manifest_b)
-        cal_a = len(cal_set_a)
-        cal_b = len(cal_set_b)
-        assert cal_a == 3
-        assert cal_b == 3
-
-        # But the specific set chosen may differ (order-dependent under binding cap).
-        # No assertion on equality — the property is "may differ". If they happen to
-        # equal for this corpus, the test still passes; the point is to document the
-        # weaker invariant.
-        assert cal_a == cal_b  # cardinality holds
-        # cal_set_a and cal_set_b can equal or differ; both are valid outcomes.
-        _ = cal_set_a, cal_set_b
+        assert _cal_count(manifest_a) == 3
+        assert _cal_count(manifest_b) == 3
 
 
 class TestManifestIO:

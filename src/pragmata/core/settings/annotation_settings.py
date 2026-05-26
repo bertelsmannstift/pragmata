@@ -71,6 +71,19 @@ class ResolvedTaskSettings:
     calibration_max_records: int | None
 
 
+def _inherit(*candidates):
+    """Return the first non-``Inherit`` candidate.
+
+    Walks task → workspace → deployment in caller-supplied order. The deployment
+    value (last candidate) is always a concrete default by construction, so a
+    pure-Inherit chain is unreachable; assert as a sanity check.
+    """
+    for candidate in candidates:
+        if not isinstance(candidate, Inherit):
+            return candidate
+    raise AssertionError("inheritance chain bottomed out with INHERIT — deployment defaults missing")
+
+
 class AnnotationSettings(ResolveSettings):
     """Configurable runtime settings for annotation (setup, import, export).
 
@@ -134,42 +147,15 @@ class AnnotationSettings(ResolveSettings):
         ws = self.workspaces[workspace_name]
         ts = ws.tasks[task]
 
-        production = ts.production_min_submitted
-        if isinstance(production, Inherit):
-            production = ws.production_min_submitted
-        if isinstance(production, Inherit):
-            production = self.production_min_submitted
-
-        calibration = ts.calibration_min_submitted
-        if isinstance(calibration, Inherit):
-            calibration = ws.calibration_min_submitted
-        if isinstance(calibration, Inherit):
-            calibration = self.calibration_min_submitted
-
-        locale = ts.locale
-        if isinstance(locale, Inherit):
-            locale = ws.locale
-        if isinstance(locale, Inherit):
-            locale = self.locale
-
-        fraction = ts.calibration_fraction
-        if isinstance(fraction, Inherit):
-            fraction = ws.calibration_fraction
-        if isinstance(fraction, Inherit):
-            fraction = self.calibration_fraction
-
-        max_records = ts.calibration_max_records
-        if isinstance(max_records, Inherit):
-            max_records = ws.calibration_max_records
-        if isinstance(max_records, Inherit):
-            max_records = self.calibration_max_records
+        def at(field: str):
+            return _inherit(getattr(ts, field), getattr(ws, field), getattr(self, field))
 
         return ResolvedTaskSettings(
-            production_min_submitted=production,
-            calibration_min_submitted=calibration,
-            locale=locale,
-            calibration_fraction=fraction,
-            calibration_max_records=max_records,
+            production_min_submitted=at("production_min_submitted"),
+            calibration_min_submitted=at("calibration_min_submitted"),
+            locale=at("locale"),
+            calibration_fraction=at("calibration_fraction"),
+            calibration_max_records=at("calibration_max_records"),
         )
 
     @model_validator(mode="after")
@@ -195,13 +181,12 @@ class AnnotationSettings(ResolveSettings):
         ``calibration_min_submitted is None`` is incoherent — calibration items
         would be routed but no overlap threshold gates them.
         """
-        missing = [
-            f"{ws_name}/{task.value}"
-            for ws_name, ws in self.workspaces.items()
-            for task in ws.tasks
-            if self.resolved_task(ws_name, task).calibration_fraction > 0
-            and self.resolved_task(ws_name, task).calibration_min_submitted is None
-        ]
+        missing = []
+        for ws_name, ws in self.workspaces.items():
+            for task in ws.tasks:
+                resolved = self.resolved_task(ws_name, task)
+                if resolved.calibration_fraction > 0 and resolved.calibration_min_submitted is None:
+                    missing.append(f"{ws_name}/{task.value}")
         if missing:
             raise ValueError(
                 f"calibration_fraction > 0 but these workspace/task pairs disable "

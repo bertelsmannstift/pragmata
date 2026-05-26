@@ -2,6 +2,7 @@
 
 import logging
 import os
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -13,6 +14,7 @@ from pragmata.core.annotation.locales.registry import register_catalog_dir
 from pragmata.core.annotation.record_builder import (
     RecordError,
     assign_partitions,
+    count_calibration_per_task,
     fan_out_records,
     load_partition_manifest,
     validate_records,
@@ -205,12 +207,11 @@ def import_records(
             import_id=import_id,
         )
 
-        calibration_count, production_count = _count_per_task(assignments)
+        calibration_count = count_calibration_per_task(assignments.values())
+        total_count = _total_units_per_task(assignments.values())
+        production_count = {task: total_count[task] - calibration_count[task] for task in Task}
         realised_fraction = {
-            task: (calibration_count[task] / (calibration_count[task] + production_count[task]))
-            if (calibration_count[task] + production_count[task])
-            else 0.0
-            for task in Task
+            task: (calibration_count[task] / total_count[task]) if total_count[task] else 0.0 for task in Task
         }
         configured_fraction, configured_cap = _resolve_per_task_settings(settings)
 
@@ -227,8 +228,8 @@ def import_records(
         ", ".join(
             f"{task.value}={calibration_count[task]} "
             f"(realised={realised_fraction[task]:.3f}, "
-            f"configured={configured_fraction[task]:.3f}, "
-            f"cap={configured_cap[task]})"
+            f"configured={configured_fraction[task]:.3f}"
+            f"{', cap=' + str(configured_cap[task]) if configured_cap[task] is not None else ''})"
             for task in Task
         ),
     )
@@ -244,27 +245,20 @@ def import_records(
     )
 
 
-def _count_per_task(
-    assignments: dict[str, PartitionManifestEntry],
-) -> tuple[dict[Task, int], dict[Task, int]]:
-    """Per-task (calibration, production) item counts across all assignments.
+def _total_units_per_task(entries: Iterable[PartitionManifestEntry]) -> dict[Task, int]:
+    """Per-task total annotation-unit count across entries.
 
-    For retrieval, counts chunks; for grounding/generation, counts records.
+    For retrieval, sums chunks; for grounding/generation, counts records that
+    carry a flag for that task (in practice every record carries both — but
+    guard with ``.get`` for forward-compat).
     """
-    cal = {task: 0 for task in Task}
-    prod = {task: 0 for task in Task}
-    for entry in assignments.values():
+    totals: dict[Task, int] = {task: 0 for task in Task}
+    for entry in entries:
         for task in (Task.GROUNDING, Task.GENERATION):
-            if entry.grounding_generation_calibration.get(task, False):
-                cal[task] += 1
-            else:
-                prod[task] += 1
-        for is_cal in entry.retrieval_chunk_calibration.values():
-            if is_cal:
-                cal[Task.RETRIEVAL] += 1
-            else:
-                prod[Task.RETRIEVAL] += 1
-    return cal, prod
+            if task in entry.grounding_generation_calibration:
+                totals[task] += 1
+        totals[Task.RETRIEVAL] += len(entry.retrieval_chunk_calibration)
+    return totals
 
 
 def _resolve_per_task_settings(
