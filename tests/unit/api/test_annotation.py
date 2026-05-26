@@ -288,6 +288,57 @@ class TestImportRecords:
 
         assert result.total_records == 1
 
+    @patch("pragmata.api.annotation_import.register_catalog_dir")
+    @patch("pragmata.api.annotation_import.fan_out_records")
+    def test_locale_catalog_dir_kwarg_registers(
+        self, mock_fan_out: MagicMock, mock_register: MagicMock, tmp_path: Path
+    ) -> None:
+        mock_fan_out.return_value = {}
+        catalog_dir = tmp_path / "locales"
+        catalog_dir.mkdir()
+
+        import_records([], dataset_id="test", locale_catalog_dir=catalog_dir)
+
+        settings: AnnotationSettings = mock_fan_out.call_args[0][2]
+        assert settings.locale_catalog_dir == catalog_dir
+        mock_register.assert_called_once_with(catalog_dir)
+
+    @patch("pragmata.api.annotation_import.register_catalog_dir")
+    @patch("pragmata.api.annotation_import.fan_out_records")
+    def test_locale_catalog_dir_kwarg_overrides_config(
+        self, mock_fan_out: MagicMock, mock_register: MagicMock, tmp_path: Path
+    ) -> None:
+        mock_fan_out.return_value = {}
+        config_dir = tmp_path / "config-locales"
+        config_dir.mkdir()
+        kwarg_dir = tmp_path / "kwarg-locales"
+        kwarg_dir.mkdir()
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(f"locale_catalog_dir: {config_dir}\n")
+
+        import_records([], dataset_id="test", config_path=config_path, locale_catalog_dir=kwarg_dir)
+
+        settings: AnnotationSettings = mock_fan_out.call_args[0][2]
+        assert settings.locale_catalog_dir == kwarg_dir
+        mock_register.assert_called_once_with(kwarg_dir)
+
+    @patch("pragmata.api.annotation_import.register_catalog_dir")
+    @patch("pragmata.api.annotation_import.fan_out_records")
+    def test_locale_catalog_dir_unset_falls_back_to_config(
+        self, mock_fan_out: MagicMock, mock_register: MagicMock, tmp_path: Path
+    ) -> None:
+        mock_fan_out.return_value = {}
+        config_dir = tmp_path / "config-locales"
+        config_dir.mkdir()
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(f"locale_catalog_dir: {config_dir}\n")
+
+        import_records([], dataset_id="test", config_path=config_path)
+
+        settings: AnnotationSettings = mock_fan_out.call_args[0][2]
+        assert settings.locale_catalog_dir == config_dir
+        mock_register.assert_called_once_with(config_dir)
+
 
 class TestImportRecordsCalibrationValidation:
     """Hard-error semantics for calibration_fraction vs topology mismatch."""

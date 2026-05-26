@@ -70,6 +70,7 @@ def import_records(
     calibration_min_submitted: int | None | Unset = UNSET,
     calibration_partition_seed: int | Unset = UNSET,
     locale: Locale | Unset = UNSET,
+    locale_catalog_dir: str | Path | None | Unset = UNSET,
 ) -> ImportResult:
     """Validate and fan out records to per-purpose Argilla annotation datasets.
 
@@ -126,6 +127,9 @@ def import_records(
             titles/questions/guidelines used when auto-creating datasets.
             Cascades to workspaces/tasks unless they carve out their own
             value in YAML.
+        locale_catalog_dir: Directory of user-provided locale YAML files
+            layered over the bundled catalogs (user wins on stem collision).
+            Must exist if set. Falls back to YAML config.
 
     Returns:
         ImportResult with totals, per-dataset counts, partition counts, and
@@ -143,6 +147,7 @@ def import_records(
             "calibration_min_submitted": calibration_min_submitted,
             "calibration_partition_seed": calibration_partition_seed,
             "locale": locale,
+            "locale_catalog_dir": locale_catalog_dir,
         },
     )
     if settings.locale_catalog_dir is not None:
