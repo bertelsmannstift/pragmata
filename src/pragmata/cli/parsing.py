@@ -52,19 +52,14 @@ def parse_tasks(raw: str | None) -> "list[Task] | None":
 
 
 def parse_locale(raw: str | None) -> "Locale | None":
-    """Parse a locale string (e.g. ``en``, ``de``).
+    """Normalise a locale string (e.g. ``en``, ``de``).
 
-    Returns None when no locale is supplied, leaving locale selection to
-    the downstream default. Raises ``ValueError`` if the locale is unknown.
+    Returns None when no locale is supplied. Does not validate catalog
+    membership.
     """
-    from pragmata.annotation import SUPPORTED_LOCALES
-
     if raw is None:
         return None
-    locale = raw.strip()
-    if locale not in SUPPORTED_LOCALES:
-        raise ValueError(f"Unknown locale: {locale!r}. Supported: {sorted(SUPPORTED_LOCALES)}")
-    return locale
+    return raw.strip()
 
 
 def parse_user_specs(path: str | None) -> "list[UserSpec] | None":

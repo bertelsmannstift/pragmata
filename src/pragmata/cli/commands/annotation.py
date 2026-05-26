@@ -104,6 +104,13 @@ def import_command(
         "(en, de). Cascades to workspaces/tasks unless they carve out a value in YAML. "
         "Falls back to config, then 'en'.",
     ),
+    locale_catalog_dir: str | None = typer.Option(
+        None,
+        "--locale-catalog",
+        help="Directory of user-provided locale YAML files layered over bundled "
+        "catalogs (user wins on stem collision). Must exist if set. "
+        "Falls back to config.",
+    ),
 ) -> None:
     """Validate and import records into annotation datasets.
 
@@ -123,6 +130,7 @@ def import_command(
         config_path=UNSET if config is None else config,
         calibration_fraction=UNSET if calibration_fraction is None else calibration_fraction,
         locale=parse_locale(locale) or UNSET,
+        locale_catalog_dir=UNSET if locale_catalog_dir is None else locale_catalog_dir,
     )
     typer.echo(f"Total records: {result.total_records}")
     typer.echo(

@@ -121,7 +121,7 @@ def _discard_i18n_payload_for_locale(loc: Locale, task: Task) -> dict[str, Any]:
     widget uses for ``aria-label`` matching when scoping the native
     Argilla cards it hides.
     """
-    catalog = CATALOGS[loc]
+    catalog = get_catalog(loc)
     payload: dict[str, Any] = {key: catalog[(task, "widget", f"discard.{key}")] for key in DISCARD_WIDGET_KEYS}
     payload["discard_reason_title"] = catalog[(task, "question", "discard_reason")]
     payload["discard_notes_title"] = catalog[(task, "question", "discard_notes")]
