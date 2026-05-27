@@ -93,6 +93,15 @@
     if (!card) return null;
     var activeLabel = card.querySelector('label.label-active');
     if (activeLabel) {
+      // Argilla emits the label's `for` attribute as `<question_name>_<machine_value>`
+      // (locale-invariant). Read that first so localised display text — e.g. "Ja"/"Nein"
+      // in DE — does not break the constraint match against the constraint's
+      // English machine `when_value` / `then_value`.
+      var forAttr = activeLabel.getAttribute('for') || '';
+      var prefix = questionName + '_';
+      if (forAttr.indexOf(prefix) === 0) return forAttr.slice(prefix.length);
+      // Fallback for any Argilla version that drops `for=` on the active label:
+      // try the displayed text (works in EN where display == machine value).
       var textSpan = activeLabel.querySelector('.label-text__text');
       var raw = (textSpan ? textSpan.textContent : activeLabel.textContent) || '';
       var n = normalize(raw.trim());
