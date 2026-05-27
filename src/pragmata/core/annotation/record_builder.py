@@ -223,7 +223,7 @@ def write_partition_manifest(path: Path, manifest: PartitionManifest) -> None:
 class PartitionResult:
     """Outcome of ``assign_partitions()``.
 
-    Bundles the per-record manifest entries with the per-task fraction
+    Bundles the per-record manifest entries with the per-task fraction / cap
     resolved this run and the rid → pair map, so downstream callers don't
     redo the workspace walk or recompute UUIDs.
 
@@ -233,11 +233,14 @@ class PartitionResult:
         pairs_by_rid: record_uuid → QueryResponsePair for every input pair.
         calibration_fraction: Per-task resolved fraction in force this run.
             ``0.0`` for tasks absent from the workspaces topology.
+        calibration_max_records: Per-task resolved absolute cap. ``None`` =
+            uncapped (or task absent from topology).
     """
 
     assignments: dict[str, PartitionManifestEntry]
     pairs_by_rid: dict[str, QueryResponsePair]
     calibration_fraction: dict[Task, float]
+    calibration_max_records: dict[Task, int | None]
 
 
 def assign_partitions(
@@ -251,17 +254,26 @@ def assign_partitions(
 
     The annotation item differs by task: for grounding and generation, one item
     per ``record_uuid``; for retrieval, one item per ``(record_uuid, chunk_id)``.
-    Per-task fraction is resolved via ``settings.resolved_task`` so workspace /
-    task overrides for ``calibration_fraction`` are honoured.
+    Per-task fraction and cap are resolved via ``settings.resolved_task`` so
+    workspace / task overrides for ``calibration_fraction`` and
+    ``calibration_max_records`` are honoured.
 
     Existing manifest entries are reused untouched (manifest lock for re-import
     stability). New units are bucketed by per-(task, unit) digest
-    ``hash(seed || task || unit_id)`` against ``fraction * 2^32``.
+    ``hash(seed || task || unit_id)`` against ``fraction * 2^32``; if a per-task
+    cap is in force, eligible candidates are sorted by digest ascending and
+    only the first ``remaining`` win calibration. The rest demote to production.
+
+    Note on order-dependence under binding cap: when the cap is binding across
+    multiple imports, the final calibration set is a function of
+    ``(corpus, seed, import_order)``, not ``(corpus, seed)`` alone. This is a
+    consequence of "manifest lock preserved": once an existing entry is in
+    calibration, a tightened cap on a later import cannot demote it.
 
     Args:
         pairs: Validated pairs to partition.
         manifest: Mutated in place to record new assignments.
-        settings: Resolves per-task fraction via ``resolved_task``.
+        settings: Resolves per-task fraction and cap via ``resolved_task``.
         import_id: Stamped on new entries for provenance.
     """
     now = datetime.now(timezone.utc)
@@ -279,21 +291,53 @@ def assign_partitions(
     per_record_grnd_gen: dict[str, dict[Task, bool]] = {rid: {} for rid in new_pairs}
     per_record_retrieval: dict[str, dict[str, bool]] = {rid: {} for rid in new_pairs}
     per_task_fraction: dict[Task, float] = {}
+    per_task_cap: dict[Task, int | None] = {}
+
+    existing_counts = count_units_per_task(manifest.assignments.values()).calibration
 
     for task in Task:
         ws_base = workspace_for_task.get(task)
         if ws_base is None:
             per_task_fraction[task] = 0.0
+            per_task_cap[task] = None
             continue
-        fraction = settings.resolved_task(ws_base, task).calibration_fraction
+        resolved = settings.resolved_task(ws_base, task)
+        fraction = resolved.calibration_fraction
+        cap = resolved.calibration_max_records
         per_task_fraction[task] = fraction
+        per_task_cap[task] = cap
+
+        existing_cal = existing_counts[task]
+        if cap is not None and existing_cal > cap:
+            logger.warning(
+                "Task %s: existing calibration count %d exceeds cap %d; "
+                "no new calibration items promoted this run (manifest-lock invariant).",
+                task.value,
+                existing_cal,
+                cap,
+            )
+            remaining: int | None = 0
+        else:
+            remaining = None if cap is None else max(0, cap - existing_cal)
 
         threshold = int(fraction * (2**32)) if 0.0 < fraction < 1.0 else None
+        candidates: list[tuple[int, str, str | None]] = []  # (digest, rid, chunk_id_or_none)
         for rid, pair in new_pairs.items():
             for unit_id, chunk_id in _enumerate_units(rid, pair, task):
                 digest = _calibration_digest(unit_id, task, seed)
-                is_cal = fraction >= 1.0 or (threshold is not None and digest < threshold)
-                _write_unit(per_record_grnd_gen, per_record_retrieval, rid, chunk_id, task, is_cal=is_cal)
+                eligible = fraction >= 1.0 or (threshold is not None and digest < threshold)
+                if eligible:
+                    candidates.append((digest, rid, chunk_id))
+                else:
+                    _write_unit(per_record_grnd_gen, per_record_retrieval, rid, chunk_id, task, is_cal=False)
+
+        candidates.sort()
+        promoted = candidates if remaining is None else candidates[:remaining]
+        demoted = [] if remaining is None else candidates[remaining:]
+        for _, rid, chunk_id in promoted:
+            _write_unit(per_record_grnd_gen, per_record_retrieval, rid, chunk_id, task, is_cal=True)
+        for _, rid, chunk_id in demoted:
+            _write_unit(per_record_grnd_gen, per_record_retrieval, rid, chunk_id, task, is_cal=False)
 
     for rid in new_pairs:
         entry = PartitionManifestEntry(
@@ -301,6 +345,7 @@ def assign_partitions(
             retrieval_chunk_calibration=per_record_retrieval[rid],
             import_id=import_id,
             calibration_fraction_at_import=per_task_fraction,
+            calibration_max_records_at_import=per_task_cap,
             assigned_at=now,
         )
         manifest.assignments[rid] = entry
@@ -311,6 +356,7 @@ def assign_partitions(
         assignments=assignments,
         pairs_by_rid=pairs_by_rid,
         calibration_fraction=per_task_fraction,
+        calibration_max_records=per_task_cap,
     )
 
 

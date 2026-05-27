@@ -104,11 +104,21 @@ def import_command(
         "YAML config). Falls through to YAML config and built-in default (0.1) when "
         "omitted; set to 0.0 for production-only batches.",
     ),
+    calibration_max_records: int | None = typer.Option(
+        None,
+        "--calibration-max-records",
+        help="Deployment-level absolute cap on calibration annotation items per task "
+        "(inherited by workspaces/tasks unless overridden in YAML config). Smaller of "
+        "(fraction × N_items, cap) wins. Existing assignments are never demoted. "
+        "Cap unit is the annotation item: chunks for retrieval, records for grounding "
+        "and generation. Omit to leave uncapped.",
+    ),
     no_calibration: bool = typer.Option(
         False,
         "--no-calibration",
         help="Disable calibration entirely for this batch: sets calibration_min_submitted=None "
-        "and calibration_fraction=0.0. Cannot be combined with --calibration-fraction > 0.",
+        "and calibration_fraction=0.0. Cannot be combined with --calibration-fraction > 0 "
+        "or --calibration-max-records.",
     ),
     calibration_partition_seed: int | None = typer.Option(
         None,
@@ -145,6 +155,12 @@ def import_command(
             err=True,
         )
         raise typer.Exit(code=2)
+    if no_calibration and calibration_max_records is not None:
+        typer.echo(
+            "Error: --no-calibration cannot be combined with --calibration-max-records.",
+            err=True,
+        )
+        raise typer.Exit(code=2)
 
     result = annotation.import_records(
         records,
@@ -157,6 +173,7 @@ def import_command(
         calibration_fraction=(
             0.0 if no_calibration else UNSET if calibration_fraction is None else calibration_fraction
         ),
+        calibration_max_records=UNSET if calibration_max_records is None else calibration_max_records,
         calibration_min_submitted=None if no_calibration else UNSET,
         calibration_partition_seed=UNSET if calibration_partition_seed is None else calibration_partition_seed,
         locale=parse_locale(locale) or UNSET,
@@ -167,9 +184,11 @@ def import_command(
         prod_n = result.production_count.get(task, 0)
         cfg_fraction = result.calibration_fraction.get(task, 0.0)
         realised = result.realised_calibration_fraction.get(task, 0.0)
+        cap = result.calibration_max_records.get(task)
+        cap_str = f", cap={cap}" if cap is not None else ""
         typer.echo(
             f"  {task.value}: calibration={cal_n}, production={prod_n} "
-            f"(configured={cfg_fraction:.3f}, realised={realised:.3f})"
+            f"(configured={cfg_fraction:.3f}, realised={realised:.3f}{cap_str})"
         )
     for ds, count in result.dataset_counts.items():
         typer.echo(f"  {ds}: {count}")

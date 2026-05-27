@@ -229,6 +229,43 @@ def test_records_carry_calibration_metadata_to_argilla(client: rg.Argilla, base_
         teardown_resources(client, auto_settings)
 
 
+def test_calibration_max_records_caps_grounding(client: rg.Argilla, base_dir: Path) -> None:
+    """Per-task cap binds: realised calibration count never exceeds the absolute cap."""
+    auto_id = "testcap"
+    auto_settings = AnnotationSettings(dataset_id=auto_id)
+    teardown_resources(client, auto_settings)
+    setup_workspaces(client, auto_settings)
+
+    try:
+        records = [_make_raw(i) for i in range(30)]
+        result = import_records(
+            records,
+            dataset_id=auto_id,
+            base_dir=base_dir,
+            calibration_fraction=1.0,
+            calibration_max_records=3,
+            **_CREDS,
+        )
+
+        assert result.calibration_count[Task.GROUNDING] == 3
+        assert result.production_count[Task.GROUNDING] == 27
+        assert result.calibration_max_records[Task.GROUNDING] == 3
+
+        cal_ds = client.datasets(
+            dataset_name(Task.GROUNDING, calibration=True, dataset_id=auto_id),
+            workspace="grounding",
+        )
+        prod_ds = client.datasets(
+            dataset_name(Task.GROUNDING, calibration=False, dataset_id=auto_id),
+            workspace="grounding",
+        )
+        assert cal_ds is not None and prod_ds is not None
+        assert len(list(cal_ds.records)) == 3
+        assert len(list(prod_ds.records)) == 27
+    finally:
+        teardown_resources(client, auto_settings)
+
+
 class TestPerWorkspaceMinSubmitted:
     """Inherited carve-out reaches the live Argilla dataset's distribution config."""
 
