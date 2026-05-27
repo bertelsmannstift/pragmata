@@ -52,9 +52,10 @@ def _make_annotation(
     task: Task,
     label_values: dict[str, bool],
     created_at: datetime = datetime(2026, 4, 1, tzinfo=timezone.utc),
+    chunk_id: str | None = None,
 ):
     if task == Task.RETRIEVAL:
-        extra = _RETRIEVAL_DEFAULTS
+        extra = {**_RETRIEVAL_DEFAULTS, **({"chunk_id": chunk_id} if chunk_id is not None else {})}
     elif task == Task.GENERATION:
         extra = _GENERATION_DEFAULTS
     else:
@@ -84,8 +85,9 @@ def _make_row(
     task: Task,
     label_values: dict[str, bool],
     created_at: datetime = datetime(2026, 4, 1, tzinfo=timezone.utc),
+    chunk_id: str | None = None,
 ) -> tuple:
-    annotation = _make_annotation(record_uuid, annotator_id, task, label_values, created_at)
+    annotation = _make_annotation(record_uuid, annotator_id, task, label_values, created_at, chunk_id)
     return (annotation, [])
 
 
@@ -348,6 +350,30 @@ class TestRunIaa:
 
         # Only r1 and r2 count; r3's discarded responses are filtered out.
         assert all(la.n_items == 2 for la in report.tasks[0].labels)
+
+    def test_retrieval_pivot_keys_by_chunk_id(self, export_dir: AnnotationExportPaths, iaa_dir: IaaPaths):
+        """Retrieval IAA must treat each (record_uuid, chunk_id) as an independent item.
+
+        One record_uuid with multiple chunks must not collapse into a single item;
+        per-chunk labels must survive the pivot without overwriting each other.
+        """
+        agree = {"topically_relevant": True, "evidence_sufficient": True, "misleading": False}
+        disagree = {"topically_relevant": False, "evidence_sufficient": True, "misleading": False}
+        rows = [
+            # r1 has two chunks; annotators agree on cid_a, disagree on cid_b
+            _make_row("r1", "ann1", Task.RETRIEVAL, agree, chunk_id="cid_a"),
+            _make_row("r1", "ann2", Task.RETRIEVAL, agree, chunk_id="cid_a"),
+            _make_row("r1", "ann1", Task.RETRIEVAL, agree, chunk_id="cid_b"),
+            _make_row("r1", "ann2", Task.RETRIEVAL, disagree, chunk_id="cid_b"),
+        ]
+        _write_csv(export_dir.retrieval_annotation_csv, Task.RETRIEVAL, rows)
+
+        report = run_iaa(export_dir, iaa_dir, [Task.RETRIEVAL], n_resamples=50, seed=42)
+
+        # Both chunks survive the pivot: n_items reflects per-chunk granularity, not per-record.
+        assert all(la.n_items == 2 for la in report.tasks[0].labels)
+        # Pairwise kappa is over the 2 chunks, not 1 collapsed record.
+        assert report.tasks[0].pairwise_kappa[0].n_shared_items == 2
 
     def test_filter_before_date(self, export_dir: AnnotationExportPaths, iaa_dir: IaaPaths):
         labels = {"topically_relevant": True, "evidence_sufficient": True, "misleading": False}
