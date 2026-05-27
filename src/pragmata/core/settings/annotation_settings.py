@@ -19,7 +19,7 @@ single-value primitives.
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal, Self
+from typing import Annotated, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, NonNegativeInt, PositiveInt, model_validator
 
@@ -27,6 +27,8 @@ from pragmata.core.annotation.logical_constraints import CONSTRAINT_BY_ID, Sever
 from pragmata.core.schemas.annotation_task import Locale, Task
 from pragmata.core.settings.settings_base import INHERIT, Inherit, ResolveSettings
 from pragmata.core.types import SafePathSegment
+
+CalibrationFraction = Annotated[float, Field(ge=0.0, le=1.0)]
 
 
 class ArgillaSettings(BaseModel):
@@ -45,7 +47,7 @@ class TaskSettings(BaseModel):
     production_min_submitted: PositiveInt | Inherit = INHERIT
     calibration_min_submitted: PositiveInt | None | Inherit = INHERIT
     locale: Locale | Inherit = INHERIT
-    calibration_fraction: float | Inherit = INHERIT
+    calibration_fraction: CalibrationFraction | Inherit = INHERIT
     calibration_max_records: PositiveInt | None | Inherit = INHERIT
 
 
@@ -65,7 +67,7 @@ class WorkspaceSettings(BaseModel):
     calibration_min_submitted: PositiveInt | None | Inherit = INHERIT
     constraint_severity: dict[str, Severity] = Field(default_factory=dict)
     locale: Locale | Inherit = INHERIT
-    calibration_fraction: float | Inherit = INHERIT
+    calibration_fraction: CalibrationFraction | Inherit = INHERIT
     calibration_max_records: PositiveInt | None | Inherit = INHERIT
     tasks: dict[Task, TaskSettings]
 

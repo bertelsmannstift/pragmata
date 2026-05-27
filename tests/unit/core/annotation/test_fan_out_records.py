@@ -194,11 +194,11 @@ class TestFanOutRecords:
         assert cal_total == 3 * 3  # 3 cal records * 3 tasks
         assert prod_total == 2 * 3  # 2 prod records * 3 tasks
 
-    def test_skips_tasks_not_in_workspaces_topology(self, patched_create_dataset, caplog) -> None:
+    def test_records_for_task_absent_from_topology_raises(self, patched_create_dataset) -> None:
         client = MagicMock()
-        _, created = patched_create_dataset
 
-        # Topology only declares retrieval; grounding/generation are absent.
+        # Topology only declares retrieval; grounding / generation are absent
+        # but the partition manifest has assignments for them.
         partial_settings = AnnotationSettings(
             dataset_id="run1",
             workspaces={"retrieval": WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings()})},
@@ -206,13 +206,8 @@ class TestFanOutRecords:
         records = [_make_pair("q0")]
         assignments = _assignments_with_uniform_calibration(records, is_cal=False)
 
-        with caplog.at_level("WARNING"):
-            result = fan_out_records(client, partial_settings, partition=_partition(records, assignments))
-
-        # Only retrieval gets a dataset; grounding and generation are skipped with a warning.
-        assert len(result) == 1
-        assert any(ds_name.startswith("retrieval_") for (_, ds_name) in created)
-        assert "not in workspaces topology" in caplog.text
+        with pytest.raises(RuntimeError, match="not include this task"):
+            fan_out_records(client, partial_settings, partition=_partition(records, assignments))
 
     def test_per_chunk_retrieval_routing(self, patched_create_dataset) -> None:
         """Different chunks of one record can route to different retrieval buckets."""
@@ -277,8 +272,11 @@ class TestImportLocaleConflict:
         )
 
         def _create(client, name, ws_base, task_cfg):
-            # Simulate an existing dataset: ds_created=False, returning the EN-flavoured one.
-            return fake_dataset, False
+            # Only retrieval-production simulates an existing EN-flavoured dataset;
+            # other tasks get fresh fakes so they don't share log call counts.
+            if ws_base == "retrieval" and name == ds_name:
+                return fake_dataset, False
+            return fake_dataset_factory(name), True
 
         records = [_make_pair("q0")]
         assignments = _assignments_with_uniform_calibration(records, is_cal=False)
@@ -288,7 +286,11 @@ class TestImportLocaleConflict:
             dataset_id="run1",
             locale="de",
             calibration_fraction=0.0,
-            workspaces={"retrieval": WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings()})},
+            workspaces={
+                "retrieval": WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings()}),
+                "grounding": WorkspaceSettings(tasks={Task.GROUNDING: TaskSettings()}),
+                "generation": WorkspaceSettings(tasks={Task.GENERATION: TaskSettings()}),
+            },
         )
 
         with patch("pragmata.core.annotation.record_builder.create_dataset", side_effect=_create):
@@ -298,7 +300,7 @@ class TestImportLocaleConflict:
         # Records were appended (no error raised), and a warning was logged.
         # Assert against locale .name rather than the %r-formatted .value so the
         # test isn't tied to the log formatter's quote style.
-        assert len(result) == 1
+        assert ds_name in result
         assert "Locale mismatch" in caplog.text
         assert "en" in caplog.text
         assert "de" in caplog.text
