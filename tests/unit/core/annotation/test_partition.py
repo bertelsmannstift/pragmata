@@ -97,10 +97,10 @@ class TestAssignPartitions:
     def test_full_fraction_all_calibration(self, empty_manifest: PartitionManifest) -> None:
         settings = _default_settings(calibration_fraction=1.0)
         pairs = [_make_pair(f"q{i}") for i in range(5)]
-        result = assign_partitions(pairs, manifest=empty_manifest, settings=settings, import_id="imp1")
+        partition = assign_partitions(pairs, manifest=empty_manifest, settings=settings, import_id="imp1")
 
-        assert len(result) == 5
-        for entry in result.values():
+        assert len(partition.assignments) == 5
+        for entry in partition.assignments.values():
             # Every task: every unit is calibration
             assert entry.grounding_generation_calibration[Task.GROUNDING] is True
             assert entry.grounding_generation_calibration[Task.GENERATION] is True
@@ -109,9 +109,9 @@ class TestAssignPartitions:
     def test_zero_fraction_all_production(self, empty_manifest: PartitionManifest) -> None:
         settings = _default_settings(calibration_fraction=0.0)
         pairs = [_make_pair(f"q{i}", n_chunks=3) for i in range(5)]
-        result = assign_partitions(pairs, manifest=empty_manifest, settings=settings, import_id="imp1")
+        partition = assign_partitions(pairs, manifest=empty_manifest, settings=settings, import_id="imp1")
 
-        for entry in result.values():
+        for entry in partition.assignments.values():
             assert entry.grounding_generation_calibration[Task.GROUNDING] is False
             assert entry.grounding_generation_calibration[Task.GENERATION] is False
             assert not any(entry.retrieval_chunk_calibration.values())
@@ -121,12 +121,12 @@ class TestAssignPartitions:
         settings = _default_settings(calibration_fraction=0.5)
         # 50 pairs × 4 chunks each = 200 retrieval units at fraction 0.5
         pairs = [_make_pair(f"q{i}", n_chunks=4) for i in range(50)]
-        result = assign_partitions(pairs, manifest=empty_manifest, settings=settings, import_id="imp1")
+        partition = assign_partitions(pairs, manifest=empty_manifest, settings=settings, import_id="imp1")
 
         # Some pairs should have a mixed retrieval calibration set (not all True or all False).
         mixed = sum(
             1
-            for entry in result.values()
+            for entry in partition.assignments.values()
             if 0 < sum(entry.retrieval_chunk_calibration.values()) < len(entry.retrieval_chunk_calibration)
         )
         assert mixed > 0, "no pairs had per-chunk mixing - partition might still be per-record"
@@ -145,11 +145,11 @@ class TestAssignPartitions:
             assigned_at=datetime.now(timezone.utc),
         )
 
-        result = assign_partitions([pair], manifest=empty_manifest, settings=settings, import_id="imp2")
+        partition = assign_partitions([pair], manifest=empty_manifest, settings=settings, import_id="imp2")
 
         # Existing assignment preserved despite fraction=1.0 in new settings.
-        assert result[rid].grounding_generation_calibration[Task.GROUNDING] is False
-        assert result[rid].import_id == "prior"
+        assert partition.assignments[rid].grounding_generation_calibration[Task.GROUNDING] is False
+        assert partition.assignments[rid].import_id == "prior"
 
     def test_new_records_stamp_per_task_fraction(self, empty_manifest: PartitionManifest) -> None:
         """Per-task fractions are stamped on each new entry."""
@@ -165,9 +165,9 @@ class TestAssignPartitions:
             },
         )
         pair = _make_pair("q0")
-        result = assign_partitions([pair], manifest=empty_manifest, settings=settings, import_id="imp1")
+        partition = assign_partitions([pair], manifest=empty_manifest, settings=settings, import_id="imp1")
         rid = derive_record_uuid(pair)
-        entry = result[rid]
+        entry = partition.assignments[rid]
 
         assert entry.calibration_fraction_at_import[Task.RETRIEVAL] == 0.1
         assert entry.calibration_fraction_at_import[Task.GROUNDING] == 0.5

@@ -2,7 +2,6 @@
 
 import logging
 import os
-from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -14,7 +13,7 @@ from pragmata.core.annotation.locales.registry import register_catalog_dir
 from pragmata.core.annotation.record_builder import (
     RecordError,
     assign_partitions,
-    count_calibration_per_task,
+    count_units_per_task,
     fan_out_records,
     load_partition_manifest,
     validate_records,
@@ -25,7 +24,6 @@ from pragmata.core.paths.annotation_paths import (
     resolve_import_paths,
 )
 from pragmata.core.paths.paths import WorkspacePaths
-from pragmata.core.schemas.annotation_import import PartitionManifestEntry
 from pragmata.core.schemas.annotation_task import Locale, Task
 from pragmata.core.settings.annotation_settings import AnnotationSettings
 from pragmata.core.settings.settings_base import UNSET, Unset, load_config_file, resolve_api_key
@@ -190,25 +188,23 @@ def import_records(
                 manifest.partition_seed,
             )
 
-        assignments = assign_partitions(
+        partition = assign_partitions(
             validation.valid,
             manifest=manifest,
             settings=settings,
             import_id=import_id,
         )
 
-        calibration_count = count_calibration_per_task(assignments.values())
-        total_count = _total_units_per_task(assignments.values())
-        production_count = {task: total_count[task] - calibration_count[task] for task in Task}
+        counts = count_units_per_task(partition.assignments.values())
+        production_count = {task: counts.total[task] - counts.calibration[task] for task in Task}
         realised_fraction = {
-            task: (calibration_count[task] / total_count[task]) if total_count[task] else 0.0 for task in Task
+            task: (counts.calibration[task] / counts.total[task]) if counts.total[task] else 0.0 for task in Task
         }
-        configured_fraction = _resolve_per_task_fraction(settings)
 
         # Manifest is written only after fan-out succeeds. On failure, the
         # in-memory assignments are dropped; a retry with the same corpus + seed
         # re-derives identical buckets (deterministic per-unit hashing).
-        dataset_counts = fan_out_records(client, validation.valid, settings, assignments=assignments)
+        dataset_counts = fan_out_records(client, settings, partition=partition)
         write_partition_manifest(import_paths.partition_manifest, manifest)
 
     logger.info(
@@ -216,50 +212,18 @@ def import_records(
         len(raw),
         len(dataset_counts),
         ", ".join(
-            f"{task.value}={calibration_count[task]} "
-            f"(realised={realised_fraction[task]:.3f}, configured={configured_fraction[task]:.3f})"
+            f"{task.value}={counts.calibration[task]} "
+            f"(realised={realised_fraction[task]:.3f}, "
+            f"configured={partition.calibration_fraction[task]:.3f})"
             for task in Task
         ),
     )
     return ImportResult(
         total_records=len(raw),
         dataset_counts=dataset_counts,
-        calibration_count=calibration_count,
+        calibration_count=counts.calibration,
         production_count=production_count,
-        calibration_fraction=configured_fraction,
+        calibration_fraction=partition.calibration_fraction,
         realised_calibration_fraction=realised_fraction,
         errors=validation.errors,
     )
-
-
-def _total_units_per_task(entries: Iterable[PartitionManifestEntry]) -> dict[Task, int]:
-    """Per-task total annotation-unit count across entries.
-
-    For retrieval, sums chunks; for grounding/generation, counts records that
-    carry a flag for that task.
-    """
-    totals: dict[Task, int] = {task: 0 for task in Task}
-    for entry in entries:
-        for task in (Task.GROUNDING, Task.GENERATION):
-            if task in entry.grounding_generation_calibration:
-                totals[task] += 1
-        totals[Task.RETRIEVAL] += len(entry.retrieval_chunk_calibration)
-    return totals
-
-
-def _resolve_per_task_fraction(settings: AnnotationSettings) -> dict[Task, float]:
-    """Resolve per-task ``calibration_fraction`` for reporting.
-
-    Picks the first workspace that owns each task. Returns ``0.0`` for any task
-    missing from the workspaces topology, matching the assignment behaviour for
-    absent tasks.
-    """
-    fraction: dict[Task, float] = {}
-    for ws_name, ws in settings.workspaces.items():
-        for task in ws.tasks:
-            if task in fraction:
-                continue
-            fraction[task] = settings.resolved_task(ws_name, task).calibration_fraction
-    for task in Task:
-        fraction.setdefault(task, 0.0)
-    return fraction
