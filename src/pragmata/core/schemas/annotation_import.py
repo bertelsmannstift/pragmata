@@ -5,6 +5,7 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from pragmata.core.schemas.annotation_task import Task
 from pragmata.core.types import NonEmptyStr, SafePathSegment
 
 
@@ -50,21 +51,39 @@ class QueryResponsePair(BaseModel):
 
 
 class PartitionManifestEntry(BaseModel):
-    """One record's calibration vs production assignment with import provenance.
+    """One record's per-task / per-chunk calibration assignment with import provenance.
+
+    Calibration is partitioned at the annotation-item granularity, which differs by
+    task. Grounding and generation produce one annotation item per ``record_uuid``
+    (``grounding_generation_calibration`` is keyed by task). Retrieval produces one
+    annotation item per chunk (``retrieval_chunk_calibration`` is keyed by chunk_id).
 
     Attributes:
-        calibration: True if assigned to the calibration dataset, else production.
+        grounding_generation_calibration: Per-task calibration flag for the two
+            tasks that have one annotation item per ``record_uuid``.
+        retrieval_chunk_calibration: Per-chunk calibration flag for retrieval,
+            keyed by ``chunk_id``. Chunks not present in the manifest at fan-out
+            time default to production.
         import_id: Identifier of the import call that produced this assignment.
-        calibration_fraction_at_import: The fraction in force at that import call.
+        calibration_fraction_at_import: Per-task fraction in force at that
+            import call.
         assigned_at: When the assignment was made.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    calibration: bool
+    grounding_generation_calibration: dict[Task, bool]
+    retrieval_chunk_calibration: dict[str, bool] = Field(default_factory=dict)
     import_id: NonEmptyStr
-    calibration_fraction_at_import: float = Field(ge=0.0, le=1.0)
+    calibration_fraction_at_import: dict[Task, float]
     assigned_at: datetime
+
+    @model_validator(mode="after")
+    def _check_fraction_range(self) -> Self:
+        for task, fraction in self.calibration_fraction_at_import.items():
+            if not 0.0 <= fraction <= 1.0:
+                raise ValueError(f"calibration_fraction_at_import[{task.value}]={fraction} must be in [0.0, 1.0]")
+        return self
 
 
 class PartitionManifest(BaseModel):

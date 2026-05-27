@@ -8,10 +8,16 @@ import argilla as rg
 from pragmata.core.annotation.record_builder import (
     build_generation_record,
     build_grounding_record,
-    build_retrieval_records,
+    build_retrieval_record_for_chunk,
     derive_record_uuid,
 )
 from pragmata.core.schemas.annotation_import import QueryResponsePair
+
+
+def _build_retrieval_records(pair: QueryResponsePair, record_uuid: str) -> list:
+    """Mirror the production fan-out loop (record_builder._build_batches)."""
+    return [build_retrieval_record_for_chunk(pair, record_uuid, chunk, i) for i, chunk in enumerate(pair.chunks)]
+
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -68,25 +74,25 @@ class TestDeriveRecordUuid:
 
 
 # ---------------------------------------------------------------------------
-# build_retrieval_records
+# _build_retrieval_records
 # ---------------------------------------------------------------------------
 
 
 class TestBuildRetrievalRecords:
     def test_one_record_per_chunk(self) -> None:
         pair = _make_pair()
-        records = build_retrieval_records(pair, _UUID)
+        records = _build_retrieval_records(pair, _UUID)
         assert len(records) == len(pair.chunks)
 
     def test_record_ids_use_enumerate_index(self) -> None:
         pair = _make_pair()
-        records = build_retrieval_records(pair, _UUID)
+        records = _build_retrieval_records(pair, _UUID)
         assert records[0].id == f"ret-{_UUID}-0"
         assert records[1].id == f"ret-{_UUID}-1"
 
     def test_fields_query_chunk_generated_answer(self) -> None:
         pair = _make_pair()
-        rec = build_retrieval_records(pair, _UUID)[0]
+        rec = _build_retrieval_records(pair, _UUID)[0]
         assert rec.fields["query"] == pair.query
         assert rec.fields["chunk"] == pair.chunks[0].text
         assert rec.fields["generated_answer"] == {"text": pair.answer}
@@ -95,12 +101,12 @@ class TestBuildRetrievalRecords:
 
     def test_metadata_record_uuid(self) -> None:
         pair = _make_pair()
-        for rec in build_retrieval_records(pair, _UUID):
+        for rec in _build_retrieval_records(pair, _UUID):
             assert rec.metadata["record_uuid"] == _UUID
 
     def test_metadata_chunk_fields(self) -> None:
         pair = _make_pair()
-        rec = build_retrieval_records(pair, _UUID)[0]
+        rec = _build_retrieval_records(pair, _UUID)[0]
         chunk = pair.chunks[0]
         assert rec.metadata["chunk_id"] == chunk.chunk_id
         assert rec.metadata["doc_id"] == chunk.doc_id
@@ -109,7 +115,7 @@ class TestBuildRetrievalRecords:
     def test_chunk_rank_from_chunk_not_enumerate(self) -> None:
         """chunk_rank must come from chunk.chunk_rank, not the loop index."""
         pair = _make_pair()
-        records = build_retrieval_records(pair, _UUID)
+        records = _build_retrieval_records(pair, _UUID)
         for i, (rec, chunk) in enumerate(zip(records, pair.chunks)):
             assert rec.metadata["chunk_rank"] == chunk.chunk_rank
             if chunk.chunk_rank != i:
@@ -117,12 +123,12 @@ class TestBuildRetrievalRecords:
 
     def test_language_present_when_set(self) -> None:
         pair = _make_pair(language="de")
-        rec = build_retrieval_records(pair, _UUID)[0]
+        rec = _build_retrieval_records(pair, _UUID)[0]
         assert rec.metadata["language"] == "de"
 
     def test_language_omitted_when_none(self) -> None:
         pair = _make_pair(language=None)
-        for rec in build_retrieval_records(pair, _UUID):
+        for rec in _build_retrieval_records(pair, _UUID):
             assert "language" not in rec.metadata
 
 
