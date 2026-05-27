@@ -41,6 +41,19 @@ def _make_raw(i: int, *, n_chunks: int = 1) -> dict:
     }
 
 
+def _make_raw_multi_chunk(i: int, *, n_chunks: int) -> dict:
+    return {
+        "query": f"Question {i}?",
+        "answer": f"Answer {i}.",
+        "chunks": [
+            {"chunk_id": f"c{i}-{k}", "doc_id": "d1", "chunk_rank": k + 1, "text": f"Chunk {i}-{k}."}
+            for k in range(n_chunks)
+        ],
+        "context_set": "ctx-001",
+        "language": "en",
+    }
+
+
 def _manifest_path(base_dir: Path, dataset_id: str) -> Path:
     """Resolve the partition manifest path the same way the import API does."""
     workspace = WorkspacePaths.from_base_dir(base_dir)
@@ -275,6 +288,60 @@ def test_calibration_max_items_caps_grounding(client: rg.Argilla, base_dir: Path
         assert cal_ds is not None and prod_ds is not None
         assert len(list(cal_ds.records)) == 3
         assert len(list(prod_ds.records)) == 27
+    finally:
+        teardown_resources(client, auto_settings)
+
+
+def test_per_chunk_retrieval_routing_to_argilla(client: rg.Argilla, base_dir: Path) -> None:
+    """Different chunks of one record can land in different retrieval datasets on Argilla."""
+    auto_id = "testperchunk"
+    auto_settings = AnnotationSettings(dataset_id=auto_id)
+    teardown_resources(client, auto_settings)
+    setup_workspaces(client, auto_settings)
+
+    try:
+        # 30 records × 4 chunks = 120 retrieval units at fraction=0.5; per-chunk
+        # independence means some pairs end up with a mixed retrieval bucket set.
+        records = [_make_raw_multi_chunk(i, n_chunks=4) for i in range(30)]
+        import_records(records, dataset_id=auto_id, base_dir=base_dir, calibration_fraction=0.5, **_CREDS)
+
+        manifest_path = _manifest_path(base_dir, auto_id)
+        manifest = PartitionManifest.model_validate_json(manifest_path.read_text())
+
+        mixed = sum(
+            1
+            for entry in manifest.assignments.values()
+            if 0 < sum(entry.retrieval_chunk_calibration.values()) < len(entry.retrieval_chunk_calibration)
+        )
+        assert mixed > 0, "per-chunk independence not realised - no pair had a mixed retrieval bucket"
+
+        cal_ds = client.datasets(
+            dataset_name(Task.RETRIEVAL, calibration=True, dataset_id=auto_id),
+            workspace="retrieval",
+        )
+        prod_ds = client.datasets(
+            dataset_name(Task.RETRIEVAL, calibration=False, dataset_id=auto_id),
+            workspace="retrieval",
+        )
+        assert cal_ds is not None and prod_ds is not None
+
+        expected_cal_chunks = {
+            chunk_id
+            for entry in manifest.assignments.values()
+            for chunk_id, is_cal in entry.retrieval_chunk_calibration.items()
+            if is_cal
+        }
+        expected_prod_chunks = {
+            chunk_id
+            for entry in manifest.assignments.values()
+            for chunk_id, is_cal in entry.retrieval_chunk_calibration.items()
+            if not is_cal
+        }
+        cal_chunk_ids = {r.metadata["chunk_id"] for r in cal_ds.records}
+        prod_chunk_ids = {r.metadata["chunk_id"] for r in prod_ds.records}
+        assert cal_chunk_ids == expected_cal_chunks
+        assert prod_chunk_ids == expected_prod_chunks
+        assert cal_chunk_ids.isdisjoint(prod_chunk_ids)
     finally:
         teardown_resources(client, auto_settings)
 
