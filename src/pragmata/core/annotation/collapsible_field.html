@@ -35,8 +35,11 @@
   // HTML/XML structure tags — same shape the main TextField uses via
   // use_markdown=True. Run it through marked so the widget renders identically.
   // Trust assumption: record content is first-party pipeline output (no XSS
-  // sanitisation needed). Falls back to plain passthrough if the CDN load fails.
-  var rendered = (typeof marked !== "undefined") ? marked.parse(text) : text;
+  // sanitisation needed). Falls back to passthrough if marked isn't loaded or
+  // throws on malformed input — widget still shows the text, just unrendered.
+  var rendered;
+  try { rendered = (typeof marked !== "undefined") ? marked.parse(text) : text; }
+  catch (e) { rendered = text; }
   document.getElementById("content").innerHTML = rendered;
 
   // Size iframe to match content height. scrollHeight is clamped
