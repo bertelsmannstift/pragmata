@@ -551,8 +551,15 @@ def fan_out_records(
             continue
         ws_base = task_to_ws.get(task)
         if ws_base is None:
-            logger.warning("Task %r not in workspaces topology - skipping", task)
-            continue
+            # Manifest entries exist for a task absent from the current topology -
+            # silently skipping would drop data on disk. Force the operator to
+            # re-add the task or clear the affected partition manifest.
+            raise RuntimeError(
+                f"Task {task.value!r} has {len(rg_records)} records assigned via the "
+                f"partition manifest, but the current workspaces topology does not "
+                f"include this task. Re-add the task to the topology, or clear the "
+                f"partition manifest at the affected dataset scope."
+            )
         resolved = settings.resolved_task(ws_base, task)
         if calibration:
             if resolved.calibration_min_submitted is None:
