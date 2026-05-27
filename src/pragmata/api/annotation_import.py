@@ -209,7 +209,9 @@ def import_records(
 
         # Manifest is written only after fan-out succeeds. On failure, the
         # in-memory assignments are dropped; a retry with the same corpus + seed
-        # re-derives identical buckets (deterministic per-unit hashing).
+        # re-derives identical buckets under the fraction-only path. Under a
+        # binding cap, retries are order-dependent (see
+        # ``test_cap_under_split_imports_is_order_dependent_by_design``).
         dataset_counts = fan_out_records(client, settings, partition=partition)
         write_partition_manifest(import_paths.partition_manifest, manifest)
 
