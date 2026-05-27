@@ -31,3 +31,10 @@ Any future schema change is a breaking design decision requiring a new ADR and n
 - Schema definitions should live in a dedicated module, not inline with orchestration logic, to make the fork-and-modify path obvious
 - Any schema change requires updating/reviewing the annotation-related ADRs first (metrics taxonomy + annotation tasks + presentation), then updating the code implementation
 - See [Annotation Protocol](../methodology/annotation-protocol.md) and [Annotation Interface](../design/annotation-interface.md) for current schema definitions
+
+
+## Addendum: rendering flags are operational, not schema
+
+Rendering flags on existing fields — `use_markdown` on `rg.TextField`, `v-html` vs. text interpolation in CustomField templates — are operational, not schema. They do not affect the labels collected, the export format, or comparability across deployments; they only change how existing content is presented in the annotator UI.
+
+They are therefore configurable via `AnnotationSettings.field_render_mode` (deployment / workspace / task scopes, sparse-dict overlay), in the same operational layer as `min_submitted`, `constraint_severity`, and `locale`. This does not relax the hardcoded constraint on which fields, questions, and labels exist.

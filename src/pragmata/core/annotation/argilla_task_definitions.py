@@ -95,13 +95,16 @@ def _render_constraints_template(
 def build_task_settings(settings: AnnotationSettings) -> dict[Task, rg.Settings]:
     """Build Argilla Settings for each annotation task.
 
-    Not cached: result depends on ``settings`` (severity resolution per task's
-    owning workspace). Callers should hold the returned dict for the duration
-    of an import operation rather than calling repeatedly. Deferred
-    construction: call after an Argilla client is connected (or with a mock
-    client in tests).
+    Not cached: result depends on ``settings`` (severity and render-mode
+    resolution per task's owning workspace). Callers should hold the returned
+    dict for the duration of an import operation rather than calling
+    repeatedly. Deferred construction: call after an Argilla client is
+    connected (or with a mock client in tests).
     """
     task_to_ws = settings.task_to_workspace()
+
+    def md(task: Task, name: str) -> bool:
+        return settings.resolved_render_mode(task_to_ws[task], task, name) == "markdown"
     template_text = files("pragmata.core.annotation").joinpath("collapsible_field.html").read_text(encoding="utf-8")
     discard_template = files("pragmata.core.annotation").joinpath("discard_flow.html").read_text(encoding="utf-8")
     constraints_template = (
@@ -239,8 +242,8 @@ def build_task_settings(settings: AnnotationSettings) -> dict[Task, rg.Settings]
         Task.RETRIEVAL: lambda: assemble(
             Task.RETRIEVAL,
             content_fields=[
-                rg.TextField(name="query", title="Query", required=True),
-                rg.TextField(name="chunk", title="Chunk", required=True),
+                rg.TextField(name="query", title="Query", required=True, use_markdown=md(Task.RETRIEVAL, "query")),
+                rg.TextField(name="chunk", title="Chunk", required=True, use_markdown=md(Task.RETRIEVAL, "chunk")),
                 _collapsible_field("generated_answer", "Generated answer", template_text),
             ],
             questions=retrieval_questions,
@@ -256,8 +259,13 @@ def build_task_settings(settings: AnnotationSettings) -> dict[Task, rg.Settings]
         Task.GROUNDING: lambda: assemble(
             Task.GROUNDING,
             content_fields=[
-                rg.TextField(name="answer", title="Answer", required=True),
-                rg.TextField(name="context_set", title="Context set", required=True),
+                rg.TextField(name="answer", title="Answer", required=True, use_markdown=md(Task.GROUNDING, "answer")),
+                rg.TextField(
+                    name="context_set",
+                    title="Context set",
+                    required=True,
+                    use_markdown=md(Task.GROUNDING, "context_set"),
+                ),
                 _collapsible_field("query", "Query", template_text),
             ],
             questions=grounding_questions,
@@ -270,8 +278,8 @@ def build_task_settings(settings: AnnotationSettings) -> dict[Task, rg.Settings]
         Task.GENERATION: lambda: assemble(
             Task.GENERATION,
             content_fields=[
-                rg.TextField(name="query", title="Query", required=True),
-                rg.TextField(name="answer", title="Answer", required=True),
+                rg.TextField(name="query", title="Query", required=True, use_markdown=md(Task.GENERATION, "query")),
+                rg.TextField(name="answer", title="Answer", required=True, use_markdown=md(Task.GENERATION, "answer")),
                 _collapsible_field("context_set", "Context set", template_text),
             ],
             questions=generation_questions,

@@ -5,7 +5,7 @@ import yaml
 from pydantic import ValidationError
 
 from pragmata.core.annotation.logical_constraints import CONSTRAINT_BY_ID
-from pragmata.core.schemas.annotation_task import Task
+from pragmata.core.schemas.annotation_task import TEXT_FIELDS, Task
 from pragmata.core.settings.annotation_settings import (
     AnnotationSettings,
     ArgillaSettings,
@@ -520,3 +520,196 @@ class TestUserSpec:
     def test_role_owner(self):
         u = UserSpec(username="admin", role="owner", workspaces=[])
         assert u.role == "owner"
+
+
+class TestFieldRenderModeDefaults:
+    """Deployment defaults for ``field_render_mode`` cover every name in ``TEXT_FIELDS``."""
+
+    def test_default_factory_covers_all_known_field_names(self):
+        s = AnnotationSettings()
+        known = {name for names in TEXT_FIELDS.values() for name in names}
+        assert set(s.field_render_mode) == known
+
+    def test_default_value_is_plain(self):
+        s = AnnotationSettings()
+        for mode in s.field_render_mode.values():
+            assert mode == "plain"
+
+    def test_user_subset_merges_with_defaults(self):
+        s = AnnotationSettings(field_render_mode={"answer": "markdown"})
+        assert s.field_render_mode["answer"] == "markdown"
+        assert s.field_render_mode["query"] == "plain"
+        assert s.field_render_mode["chunk"] == "plain"
+        assert s.field_render_mode["context_set"] == "plain"
+
+    def test_unknown_field_name_rejected(self):
+        with pytest.raises(
+            ValidationError, match=r"deployment field_render_mode references unknown field name"
+        ):
+            AnnotationSettings(field_render_mode={"nonexistent_field": "markdown"})
+
+    def test_yaml_subset_override(self):
+        data = yaml.safe_load(
+            """
+            field_render_mode:
+              answer: markdown
+              context_set: markdown
+            """
+        )
+        s = AnnotationSettings(**data)
+        assert s.field_render_mode["answer"] == "markdown"
+        assert s.field_render_mode["context_set"] == "markdown"
+        assert s.field_render_mode["query"] == "plain"
+
+
+class TestResolvedRenderMode:
+    """``resolved_render_mode()`` walks task → workspace → deployment, sparse per-key."""
+
+    def test_deployment_default_applies_to_all_tasks(self):
+        s = AnnotationSettings(field_render_mode={"answer": "markdown"})
+        # bare 'answer' applies wherever it exists
+        assert s.resolved_render_mode("grounding", Task.GROUNDING, "answer") == "markdown"
+        assert s.resolved_render_mode("generation", Task.GENERATION, "answer") == "markdown"
+        assert s.resolved_render_mode("retrieval", Task.RETRIEVAL, "chunk") == "plain"
+
+    def test_workspace_override_wins_over_deployment(self):
+        s = AnnotationSettings(
+            field_render_mode={"answer": "markdown"},
+            workspaces={
+                "retrieval": WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings()}),
+                "grounding": WorkspaceSettings(tasks={Task.GROUNDING: TaskSettings()}),
+                "generation": WorkspaceSettings(
+                    field_render_mode={"answer": "plain"},
+                    tasks={Task.GENERATION: TaskSettings()},
+                ),
+            },
+        )
+        assert s.resolved_render_mode("grounding", Task.GROUNDING, "answer") == "markdown"
+        assert s.resolved_render_mode("generation", Task.GENERATION, "answer") == "plain"
+
+    def test_task_override_wins_over_workspace_and_deployment(self):
+        s = AnnotationSettings(
+            field_render_mode={"answer": "plain"},
+            workspaces={
+                "retrieval": WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings()}),
+                "grounding": WorkspaceSettings(tasks={Task.GROUNDING: TaskSettings()}),
+                "generation": WorkspaceSettings(
+                    field_render_mode={"answer": "markdown"},
+                    tasks={Task.GENERATION: TaskSettings(field_render_mode={"answer": "plain"})},
+                ),
+            },
+        )
+        # task scope wins
+        assert s.resolved_render_mode("generation", Task.GENERATION, "answer") == "plain"
+
+    def test_unlisted_at_workspace_falls_through_to_deployment(self):
+        s = AnnotationSettings(
+            field_render_mode={"answer": "markdown"},
+            workspaces={
+                "retrieval": WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings()}),
+                "grounding": WorkspaceSettings(
+                    field_render_mode={"context_set": "markdown"},
+                    tasks={Task.GROUNDING: TaskSettings()},
+                ),
+                "generation": WorkspaceSettings(tasks={Task.GENERATION: TaskSettings()}),
+            },
+        )
+        # workspace lists context_set, but not answer → answer falls through to deployment
+        assert s.resolved_render_mode("grounding", Task.GROUNDING, "answer") == "markdown"
+        assert s.resolved_render_mode("grounding", Task.GROUNDING, "context_set") == "markdown"
+
+
+class TestWorkspaceFieldRenderModeValidation:
+    """Workspace-scope keys must belong to one of the workspace's tasks."""
+
+    def test_field_not_in_any_workspace_task_rejected(self):
+        # 'answer' belongs to grounding/generation, not retrieval
+        with pytest.raises(
+            ValidationError,
+            match=r"workspace 'retrieval' field_render_mode references field\(s\) not in any of its tasks: \['answer'\]",
+        ):
+            AnnotationSettings(
+                workspaces={
+                    "retrieval": WorkspaceSettings(
+                        field_render_mode={"answer": "markdown"},
+                        tasks={Task.RETRIEVAL: TaskSettings()},
+                    ),
+                    "grounding": WorkspaceSettings(tasks={Task.GROUNDING: TaskSettings()}),
+                    "generation": WorkspaceSettings(tasks={Task.GENERATION: TaskSettings()}),
+                },
+            )
+
+    def test_completely_unknown_field_rejected(self):
+        with pytest.raises(
+            ValidationError, match=r"workspace 'retrieval' field_render_mode references field\(s\) not in"
+        ):
+            AnnotationSettings(
+                workspaces={
+                    "retrieval": WorkspaceSettings(
+                        field_render_mode={"nonsense": "markdown"},
+                        tasks={Task.RETRIEVAL: TaskSettings()},
+                    ),
+                    "grounding": WorkspaceSettings(tasks={Task.GROUNDING: TaskSettings()}),
+                    "generation": WorkspaceSettings(tasks={Task.GENERATION: TaskSettings()}),
+                },
+            )
+
+    def test_yaml_workspace_override(self):
+        data = yaml.safe_load(
+            """
+            workspaces:
+              retrieval:
+                tasks:
+                  retrieval: {}
+              grounding:
+                field_render_mode:
+                  answer: markdown
+                tasks:
+                  grounding: {}
+              generation:
+                tasks:
+                  generation: {}
+            """
+        )
+        s = AnnotationSettings(**data)
+        assert s.resolved_render_mode("grounding", Task.GROUNDING, "answer") == "markdown"
+
+
+class TestTaskFieldRenderModeValidation:
+    """Task-scope keys must belong to that specific task's TextFields."""
+
+    def test_field_not_in_task_rejected(self):
+        # 'chunk' belongs to retrieval, not grounding
+        with pytest.raises(
+            ValidationError,
+            match=r"workspace 'grounding' task 'grounding' field_render_mode references field\(s\) not in this task: \['chunk'\]",
+        ):
+            AnnotationSettings(
+                workspaces={
+                    "retrieval": WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings()}),
+                    "grounding": WorkspaceSettings(
+                        tasks={Task.GROUNDING: TaskSettings(field_render_mode={"chunk": "markdown"})},
+                    ),
+                    "generation": WorkspaceSettings(tasks={Task.GENERATION: TaskSettings()}),
+                },
+            )
+
+    def test_yaml_task_override(self):
+        data = yaml.safe_load(
+            """
+            workspaces:
+              retrieval:
+                tasks:
+                  retrieval: {}
+              grounding:
+                tasks:
+                  grounding:
+                    field_render_mode:
+                      answer: markdown
+              generation:
+                tasks:
+                  generation: {}
+            """
+        )
+        s = AnnotationSettings(**data)
+        assert s.resolved_render_mode("grounding", Task.GROUNDING, "answer") == "markdown"
