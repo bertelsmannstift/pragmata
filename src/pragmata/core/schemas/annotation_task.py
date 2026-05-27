@@ -40,6 +40,6 @@ TEXT_FIELDS: dict[Task, frozenset[str]] = {
 Source of truth for which fields are eligible for
 :attr:`AnnotationSettings.field_render_mode` configuration. Drift against
 the actual ``rg.TextField(name=...)`` calls in
-:mod:`pragmata.core.annotation.argilla_task_definitions` is caught by a
-module-load assertion in that module.
+:mod:`pragmata.core.annotation.argilla_task_definitions` is caught by
+``TestTextFieldsRegistryMatchesActualTextFields`` in the test suite.
 """

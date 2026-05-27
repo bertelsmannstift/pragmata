@@ -27,6 +27,12 @@ from pragmata.core.schemas.annotation_task import TEXT_FIELDS, FieldRenderMode, 
 from pragmata.core.settings.settings_base import INHERIT, Inherit, ResolveSettings
 from pragmata.core.types import SafePathSegment
 
+# Flat set of every TextField name that may appear as a key in
+# ``field_render_mode`` at any scope; derived once from ``TEXT_FIELDS`` and
+# reused by the default factory and key validator below.
+_KNOWN_FIELD_NAMES: frozenset[str] = frozenset(name for names in TEXT_FIELDS.values() for name in names)
+_DEFAULT_FIELD_RENDER_MODE: dict[str, FieldRenderMode] = {name: "plain" for name in _KNOWN_FIELD_NAMES}
+
 
 class ArgillaSettings(BaseModel):
     """Argilla connection settings (URL only; API key is resolved from env)."""
@@ -98,9 +104,10 @@ class AnnotationSettings(ResolveSettings):
             ``"answer"``) to render mode (``"plain"`` or ``"markdown"``).
             Markdown rendering also handles inline raw HTML, useful when
             content comes from a pipeline that emits HTML. Per-workspace
-            overrides live on ``WorkspaceSettings.field_render_mode``;
-            ``resolved_render_mode(workspace_name, field_name)`` walks
-            workspace then deployment. Unknown keys raise at validation
+            and per-task overrides live on ``WorkspaceSettings.field_render_mode``
+            and ``TaskSettings.field_render_mode`` respectively;
+            ``resolved_render_mode(workspace_name, task, field_name)`` walks
+            task → workspace → deployment. Unknown keys raise at validation
             time. Defaults populate every known field with ``"plain"``.
     """
 
@@ -121,7 +128,7 @@ class AnnotationSettings(ResolveSettings):
         }
     )
     field_render_mode: dict[str, FieldRenderMode] = Field(
-        default_factory=lambda: {name: "plain" for names in TEXT_FIELDS.values() for name in names}
+        default_factory=lambda: dict(_DEFAULT_FIELD_RENDER_MODE)
     )
     workspaces: dict[str, WorkspaceSettings] = Field(
         default_factory=lambda: {
@@ -240,12 +247,11 @@ class AnnotationSettings(ResolveSettings):
         actually belong to that scope's tasks (so an ``"answer"`` override
         on a retrieval-only workspace is caught at validation time).
         """
-        all_fields = {name for names in TEXT_FIELDS.values() for name in names}
-        unknown = set(self.field_render_mode) - all_fields
+        unknown = set(self.field_render_mode) - _KNOWN_FIELD_NAMES
         if unknown:
             raise ValueError(
                 f"deployment field_render_mode references unknown field name(s): "
-                f"{sorted(unknown)}. Known field names: {sorted(all_fields)}."
+                f"{sorted(unknown)}. Known field names: {sorted(_KNOWN_FIELD_NAMES)}."
             )
         for ws_name, ws in self.workspaces.items():
             ws_fields = {name for task in ws.tasks for name in TEXT_FIELDS[task]}
