@@ -189,7 +189,9 @@ class TestImportLocaleConflict:
 
         # Build an EN-flavoured existing dataset; _detect_dataset_locale will
         # match its label displays against the EN catalog.
-        en_settings = build_task_settings("en")[Task.RETRIEVAL]
+        from pragmata.core.settings.annotation_settings import AnnotationSettings
+
+        en_settings = build_task_settings(AnnotationSettings(locale="en"))[Task.RETRIEVAL]
         ds_name = dataset_name(Task.RETRIEVAL, calibration=False, dataset_id="run1")
         fake_dataset = fake_dataset_factory(ds_name)
         fake_dataset.settings = rg.Settings(
