@@ -188,19 +188,19 @@ def import_records(
                 manifest.partition_seed,
             )
 
-        assignments = assign_partitions(
+        partition = assign_partitions(
             validation.valid,
             manifest=manifest,
             settings=settings,
             import_id=import_id,
         )
 
-        summary = summarize_partitions(assignments.values(), settings)
+        summary = summarize_partitions(partition.assignments.values(), settings)
 
         # Manifest is written only after fan-out succeeds. On failure, the
         # in-memory assignments are dropped; a retry with the same corpus + seed
         # re-derives identical buckets (deterministic per-unit hashing).
-        dataset_counts = fan_out_records(client, validation.valid, settings, assignments=assignments)
+        dataset_counts = fan_out_records(client, settings, partition=partition)
         write_partition_manifest(import_paths.partition_manifest, manifest)
 
     logger.info(

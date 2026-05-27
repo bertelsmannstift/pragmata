@@ -150,7 +150,7 @@ class TestImportRecords:
 
         mock_fan_out.assert_called_once()
         assert mock_client is mock_fan_out.call_args[0][0]
-        assert len(mock_fan_out.call_args[0][1]) == 1
+        assert len(mock_fan_out.call_args.kwargs["partition"].pairs_by_rid) == 1
 
     @patch("pragmata.api.annotation_import.fan_out_records")
     def test_resolves_dataset_id(self, mock_fan_out: MagicMock) -> None:
@@ -158,7 +158,7 @@ class TestImportRecords:
 
         import_records([], dataset_id="myprefix")
 
-        settings: AnnotationSettings = mock_fan_out.call_args[0][2]
+        settings: AnnotationSettings = mock_fan_out.call_args[0][1]
         assert settings.dataset_id == "myprefix"
 
     @patch("pragmata.api.annotation_import.fan_out_records")
@@ -199,7 +199,7 @@ class TestImportRecords:
         assert len(result.errors) == 1
         assert result.errors[0].index == 1
         # Only the valid record was passed to fan_out
-        assert len(mock_fan_out.call_args[0][1]) == 1
+        assert len(mock_fan_out.call_args.kwargs["partition"].pairs_by_rid) == 1
 
     @patch("pragmata.api.annotation_import.fan_out_records")
     def test_all_invalid_skips_fan_out(self, mock_fan_out: MagicMock) -> None:
@@ -211,7 +211,7 @@ class TestImportRecords:
         assert result.total_records == 2
         assert len(result.errors) == 2
         # fan_out called with empty records list
-        assert mock_fan_out.call_args[0][1] == []
+        assert mock_fan_out.call_args.kwargs["partition"].pairs_by_rid == {}
 
     @patch("pragmata.api.annotation_import.fan_out_records")
     def test_accepts_json_file_path(self, mock_fan_out: MagicMock, tmp_path: Path) -> None:
@@ -303,7 +303,7 @@ class TestImportRecords:
 
         import_records([], dataset_id="test", locale_catalog_dir=catalog_dir)
 
-        settings: AnnotationSettings = mock_fan_out.call_args[0][2]
+        settings: AnnotationSettings = mock_fan_out.call_args[0][1]
         assert settings.locale_catalog_dir == catalog_dir
         mock_register.assert_called_once_with(catalog_dir)
 
@@ -322,7 +322,7 @@ class TestImportRecords:
 
         import_records([], dataset_id="test", config_path=config_path, locale_catalog_dir=kwarg_dir)
 
-        settings: AnnotationSettings = mock_fan_out.call_args[0][2]
+        settings: AnnotationSettings = mock_fan_out.call_args[0][1]
         assert settings.locale_catalog_dir == kwarg_dir
         mock_register.assert_called_once_with(kwarg_dir)
 
@@ -339,7 +339,7 @@ class TestImportRecords:
 
         import_records([], dataset_id="test", config_path=config_path)
 
-        settings: AnnotationSettings = mock_fan_out.call_args[0][2]
+        settings: AnnotationSettings = mock_fan_out.call_args[0][1]
         assert settings.locale_catalog_dir == config_dir
         mock_register.assert_called_once_with(config_dir)
 
