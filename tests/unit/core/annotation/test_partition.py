@@ -87,7 +87,7 @@ class TestAssignPartitions:
     def empty_manifest(self) -> PartitionManifest:
         now = datetime.now(timezone.utc)
         return PartitionManifest(
-            dataset_id="test",
+            dataset_id="test",  # alias for partition_scope
             created_at=now,
             updated_at=now,
             partition_seed=0,
@@ -315,15 +315,15 @@ class TestAssignPartitions:
 class TestManifestIO:
     def test_load_empty_when_missing(self, tmp_path: Path) -> None:
         path = tmp_path / "partition.meta.json"
-        manifest = load_partition_manifest(path, dataset_id="test", partition_seed=42)
+        manifest = load_partition_manifest(path, partition_scope="test", partition_seed=42)
 
-        assert manifest.dataset_id == "test"
+        assert manifest.partition_scope == "test"
         assert manifest.partition_seed == 42
         assert manifest.assignments == {}
 
     def test_round_trip(self, tmp_path: Path) -> None:
         path = tmp_path / "partition.meta.json"
-        original = load_partition_manifest(path, dataset_id="test", partition_seed=7)
+        original = load_partition_manifest(path, partition_scope="test", partition_seed=7)
         original.assignments["uuid-1"] = PartitionManifestEntry(
             grounding_generation_calibration={Task.GROUNDING: True, Task.GENERATION: False},
             retrieval_chunk_calibration={"chunk-a": True, "chunk-b": False},
@@ -334,22 +334,33 @@ class TestManifestIO:
         )
 
         write_partition_manifest(path, original)
-        restored = load_partition_manifest(path, dataset_id="test", partition_seed=7)
+        restored = load_partition_manifest(path, partition_scope="test", partition_seed=7)
 
-        assert restored.dataset_id == original.dataset_id
+        assert restored.partition_scope == original.partition_scope
         assert restored.partition_seed == original.partition_seed
         assert restored.assignments["uuid-1"] == original.assignments["uuid-1"]
 
+    def test_on_disk_uses_dataset_id_key(self, tmp_path: Path) -> None:
+        """Serialised JSON uses 'dataset_id' key for backwards compat with existing manifests."""
+        path = tmp_path / "partition.meta.json"
+        manifest = load_partition_manifest(path, partition_scope="myproject", partition_seed=0)
+        write_partition_manifest(path, manifest)
+        import json
+
+        raw = json.loads(path.read_text())
+        assert raw["dataset_id"] == "myproject"
+        assert "partition_scope" not in raw
+
     def test_write_requires_existing_parent(self, tmp_path: Path) -> None:
         path = tmp_path / "nested" / "subdir" / "partition.meta.json"
-        manifest = load_partition_manifest(path, dataset_id="x", partition_seed=0)
+        manifest = load_partition_manifest(path, partition_scope="x", partition_seed=0)
         with pytest.raises(FileNotFoundError):
             write_partition_manifest(path, manifest)
 
-    def test_load_rejects_dataset_id_mismatch(self, tmp_path: Path) -> None:
+    def test_load_rejects_scope_mismatch(self, tmp_path: Path) -> None:
         path = tmp_path / "partition.meta.json"
-        original = load_partition_manifest(path, dataset_id="scope-a", partition_seed=0)
+        original = load_partition_manifest(path, partition_scope="scope-a", partition_seed=0)
         write_partition_manifest(path, original)
 
         with pytest.raises(ValueError, match="scope-a"):
-            load_partition_manifest(path, dataset_id="scope-b", partition_seed=0)
+            load_partition_manifest(path, partition_scope="scope-b", partition_seed=0)

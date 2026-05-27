@@ -75,6 +75,7 @@ def import_records(
     api_key: str | Unset = UNSET,
     format: str = "auto",
     dataset_id: str | Unset = UNSET,
+    partition_scope: str | Unset = UNSET,
     base_dir: str | Path | Unset = UNSET,
     config_path: str | Path | Unset = UNSET,
     calibration_fraction: float | Unset = UNSET,
@@ -120,7 +121,11 @@ def import_records(
         api_key: Argilla API key.
         format: File format override — 'auto' (default), 'json', 'jsonl',
             or 'csv'. Only used for str/Path inputs.
-        dataset_id: Suffix appended to dataset names for run scoping.
+        dataset_id: Suffix appended to dataset names in Argilla (cosmetic).
+        partition_scope: Calibration-budget scope key. Defaults to
+            ``dataset_id`` when omitted. Set independently to share clean
+            Argilla dataset names across domains while keeping separate
+            calibration caps.
         base_dir: Workspace base directory. Defaults to cwd.
         config_path: Path to YAML config file for settings resolution.
         calibration_fraction: Deployment-level fraction of annotation items
@@ -160,6 +165,7 @@ def import_records(
         overrides={
             "argilla": {"api_url": api_url},
             "dataset_id": dataset_id,
+            "partition_scope": partition_scope,
             "base_dir": base_dir,
             "calibration_fraction": calibration_fraction,
             "calibration_max_records": calibration_max_records,
@@ -176,7 +182,7 @@ def import_records(
     client = resolve_argilla_client(settings.argilla.api_url, api_key)
     workspace = WorkspacePaths.from_base_dir(settings.base_dir)
     paths = resolve_annotation_paths(workspace=workspace).ensure_dirs()
-    import_paths = resolve_import_paths(workspace=workspace, dataset_id=settings.dataset_id).ensure_dirs()
+    import_paths = resolve_import_paths(workspace=workspace, partition_scope=settings.partition_scope).ensure_dirs()
 
     import_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%f")
 
@@ -187,7 +193,7 @@ def import_records(
 
         manifest = load_partition_manifest(
             import_paths.partition_manifest,
-            dataset_id=settings.dataset_id,
+            partition_scope=settings.partition_scope,
             partition_seed=settings.calibration_partition_seed,
         )
         if manifest.partition_seed != settings.calibration_partition_seed:

@@ -400,12 +400,12 @@ class TestImportRecordsManifestOrdering:
     """Manifest is written only after fan_out_records succeeds."""
 
     @staticmethod
-    def _manifest_path(base_dir: Path, dataset_id: str) -> Path:
+    def _manifest_path(base_dir: Path, partition_scope: str) -> Path:
         from pragmata.core.paths.annotation_paths import resolve_import_paths
         from pragmata.core.paths.paths import WorkspacePaths
 
         workspace = WorkspacePaths.from_base_dir(base_dir)
-        return resolve_import_paths(workspace=workspace, dataset_id=dataset_id).partition_manifest
+        return resolve_import_paths(workspace=workspace, partition_scope=partition_scope).partition_manifest
 
     @patch("pragmata.api.annotation_import.fan_out_records")
     def test_manifest_written_after_successful_fan_out(self, mock_fan_out: MagicMock, _isolate_base_dir: Path) -> None:
