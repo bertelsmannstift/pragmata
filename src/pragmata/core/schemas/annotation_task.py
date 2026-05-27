@@ -20,7 +20,7 @@ class DiscardReason(StrEnum):
     OUTSIDE_REVIEWER_EXPERTISE = "outside_reviewer_expertise"
 
 
-type FieldRenderMode = Literal["plain", "markdown"]
+FieldRenderMode = Literal["plain", "markdown"]
 """Rendering mode for a TextField in the Argilla UI.
 
 ``markdown`` enables the markdown renderer, which also handles inline raw HTML
