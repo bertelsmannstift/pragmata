@@ -206,6 +206,36 @@ class TestImportCommandFlags:
         assert kwargs["calibration_partition_seed"] is UNSET
         assert kwargs["calibration_min_submitted"] is UNSET
         assert kwargs["calibration_fraction"] is UNSET
+        assert kwargs["calibration_max_records"] is UNSET
+
+    @patch("pragmata.annotation.import_records")
+    def test_calibration_max_records_threaded_through(self, mock_import, tmp_path):
+        mock_import.return_value = _empty_import_result()
+        records_file = tmp_path / "records.jsonl"
+        records_file.write_text("", encoding="utf-8")
+
+        result = runner.invoke(
+            app,
+            ["annotation", "import", str(records_file), "--calibration-max-records", "200"],
+        )
+
+        assert result.exit_code == 0
+        kwargs = mock_import.call_args.kwargs
+        assert kwargs["calibration_max_records"] == 200
+
+    @patch("pragmata.annotation.import_records")
+    def test_calibration_max_records_conflicts_with_no_calibration(self, mock_import, tmp_path):
+        records_file = tmp_path / "records.jsonl"
+        records_file.write_text("", encoding="utf-8")
+
+        result = runner.invoke(
+            app,
+            ["annotation", "import", str(records_file), "--no-calibration", "--calibration-max-records", "50"],
+        )
+
+        assert result.exit_code == 2
+        assert "cannot be combined" in result.output
+        mock_import.assert_not_called()
 
     @patch("pragmata.annotation.import_records")
     def test_locale_catalog_dir_threaded_through(self, mock_import, tmp_path):

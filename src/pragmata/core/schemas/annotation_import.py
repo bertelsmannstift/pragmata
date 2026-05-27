@@ -78,6 +78,8 @@ class PartitionManifestEntry(BaseModel):
         import_id: Identifier of the import call that produced this assignment.
         calibration_fraction_at_import: Per-task fraction in force at that
             import call.
+        calibration_max_records_at_import: Per-task absolute cap in force at
+            that import call (``None`` = uncapped).
         assigned_at: When the assignment was made.
     """
 
@@ -87,7 +89,17 @@ class PartitionManifestEntry(BaseModel):
     retrieval_chunk_calibration: dict[str, bool] = Field(default_factory=dict)
     import_id: NonEmptyStr
     calibration_fraction_at_import: dict[Task, Annotated[float, Field(ge=0.0, le=1.0)]]
+    calibration_max_items_at_import: dict[Task, int | None] = Field(default_factory=dict)
     assigned_at: datetime
+
+    @model_validator(mode="after")
+    def _check_cap_range(self) -> Self:
+        for task, cap in self.calibration_max_items_at_import.items():
+            if cap is not None and cap < 1:
+                raise ValueError(
+                    f"calibration_max_items_at_import[{task.value}]={cap} must be a positive integer or None"
+                )
+        return self
 
 
 class PartitionManifest(BaseModel):

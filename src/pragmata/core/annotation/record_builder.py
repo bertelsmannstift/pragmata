@@ -9,7 +9,7 @@ datasets. The api/ layer resolves settings and delegates here.
 import hashlib
 import json
 import logging
-from collections.abc import Callable, Iterable
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -237,7 +237,7 @@ def write_partition_manifest(path: Path, manifest: PartitionManifest) -> None:
 class PartitionResult:
     """Outcome of ``assign_partitions()``.
 
-    Bundles the per-record manifest entries with the per-task fraction
+    Bundles the per-record manifest entries with the per-task fraction / cap
     resolved this run and the rid → pair map, so downstream callers don't
     redo the workspace walk or recompute UUIDs.
 
@@ -247,11 +247,14 @@ class PartitionResult:
         pairs_by_rid: record_uuid → QueryResponsePair for every input pair.
         calibration_fraction: Per-task resolved fraction in force this run.
             ``0.0`` for tasks absent from the workspaces topology.
+        calibration_max_records: Per-task resolved absolute cap. ``None`` =
+            uncapped (or task absent from topology).
     """
 
     assignments: dict[str, PartitionManifestEntry]
     pairs_by_rid: dict[str, QueryResponsePair]
     calibration_fraction: dict[Task, float]
+    calibration_max_records: dict[Task, int | None]
 
 
 def assign_partitions(
@@ -265,77 +268,132 @@ def assign_partitions(
 
     The annotation item differs by task: for grounding and generation, one item
     per ``record_uuid``; for retrieval, one item per ``(record_uuid, chunk_id)``.
-    Per-task fraction is resolved via ``settings.resolved_task`` so workspace /
-    task overrides for ``calibration_fraction`` are honoured.
+    Per-task fraction and cap are resolved via ``settings.resolved_task`` so
+    workspace / task overrides for ``calibration_fraction`` and
+    ``calibration_max_records`` are honoured.
 
-    Existing assignments are locked for re-import stability and never rewritten.
-    A new record is bucketed across all active tasks by per-(task, unit) digest
-    ``hash(seed || task || unit_id)`` against ``fraction * 2^32``. An existing
-    record is *backfilled* for any task the topology has since gained (e.g.
-    retrieval-only at first import, grounding added later) using the same
-    deterministic digest, so late-activated tasks partition pre-existing records
-    identically to fresh ones rather than silently defaulting to production.
+    Already-recorded units are locked for re-import stability and never
+    rewritten. Every other unit is an *unassigned candidate* this run: all units
+    of a brand-new record, plus units of any task an existing record has gained
+    since its last import (*backfill*, e.g. retrieval-only at first import,
+    grounding added later). Per task, eligible candidates (``fraction >= 1.0`` or
+    digest ``hash(seed || task || unit_id) < fraction * 2^32``) are ranked by
+    digest ascending and, when a per-task cap is in force, only the first
+    ``remaining = max(0, cap - existing_calibration)`` win calibration; the rest
+    demote to production. New and backfilled candidates compete for the same
+    budget, so the cap binds on all calibration assigned this run.
+
+    Note on order-dependence under binding cap: when the cap binds across
+    multiple imports, the final calibration set is a function of
+    ``(corpus, seed, import_order)``, not ``(corpus, seed)`` alone — once an
+    existing unit is in calibration, a tightened cap on a later import cannot
+    demote it (manifest lock).
 
     Args:
         pairs: Validated pairs to partition.
         manifest: Mutated in place to record new and backfilled assignments.
-        settings: Resolves per-task fraction via ``resolved_task``.
+        settings: Resolves per-task fraction and cap via ``resolved_task``.
         import_id: Stamped on new entries for provenance.
 
     Returns:
         A ``PartitionResult`` bundling the assignments, the rid → pair map, and
-        the per-task fraction resolved this run.
+        the per-task fraction and cap resolved this run.
     """
     now = datetime.now(timezone.utc)
     seed = manifest.partition_seed
     workspace_for_task = _invert_workspace_map(settings)
 
     pairs_by_rid: dict[str, QueryResponsePair] = {derive_record_uuid(pair): pair for pair in pairs}
+    active_tasks = {task for task in Task if workspace_for_task.get(task) is not None}
+
     per_task_fraction: dict[Task, float] = {}
+    per_task_cap: dict[Task, int | None] = {}
     threshold_for_task: dict[Task, int | None] = {}
     for task in Task:
         ws_base = workspace_for_task.get(task)
         if ws_base is None:
             per_task_fraction[task] = 0.0
+            per_task_cap[task] = None
             threshold_for_task[task] = None
             continue
-        fraction = settings.resolved_task(ws_base, task).calibration_fraction
+        resolved = settings.resolved_task(ws_base, task)
+        fraction = resolved.calibration_fraction
         per_task_fraction[task] = fraction
+        per_task_cap[task] = resolved.calibration_max_records
         threshold_for_task[task] = int(fraction * (2**32)) if 0.0 < fraction < 1.0 else None
 
-    def is_cal(task: Task, unit_id: str) -> bool:
+    existing_cal_counts = count_units_per_task(manifest.assignments.values()).calibration
+
+    # Units assigned this run (new records + backfilled tasks), keyed by rid.
+    new_grnd_gen: dict[str, dict[Task, bool]] = {}
+    new_retrieval: dict[str, dict[str, bool]] = {}
+
+    def _record(rid: str, chunk_id: str | None, task: Task, *, is_cal: bool) -> None:
+        new_grnd_gen.setdefault(rid, {})
+        new_retrieval.setdefault(rid, {})
+        _write_unit(new_grnd_gen[rid], new_retrieval[rid], chunk_id, task, is_cal=is_cal)
+
+    for task in active_tasks:
         fraction = per_task_fraction[task]
         threshold = threshold_for_task[task]
-        return fraction >= 1.0 or (threshold is not None and _calibration_digest(unit_id, task, seed) < threshold)
+        cap = per_task_cap[task]
+        existing_cal = existing_cal_counts[task]
+        if cap is not None and existing_cal > cap:
+            logger.warning(
+                "Task %s: existing calibration count %d exceeds cap %d; "
+                "no new calibration items promoted this run (manifest-lock invariant).",
+                task.value,
+                existing_cal,
+                cap,
+            )
+            remaining: int | None = 0
+        else:
+            remaining = None if cap is None else max(0, cap - existing_cal)
 
-    active_tasks = {task for task in Task if workspace_for_task.get(task) is not None}
+        candidates: list[tuple[int, str, str | None]] = []  # (digest, rid, chunk_id_or_none)
+        for rid, pair in pairs_by_rid.items():
+            existing = manifest.assignments.get(rid)
+            for unit_id, chunk_id in _enumerate_units(rid, pair, task):
+                if existing is not None and _unit_assigned(existing, task, chunk_id):
+                    continue  # locked - never rewritten
+                digest = _calibration_digest(unit_id, task, seed)
+                eligible = fraction >= 1.0 or (threshold is not None and digest < threshold)
+                if eligible:
+                    candidates.append((digest, rid, chunk_id))
+                else:
+                    _record(rid, chunk_id, task, is_cal=False)
+
+        candidates.sort()
+        promoted = candidates if remaining is None else candidates[:remaining]
+        demoted = [] if remaining is None else candidates[remaining:]
+        for _, rid, chunk_id in promoted:
+            _record(rid, chunk_id, task, is_cal=True)
+        for _, rid, chunk_id in demoted:
+            _record(rid, chunk_id, task, is_cal=False)
+
     assignments: dict[str, PartitionManifestEntry] = {}
     changed = False
     for rid, pair in pairs_by_rid.items():
         existing = manifest.assignments.get(rid)
+        add_gg = new_grnd_gen.get(rid, {})
+        add_ret = new_retrieval.get(rid, {})
         if existing is None:
-            grnd_gen: dict[Task, bool] = {}
-            retrieval: dict[str, bool] = {}
-            for task in active_tasks:
-                for unit_id, chunk_id in _enumerate_units(rid, pair, task):
-                    _write_unit(grnd_gen, retrieval, chunk_id, task, is_cal=is_cal(task, unit_id))
             entry = PartitionManifestEntry(
-                grounding_generation_calibration=grnd_gen,
-                retrieval_chunk_calibration=retrieval,
+                grounding_generation_calibration=add_gg,
+                retrieval_chunk_calibration=add_ret,
                 import_id=import_id,
                 calibration_fraction_at_import=dict(per_task_fraction),
+                calibration_max_items_at_import=dict(per_task_cap),
                 assigned_at=now,
             )
-            manifest.assignments[rid] = entry
-            assignments[rid] = entry
-            changed = True
+        elif add_gg or add_ret:
+            entry = _merge_backfill(existing, add_gg, add_ret, per_task_fraction, per_task_cap)
+        else:
+            assignments[rid] = existing  # nothing new - reuse untouched
             continue
-
-        entry = _backfill_entry(existing, rid, pair, active_tasks, per_task_fraction, is_cal)
-        if entry is not existing:
-            manifest.assignments[rid] = entry
-            changed = True
+        manifest.assignments[rid] = entry
         assignments[rid] = entry
+        changed = True
 
     if changed:
         manifest.updated_at = now
@@ -343,49 +401,42 @@ def assign_partitions(
         assignments=assignments,
         pairs_by_rid=pairs_by_rid,
         calibration_fraction=per_task_fraction,
+        calibration_max_records=per_task_cap,
     )
 
 
-def _backfill_entry(
-    entry: PartitionManifestEntry,
-    rid: str,
-    pair: QueryResponsePair,
-    active_tasks: set[Task],
-    per_task_fraction: dict[Task, float],
-    is_cal: Callable[[Task, str], bool],
-) -> PartitionManifestEntry:
-    """Assign active tasks/chunks absent from an existing entry; never rewrite.
+def _unit_assigned(entry: PartitionManifestEntry, task: Task, chunk_id: str | None) -> bool:
+    """Whether this unit already carries a locked assignment on the entry."""
+    if task == Task.RETRIEVAL:
+        return chunk_id in entry.retrieval_chunk_calibration
+    return task in entry.grounding_generation_calibration
 
-    Returns ``entry`` unchanged when nothing is missing, else a new entry with
-    the newly-active units assigned via the same deterministic digest a fresh
-    import uses. Provenance (``import_id``, ``assigned_at``) is preserved from the
-    original assignment; ``calibration_fraction_at_import`` records the resolved
-    fraction for each backfilled task.
+
+def _merge_backfill(
+    entry: PartitionManifestEntry,
+    add_grnd_gen: dict[Task, bool],
+    add_retrieval: dict[str, bool],
+    per_task_fraction: dict[Task, float],
+    per_task_cap: dict[Task, int | None],
+) -> PartitionManifestEntry:
+    """Merge newly-assigned (backfilled) units into an existing entry.
+
+    Existing assignments are never rewritten - only tasks/chunks absent from the
+    entry are added. Provenance (``import_id``, ``assigned_at``) is preserved;
+    fraction/cap provenance is recorded for each backfilled task.
     """
-    grnd_gen = dict(entry.grounding_generation_calibration)
-    retrieval = dict(entry.retrieval_chunk_calibration)
     fraction_at_import = dict(entry.calibration_fraction_at_import)
-    added = False
-    for task in active_tasks:
-        for unit_id, chunk_id in _enumerate_units(rid, pair, task):
-            if task == Task.RETRIEVAL:
-                assert chunk_id is not None  # retrieval always has chunk_id
-                if chunk_id in retrieval:
-                    continue
-                retrieval[chunk_id] = is_cal(task, unit_id)
-            elif task not in grnd_gen:
-                grnd_gen[task] = is_cal(task, unit_id)
-            else:
-                continue
-            fraction_at_import[task] = per_task_fraction[task]
-            added = True
-    if not added:
-        return entry
+    cap_at_import = dict(entry.calibration_max_items_at_import)
+    backfilled_tasks = set(add_grnd_gen) | ({Task.RETRIEVAL} if add_retrieval else set())
+    for task in backfilled_tasks:
+        fraction_at_import[task] = per_task_fraction[task]
+        cap_at_import[task] = per_task_cap[task]
     return entry.model_copy(
         update={
-            "grounding_generation_calibration": grnd_gen,
-            "retrieval_chunk_calibration": retrieval,
+            "grounding_generation_calibration": {**entry.grounding_generation_calibration, **add_grnd_gen},
+            "retrieval_chunk_calibration": {**entry.retrieval_chunk_calibration, **add_retrieval},
             "calibration_fraction_at_import": fraction_at_import,
+            "calibration_max_items_at_import": cap_at_import,
         }
     )
 

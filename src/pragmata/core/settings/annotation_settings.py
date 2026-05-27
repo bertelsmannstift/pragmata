@@ -3,12 +3,12 @@
 Settings are organised into three scopes — deployment (``AnnotationSettings``),
 workspace (``WorkspaceSettings``), task (``TaskSettings``). The inheritable
 fields (``production_min_submitted``, ``calibration_min_submitted``, ``locale``,
-``calibration_fraction``) may be set at any scope; child scopes default to
-``INHERIT``. Models hold the **specified** values exactly as given
-(``INHERIT`` survives validation, raw inputs round-trip losslessly through
-``model_dump()``). ``resolved_task(workspace_name, task)`` returns the
-**computed** values after walking task → workspace → deployment — the CSS
-"computed value" analogy: first non-``INHERIT`` ancestor wins.
+``calibration_fraction``, ``calibration_max_records``) may be set at any scope;
+child scopes default to ``INHERIT``. Models hold the **specified** values
+exactly as given (``INHERIT`` survives validation, raw inputs round-trip
+losslessly through ``model_dump()``). ``resolved_task(workspace_name, task)``
+returns the **computed** values after walking task → workspace → deployment —
+the CSS "computed value" analogy: first non-``INHERIT`` ancestor wins.
 """
 
 from dataclasses import dataclass, field
@@ -44,6 +44,7 @@ class TaskSettings(BaseModel):
     calibration_min_submitted: PositiveInt | None | Inherit = INHERIT
     locale: Locale | Inherit = INHERIT
     calibration_fraction: CalibrationFractionOverride = INHERIT
+    calibration_max_records: PositiveInt | None | Inherit = INHERIT
 
 
 class WorkspaceSettings(BaseModel):
@@ -60,6 +61,7 @@ class WorkspaceSettings(BaseModel):
     calibration_min_submitted: PositiveInt | None | Inherit = INHERIT
     locale: Locale | Inherit = INHERIT
     calibration_fraction: CalibrationFractionOverride = INHERIT
+    calibration_max_records: PositiveInt | None | Inherit = INHERIT
     tasks: dict[Task, TaskSettings]
 
 
@@ -71,6 +73,7 @@ class ResolvedTaskSettings:
     calibration_min_submitted: int | None
     locale: Locale
     calibration_fraction: float
+    calibration_max_records: int | None
 
 
 def _inherit(*candidates: T | Inherit) -> T:
@@ -105,6 +108,10 @@ class AnnotationSettings(ResolveSettings):
             calibration dataset for IAA (0.0 disables for that scope).
             Inherited by workspaces/tasks. The annotation item is a chunk
             for retrieval and a record_uuid for grounding / generation.
+        calibration_max_records: Optional absolute cap on calibration
+            annotation items per task. ``None`` is uncapped (just the
+            fractional knob). Smaller of (fraction × N_items, cap) wins.
+            Inherited by workspaces/tasks.
     """
 
     argilla: ArgillaSettings = Field(default_factory=ArgillaSettings)
@@ -115,6 +122,7 @@ class AnnotationSettings(ResolveSettings):
     locale: Locale = "en"
     locale_catalog_dir: Path | None = None
     calibration_fraction: float = Field(0.1, ge=0.0, le=1.0)
+    calibration_max_records: PositiveInt | None = None
     calibration_partition_seed: NonNegativeInt = 0
     include_discarded: bool = False
     workspaces: dict[str, WorkspaceSettings] = Field(
@@ -144,6 +152,9 @@ class AnnotationSettings(ResolveSettings):
             ),
             locale=_inherit(ts.locale, ws.locale, self.locale),
             calibration_fraction=_inherit(ts.calibration_fraction, ws.calibration_fraction, self.calibration_fraction),
+            calibration_max_records=_inherit(
+                ts.calibration_max_records, ws.calibration_max_records, self.calibration_max_records
+            ),
         )
 
     @model_validator(mode="after")

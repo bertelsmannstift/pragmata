@@ -132,6 +132,109 @@ class TestAssignPartitions:
         )
         assert mixed > 0, "no pairs had per-chunk mixing - partition might still be per-record"
 
+    def test_cap_limits_calibration_count(self, empty_manifest: PartitionManifest) -> None:
+        """Per-task cap binds: realised count never exceeds cap."""
+        # Grounding has its own cap of 5 out of 50 pairs at fraction 1.0.
+        settings = AnnotationSettings(
+            calibration_fraction=1.0,
+            workspaces={
+                "g": WorkspaceSettings(
+                    tasks={Task.GROUNDING: TaskSettings(calibration_max_records=5)},
+                ),
+                "x": WorkspaceSettings(tasks={Task.GENERATION: TaskSettings()}),
+                "r": WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings()}),
+            },
+        )
+        pairs = [_make_pair(f"q{i}") for i in range(50)]
+        partition = assign_partitions(pairs, manifest=empty_manifest, settings=settings, import_id="imp1")
+
+        cal_count = sum(1 for e in partition.assignments.values() if e.grounding_generation_calibration[Task.GROUNDING])
+        assert cal_count == 5
+
+    def test_cap_preserves_existing_assignments_when_over_cap(self, empty_manifest: PartitionManifest, caplog) -> None:
+        """If existing manifest count exceeds new cap, warn and don't demote."""
+        now = datetime.now(timezone.utc)
+        for i in range(10):
+            rid = f"existing-{i}"
+            empty_manifest.assignments[rid] = PartitionManifestEntry(
+                grounding_generation_calibration={Task.GROUNDING: True, Task.GENERATION: False},
+                retrieval_chunk_calibration={},
+                import_id="prior",
+                calibration_fraction_at_import={t: 1.0 for t in Task},
+                calibration_max_records_at_import={t: None for t in Task},
+                assigned_at=now,
+            )
+        # New cap is 5 - below the existing 10.
+        settings = AnnotationSettings(
+            calibration_fraction=1.0,
+            calibration_max_records=5,
+            workspaces={
+                "g": WorkspaceSettings(tasks={Task.GROUNDING: TaskSettings()}),
+                "x": WorkspaceSettings(tasks={Task.GENERATION: TaskSettings()}),
+                "r": WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings()}),
+            },
+        )
+        new_pairs = [_make_pair(f"new-{i}") for i in range(5)]
+
+        with caplog.at_level("WARNING"):
+            assign_partitions(new_pairs, manifest=empty_manifest, settings=settings, import_id="imp2")
+
+        existing_cal = sum(
+            1
+            for rid, e in empty_manifest.assignments.items()
+            if rid.startswith("existing-") and e.grounding_generation_calibration[Task.GROUNDING]
+        )
+        assert existing_cal == 10
+        new_cal = sum(
+            1
+            for rid, e in empty_manifest.assignments.items()
+            if not rid.startswith("existing-") and e.grounding_generation_calibration[Task.GROUNDING]
+        )
+        assert new_cal == 0
+        assert any("exceeds cap" in m for m in caplog.messages)
+
+    def test_cap_under_split_imports_is_order_dependent_by_design(self, empty_manifest: PartitionManifest) -> None:
+        """Documented property: cap-binding split imports depend on order.
+
+        Because the manifest is append-only, the final calibration set depends
+        on (corpus, seed, import_order) rather than (corpus, seed) alone. This
+        test pins the property so a future regression to order-independence is
+        a deliberate design change requiring this test's update.
+        """
+        settings = AnnotationSettings(
+            calibration_fraction=1.0,
+            calibration_max_records=3,
+            workspaces={
+                "g": WorkspaceSettings(tasks={Task.GROUNDING: TaskSettings()}),
+                "x": WorkspaceSettings(tasks={Task.GENERATION: TaskSettings()}),
+                "r": WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings()}),
+            },
+        )
+        pairs = [_make_pair(f"q{i}") for i in range(10)]
+
+        manifest_a = PartitionManifest(
+            dataset_id="test",
+            created_at=empty_manifest.created_at,
+            updated_at=empty_manifest.updated_at,
+            partition_seed=0,
+        )
+        assign_partitions(pairs[:5], manifest=manifest_a, settings=settings, import_id="imp_a1")
+        assign_partitions(pairs[5:], manifest=manifest_a, settings=settings, import_id="imp_a2")
+
+        manifest_b = PartitionManifest(
+            dataset_id="test",
+            created_at=empty_manifest.created_at,
+            updated_at=empty_manifest.updated_at,
+            partition_seed=0,
+        )
+        assign_partitions(pairs, manifest=manifest_b, settings=settings, import_id="imp_b")
+
+        def _cal_count(m: PartitionManifest) -> int:
+            return sum(1 for e in m.assignments.values() if e.grounding_generation_calibration[Task.GROUNDING])
+
+        assert _cal_count(manifest_a) == 3
+        assert _cal_count(manifest_b) == 3
+
     def test_existing_assignments_preserved_across_reimports(self, empty_manifest: PartitionManifest) -> None:
         settings = _default_settings(calibration_fraction=1.0)
         pair = _make_pair("q0")
@@ -143,6 +246,7 @@ class TestAssignPartitions:
             retrieval_chunk_calibration={},
             import_id="prior",
             calibration_fraction_at_import={t: 0.0 for t in Task},
+            calibration_max_records_at_import={t: None for t in Task},
             assigned_at=datetime.now(timezone.utc),
         )
 
@@ -152,13 +256,15 @@ class TestAssignPartitions:
         assert partition.assignments[rid].grounding_generation_calibration[Task.GROUNDING] is False
         assert partition.assignments[rid].import_id == "prior"
 
-    def test_new_records_stamp_per_task_fraction(self, empty_manifest: PartitionManifest) -> None:
-        """Per-task fractions are stamped on each new entry."""
+    def test_new_records_stamp_per_task_provenance(self, empty_manifest: PartitionManifest) -> None:
+        """Per-task fractions and caps are stamped on each new entry."""
         settings = AnnotationSettings(
             calibration_fraction=0.5,
+            calibration_max_records=100,
             workspaces={
                 "r": WorkspaceSettings(
                     calibration_fraction=0.1,
+                    calibration_max_records=20,
                     tasks={Task.RETRIEVAL: TaskSettings()},
                 ),
                 "g": WorkspaceSettings(tasks={Task.GROUNDING: TaskSettings()}),
@@ -172,6 +278,12 @@ class TestAssignPartitions:
 
         assert entry.calibration_fraction_at_import[Task.RETRIEVAL] == 0.1
         assert entry.calibration_fraction_at_import[Task.GROUNDING] == 0.5
+        assert entry.calibration_max_records_at_import[Task.RETRIEVAL] == 20
+        assert entry.calibration_max_records_at_import[Task.GROUNDING] == 100
+
+        # PartitionResult exposes the per-task resolution directly so api/ doesn't redo the walk.
+        assert partition.calibration_fraction[Task.RETRIEVAL] == 0.1
+        assert partition.calibration_max_records[Task.RETRIEVAL] == 20
 
     def test_reimport_same_topology_leaves_entry_untouched(self, empty_manifest: PartitionManifest) -> None:
         """No backfill when the topology is unchanged - existing entry is reused as-is."""
@@ -246,6 +358,7 @@ class TestManifestIO:
             retrieval_chunk_calibration={"chunk-a": True, "chunk-b": False},
             import_id="imp1",
             calibration_fraction_at_import={t: 0.1 for t in Task},
+            calibration_max_records_at_import={t: None for t in Task},
             assigned_at=datetime(2026, 4, 22, tzinfo=timezone.utc),
         )
 
