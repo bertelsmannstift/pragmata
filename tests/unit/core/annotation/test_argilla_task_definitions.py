@@ -7,8 +7,8 @@ from pragmata.core.annotation.argilla_task_definitions import (
     DATASET_NAMES,
     build_task_settings,
 )
-from pragmata.core.schemas.annotation_task import DiscardReason, Task
-from pragmata.core.settings.annotation_settings import AnnotationSettings
+from pragmata.core.schemas.annotation_task import TEXT_FIELDS, DiscardReason, Task
+from pragmata.core.settings.annotation_settings import AnnotationSettings, TaskSettings, WorkspaceSettings
 
 _TASK_SETTINGS = build_task_settings(AnnotationSettings())
 _RETRIEVAL = _TASK_SETTINGS[Task.RETRIEVAL]
@@ -337,3 +337,67 @@ class TestConstraintsFieldSeverityWireUp:
         task_settings = build_task_settings(settings)
         severities = self._payload_severities(_get_field(task_settings[Task.RETRIEVAL], "constraints_panel").template)
         assert severities["evidence_requires_relevance"] == "warn"
+
+
+class TestTextFieldsRegistryMatchesActualTextFields:
+    """``TEXT_FIELDS`` in schemas must match the names of ``rg.TextField``s actually constructed."""
+
+    def test_registry_matches_constructed_text_fields(self):
+        for task, expected_names in TEXT_FIELDS.items():
+            actual_names = {f.name for f in _TASK_SETTINGS[task].fields if isinstance(f, rg.TextField)}
+            assert actual_names == expected_names, (
+                f"TEXT_FIELDS[{task!r}] = {sorted(expected_names)} but the actual "
+                f"rg.TextField names for this task are {sorted(actual_names)}. "
+                f"Update TEXT_FIELDS or the build_task_settings TextField calls to match."
+            )
+
+
+class TestUseMarkdownWireUp:
+    """``use_markdown`` on each rg.TextField reflects the resolved render mode."""
+
+    def test_default_all_plain(self):
+        # Defaults populate every known field as "plain"
+        for task in (Task.RETRIEVAL, Task.GROUNDING, Task.GENERATION):
+            for name in TEXT_FIELDS[task]:
+                field = _get_field(_TASK_SETTINGS[task], name)
+                assert field.use_markdown is False, f"{task.value}.{name} expected plain by default"
+
+    def test_deployment_override_propagates(self):
+        settings = AnnotationSettings(field_render_mode={"answer": "markdown"})
+        task_settings = build_task_settings(settings)
+        # answer exists in grounding and generation
+        assert _get_field(task_settings[Task.GROUNDING], "answer").use_markdown is True
+        assert _get_field(task_settings[Task.GENERATION], "answer").use_markdown is True
+        # query/chunk still plain
+        assert _get_field(task_settings[Task.RETRIEVAL], "query").use_markdown is False
+        assert _get_field(task_settings[Task.RETRIEVAL], "chunk").use_markdown is False
+
+    def test_workspace_override_propagates(self):
+        settings = AnnotationSettings(
+            field_render_mode={"answer": "markdown"},
+            workspaces={
+                "retrieval": WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings()}),
+                "grounding": WorkspaceSettings(tasks={Task.GROUNDING: TaskSettings()}),
+                "generation": WorkspaceSettings(
+                    field_render_mode={"answer": "plain"},
+                    tasks={Task.GENERATION: TaskSettings()},
+                ),
+            },
+        )
+        task_settings = build_task_settings(settings)
+        assert _get_field(task_settings[Task.GROUNDING], "answer").use_markdown is True
+        assert _get_field(task_settings[Task.GENERATION], "answer").use_markdown is False
+
+    def test_task_override_propagates(self):
+        settings = AnnotationSettings(
+            workspaces={
+                "retrieval": WorkspaceSettings(
+                    tasks={Task.RETRIEVAL: TaskSettings(field_render_mode={"chunk": "markdown"})},
+                ),
+                "grounding": WorkspaceSettings(tasks={Task.GROUNDING: TaskSettings()}),
+                "generation": WorkspaceSettings(tasks={Task.GENERATION: TaskSettings()}),
+            },
+        )
+        task_settings = build_task_settings(settings)
+        assert _get_field(task_settings[Task.RETRIEVAL], "chunk").use_markdown is True
+        assert _get_field(task_settings[Task.RETRIEVAL], "query").use_markdown is False

@@ -9,11 +9,11 @@ losslessly through ``model_dump()``). ``resolved_task(workspace_name, task)``
 returns the **computed** values after walking task, workspace, deployment
 (the CSS "computed value" analogy: first non-``INHERIT`` ancestor wins).
 
-Multi-key maps (e.g. ``constraint_severity: dict[str, Severity]``) use
-**sparse-dict overlay** rather than the ``INHERIT`` sentinel: user-supplied keys
-override the deployment default for that key only; omitted keys fall through.
-This is the natural mechanism for dict-shaped fields; INHERIT is reserved for
-single-value primitives.
+Multi-key maps (e.g. ``constraint_severity: dict[str, Severity]``,
+``field_render_mode: dict[str, FieldRenderMode]``) use **sparse-dict overlay**
+rather than the ``INHERIT`` sentinel: user-supplied keys override the deployment
+default for that key only; omitted keys fall through. This is the natural
+mechanism for dict-shaped fields; INHERIT is reserved for single-value primitives.
 """
 
 from dataclasses import dataclass, field
@@ -23,9 +23,15 @@ from typing import Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, NonNegativeInt, PositiveInt, model_validator
 
 from pragmata.core.annotation.logical_constraints import CONSTRAINT_BY_ID, Severity
-from pragmata.core.schemas.annotation_task import Task
+from pragmata.core.schemas.annotation_task import TEXT_FIELDS, FieldRenderMode, Task
 from pragmata.core.settings.settings_base import INHERIT, Inherit, ResolveSettings
 from pragmata.core.types import SafePathSegment
+
+# Flat set of every TextField name that may appear as a key in
+# ``field_render_mode`` at any scope; derived once from ``TEXT_FIELDS`` and
+# reused by the default factory and key validator below.
+_KNOWN_FIELD_NAMES: frozenset[str] = frozenset(name for names in TEXT_FIELDS.values() for name in names)
+_DEFAULT_FIELD_RENDER_MODE: dict[str, FieldRenderMode] = {name: "plain" for name in _KNOWN_FIELD_NAMES}
 
 
 class ArgillaSettings(BaseModel):
@@ -37,12 +43,17 @@ class ArgillaSettings(BaseModel):
 
 
 class TaskSettings(BaseModel):
-    """Per-task overrides; inherited fields default to ``INHERIT`` (use workspace value)."""
+    """Per-task overrides; inherited fields default to ``INHERIT`` (use workspace value).
+
+    ``field_render_mode`` is a sparse override map: only listed field names
+    override the workspace/deployment value; omitted keys fall through.
+    """
 
     model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
 
     production_min_submitted: PositiveInt | Inherit = INHERIT
     calibration_min_submitted: PositiveInt | None | Inherit = INHERIT
+    field_render_mode: dict[str, FieldRenderMode] = Field(default_factory=dict)
 
 
 class WorkspaceSettings(BaseModel):
@@ -50,9 +61,9 @@ class WorkspaceSettings(BaseModel):
 
     Inherited fields default to ``INHERIT`` (use deployment value). ``None`` on
     ``calibration_min_submitted`` explicitly disables calibration for any task
-    that inherits from this workspace. ``constraint_severity`` is a sparse
-    constraint-id to severity map: only listed constraint_ids override the
-    deployment value; omitted constraint_ids fall through to the deployment map.
+    that inherits from this workspace. ``constraint_severity`` and
+    ``field_render_mode`` are sparse override maps: only listed keys override
+    the deployment value; omitted keys fall through to the deployment map.
     """
 
     model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
@@ -60,6 +71,7 @@ class WorkspaceSettings(BaseModel):
     production_min_submitted: PositiveInt | Inherit = INHERIT
     calibration_min_submitted: PositiveInt | None | Inherit = INHERIT
     constraint_severity: dict[str, Severity] = Field(default_factory=dict)
+    field_render_mode: dict[str, FieldRenderMode] = Field(default_factory=dict)
     tasks: dict[Task, TaskSettings]
 
 
@@ -88,6 +100,15 @@ class AnnotationSettings(ResolveSettings):
             Inherited by workspaces/tasks.
         calibration_fraction: Fraction of records routed to a separate
             calibration dataset for IAA (0.0 disables; deployment-level only).
+        field_render_mode: Sparse override map of TextField name (e.g.
+            ``"answer"``) to render mode (``"plain"`` or ``"markdown"``).
+            Markdown rendering also handles inline raw HTML, useful when
+            content comes from a pipeline that emits HTML. Per-workspace
+            and per-task overrides live on ``WorkspaceSettings.field_render_mode``
+            and ``TaskSettings.field_render_mode`` respectively;
+            ``resolved_render_mode(workspace_name, task, field_name)`` walks
+            task → workspace → deployment. Unknown keys raise at validation
+            time. Defaults populate every known field with ``"plain"``.
     """
 
     argilla: ArgillaSettings = Field(default_factory=ArgillaSettings)
@@ -105,6 +126,9 @@ class AnnotationSettings(ResolveSettings):
             "contradiction_requires_unsupported": "block",
             "fabricated_requires_cited": "block",
         }
+    )
+    field_render_mode: dict[str, FieldRenderMode] = Field(
+        default_factory=lambda: dict(_DEFAULT_FIELD_RENDER_MODE)
     )
     workspaces: dict[str, WorkspaceSettings] = Field(
         default_factory=lambda: {
@@ -130,6 +154,22 @@ class AnnotationSettings(ResolveSettings):
         if constraint_id in ws.constraint_severity:
             return ws.constraint_severity[constraint_id]
         return self.constraint_severity[constraint_id]
+
+    def resolved_render_mode(self, workspace_name: str, task: Task, field_name: str) -> FieldRenderMode:
+        """Return the computed render mode for a TextField: task → workspace → deployment.
+
+        Walks all three scopes via sparse overlay (per-key, not whole-dict):
+        the first scope that lists ``field_name`` wins. Deployment defaults
+        are guaranteed complete by the merge validator on ``field_render_mode``,
+        so the workspace and task scopes only need to be sparse overrides.
+        Unknown ``field_name`` raises ``KeyError``.
+        """
+        ws = self.workspaces[workspace_name]
+        ts = ws.tasks[task]
+        for scope in (ts.field_render_mode, ws.field_render_mode, self.field_render_mode):
+            if field_name in scope:
+                return scope[field_name]
+        raise KeyError(field_name)
 
     def resolved_task(self, workspace_name: str, task: Task) -> ResolvedTaskSettings:
         """Return the computed task settings: task → workspace → deployment.
@@ -171,6 +211,19 @@ class AnnotationSettings(ResolveSettings):
             data["constraint_severity"] = {**defaults, **data["constraint_severity"]}
         return data
 
+    @model_validator(mode="before")
+    @classmethod
+    def _merge_field_render_mode_defaults(cls, data: object) -> object:
+        """Overlay user-provided deployment render modes onto the built-in defaults.
+
+        Users supply only the field names they want to override; the rest fall
+        through to the field's default (all ``"plain"``).
+        """
+        if isinstance(data, dict) and isinstance(data.get("field_render_mode"), dict):
+            defaults = cls.model_fields["field_render_mode"].default_factory()
+            data["field_render_mode"] = {**defaults, **data["field_render_mode"]}
+        return data
+
     @model_validator(mode="after")
     def _validate_constraint_severity_keys(self) -> Self:
         known = set(CONSTRAINT_BY_ID)
@@ -183,6 +236,41 @@ class AnnotationSettings(ResolveSettings):
                     f"{scope_name} constraint_severity references unknown constraint_id(s): "
                     f"{sorted(unknown)}. Known constraint_ids: {sorted(known)}."
                 )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_field_render_mode_keys(self) -> Self:
+        """Reject ``field_render_mode`` keys not declared in ``TEXT_FIELDS`` for the scope.
+
+        Deployment scope accepts any field name that exists in any task;
+        workspace and task scopes are constrained to the field names that
+        actually belong to that scope's tasks (so an ``"answer"`` override
+        on a retrieval-only workspace is caught at validation time).
+        """
+        unknown = set(self.field_render_mode) - _KNOWN_FIELD_NAMES
+        if unknown:
+            raise ValueError(
+                f"deployment field_render_mode references unknown field name(s): "
+                f"{sorted(unknown)}. Known field names: {sorted(_KNOWN_FIELD_NAMES)}."
+            )
+        for ws_name, ws in self.workspaces.items():
+            ws_fields = {name for task in ws.tasks for name in TEXT_FIELDS[task]}
+            unknown = set(ws.field_render_mode) - ws_fields
+            if unknown:
+                raise ValueError(
+                    f"workspace {ws_name!r} field_render_mode references field(s) "
+                    f"not in any of its tasks: {sorted(unknown)}. "
+                    f"Allowed: {sorted(ws_fields)}."
+                )
+            for task, ts in ws.tasks.items():
+                task_fields = TEXT_FIELDS[task]
+                unknown = set(ts.field_render_mode) - task_fields
+                if unknown:
+                    raise ValueError(
+                        f"workspace {ws_name!r} task {task.value!r} field_render_mode "
+                        f"references field(s) not in this task: {sorted(unknown)}. "
+                        f"Allowed: {sorted(task_fields)}."
+                    )
         return self
 
     @model_validator(mode="after")
