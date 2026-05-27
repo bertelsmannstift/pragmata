@@ -245,7 +245,12 @@ def build_task_settings(settings: AnnotationSettings) -> dict[Task, rg.Settings]
             catalog,
             content_fields=[
                 rg.TextField(name="query", title=t(catalog, Task.RETRIEVAL, "field", "query"), required=True),
-                rg.TextField(name="chunk", title=t(catalog, Task.RETRIEVAL, "field", "chunk"), required=True),
+                rg.TextField(
+                    name="chunk",
+                    title=t(catalog, Task.RETRIEVAL, "field", "chunk"),
+                    required=True,
+                    use_markdown=True,
+                ),
                 _collapsible_field(
                     "generated_answer",
                     t(catalog, Task.RETRIEVAL, "field", "generated_answer"),
@@ -289,11 +294,17 @@ def build_task_settings(settings: AnnotationSettings) -> dict[Task, rg.Settings]
             Task.GROUNDING,
             catalog,
             content_fields=[
-                rg.TextField(name="answer", title=t(catalog, Task.GROUNDING, "field", "answer"), required=True),
+                rg.TextField(
+                    name="answer",
+                    title=t(catalog, Task.GROUNDING, "field", "answer"),
+                    required=True,
+                    use_markdown=True,
+                ),
                 rg.TextField(
                     name="context_set",
                     title=t(catalog, Task.GROUNDING, "field", "context_set"),
                     required=True,
+                    use_markdown=True,
                 ),
                 _collapsible_field("query", t(catalog, Task.GROUNDING, "field", "query"), template_text),
             ],
@@ -344,7 +355,12 @@ def build_task_settings(settings: AnnotationSettings) -> dict[Task, rg.Settings]
             catalog,
             content_fields=[
                 rg.TextField(name="query", title=t(catalog, Task.GENERATION, "field", "query"), required=True),
-                rg.TextField(name="answer", title=t(catalog, Task.GENERATION, "field", "answer"), required=True),
+                rg.TextField(
+                    name="answer",
+                    title=t(catalog, Task.GENERATION, "field", "answer"),
+                    required=True,
+                    use_markdown=True,
+                ),
                 _collapsible_field(
                     "context_set",
                     t(catalog, Task.GENERATION, "field", "context_set"),
