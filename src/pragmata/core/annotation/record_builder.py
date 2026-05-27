@@ -119,17 +119,6 @@ def build_retrieval_record_for_chunk(
     )
 
 
-def build_retrieval_records(pair: QueryResponsePair, record_uuid: str) -> list[rg.Record]:
-    """One Argilla record per chunk; thin wrapper over the per-chunk helper.
-
-    Retained for callers (and tests) that want all retrieval records for a pair
-    in a single list. The fan-out path now routes per chunk via
-    ``build_retrieval_record_for_chunk`` so per-chunk calibration assignment
-    flows through correctly.
-    """
-    return [build_retrieval_record_for_chunk(pair, record_uuid, chunk, i) for i, chunk in enumerate(pair.chunks)]
-
-
 def build_grounding_record(pair: QueryResponsePair, record_uuid: str) -> rg.Record:
     """Single Argilla record for grounding evaluation."""
     metadata: dict = {"record_uuid": record_uuid}
@@ -182,15 +171,6 @@ def _calibration_digest(unit_id: str, task: Task, seed: int) -> int:
     return int(hashlib.sha256(f"{seed}\x00{task.value}\x00{unit_id}".encode()).hexdigest()[:8], 16)
 
 
-def _bucket_calibration(unit_id: str, task: Task, fraction: float, seed: int) -> bool:
-    """Eligibility check: per-(task, unit) digest < fraction * 2^32."""
-    if fraction <= 0.0:
-        return False
-    if fraction >= 1.0:
-        return True
-    return _calibration_digest(unit_id, task, seed) < int(fraction * (2**32))
-
-
 # ---------------------------------------------------------------------------
 # Partition manifest IO
 # ---------------------------------------------------------------------------
@@ -234,13 +214,37 @@ def write_partition_manifest(path: Path, manifest: PartitionManifest) -> None:
     tmp.replace(path)
 
 
+@dataclass(frozen=True)
+class PartitionResult:
+    """Outcome of ``assign_partitions()``.
+
+    Carries per-record entries plus the per-task fraction / cap resolved this
+    run, so callers don't redo the workspace walk.
+
+    Attributes:
+        assignments: record_uuid → PartitionManifestEntry, covering every input
+            pair (existing + newly assigned).
+        pairs_by_rid: record_uuid → QueryResponsePair for every input pair, so
+            downstream fan-out can route per record without recomputing UUIDs.
+        calibration_fraction: Per-task resolved fraction in force this run.
+            ``0.0`` for tasks absent from the workspaces topology.
+        calibration_max_records: Per-task resolved absolute cap. ``None`` =
+            uncapped (or task absent from topology).
+    """
+
+    assignments: dict[str, PartitionManifestEntry]
+    pairs_by_rid: dict[str, QueryResponsePair]
+    calibration_fraction: dict[Task, float]
+    calibration_max_records: dict[Task, int | None]
+
+
 def assign_partitions(
     pairs: list[QueryResponsePair],
     *,
     manifest: PartitionManifest,
     settings: AnnotationSettings,
     import_id: str,
-) -> dict[str, PartitionManifestEntry]:
+) -> PartitionResult:
     """Resolve per-(task, annotation-item) calibration assignments.
 
     The annotation item differs by task: for grounding and generation, one item
@@ -250,10 +254,10 @@ def assign_partitions(
     ``calibration_max_records`` are honoured.
 
     Existing manifest entries are reused untouched (manifest lock for
-    re-import stability). New units are bucketed by ``_bucket_calibration`` using
-    ``hash(seed || task || unit_id)``; if a per-task cap is in force, eligible
-    candidates are sorted by digest ascending and only the first ``remaining``
-    win calibration. The rest demote to production.
+    re-import stability). New units are bucketed by per-(task, unit) digest
+    ``hash(seed || task || unit_id)`` against ``fraction * 2^32``; if a per-task
+    cap is in force, eligible candidates are sorted by digest ascending and
+    only the first ``remaining`` win calibration. The rest demote to production.
 
     Note on order-dependence under binding cap: when the cap is binding across
     multiple imports, the final calibration set is a function of
@@ -266,31 +270,25 @@ def assign_partitions(
         manifest: Mutated in place to record new assignments.
         settings: Resolves per-task fraction and cap via ``resolved_task``.
         import_id: Stamped on new entries for provenance.
-
-    Returns:
-        record_uuid -> PartitionManifestEntry map covering every input pair
-        (existing + newly assigned).
     """
     now = datetime.now(timezone.utc)
     seed = manifest.partition_seed
-    workspace_for_task = _invert_workspace_map(settings)
+    workspace_for_task = settings.task_to_workspace()
 
-    new_pairs: dict[str, QueryResponsePair] = {}
-    result: dict[str, PartitionManifestEntry] = {}
-    for pair in pairs:
-        rid = derive_record_uuid(pair)
-        existing = manifest.assignments.get(rid)
-        if existing is not None:
-            result[rid] = existing
-        else:
-            new_pairs[rid] = pair
+    pairs_by_rid: dict[str, QueryResponsePair] = {derive_record_uuid(pair): pair for pair in pairs}
+    new_pairs: dict[str, QueryResponsePair] = {
+        rid: pair for rid, pair in pairs_by_rid.items() if rid not in manifest.assignments
+    }
+    assignments: dict[str, PartitionManifestEntry] = {
+        rid: manifest.assignments[rid] for rid in pairs_by_rid if rid in manifest.assignments
+    }
 
     per_record_grnd_gen: dict[str, dict[Task, bool]] = {rid: {} for rid in new_pairs}
     per_record_retrieval: dict[str, dict[str, bool]] = {rid: {} for rid in new_pairs}
     per_task_fraction: dict[Task, float] = {}
     per_task_cap: dict[Task, int | None] = {}
 
-    existing_counts = count_calibration_per_task(manifest.assignments.values())
+    existing_counts = count_units_per_task(manifest.assignments.values()).calibration
 
     for task in Task:
         ws_base = workspace_for_task.get(task)
@@ -348,10 +346,15 @@ def assign_partitions(
             assigned_at=now,
         )
         manifest.assignments[rid] = entry
-        result[rid] = entry
+        assignments[rid] = entry
 
     manifest.updated_at = now
-    return result
+    return PartitionResult(
+        assignments=assignments,
+        pairs_by_rid=pairs_by_rid,
+        calibration_fraction=per_task_fraction,
+        calibration_max_records=per_task_cap,
+    )
 
 
 def _enumerate_units(rid: str, pair: QueryResponsePair, task: Task) -> list[tuple[str, str | None]]:
@@ -378,23 +381,34 @@ def _write_unit(
         per_record_grnd_gen[rid][task] = is_cal
 
 
-def count_calibration_per_task(entries: Iterable[PartitionManifestEntry]) -> dict[Task, int]:
-    """Per-task calibration unit count across a collection of entries.
+@dataclass(frozen=True)
+class TaskUnitCounts:
+    """Per-task tallies across a collection of manifest entries.
 
-    Single pass over ``entries``. For retrieval, counts chunks; for grounding
-    and generation, counts records. Used by ``assign_partitions`` to compute
-    existing slots before applying caps, and by the api layer to report
-    realised fractions.
+    Annotation units are chunks for retrieval and records for grounding /
+    generation. ``calibration`` counts only items routed to calibration;
+    ``total`` counts all items (calibration + production).
     """
-    counts: dict[Task, int] = {task: 0 for task in Task}
+
+    calibration: dict[Task, int]
+    total: dict[Task, int]
+
+
+def count_units_per_task(entries: Iterable[PartitionManifestEntry]) -> TaskUnitCounts:
+    """Single pass over ``entries`` returning per-task calibration and total counts."""
+    calibration: dict[Task, int] = {task: 0 for task in Task}
+    total: dict[Task, int] = {task: 0 for task in Task}
     for entry in entries:
         for task in (Task.GROUNDING, Task.GENERATION):
-            if entry.grounding_generation_calibration.get(task, False):
-                counts[task] += 1
+            if task in entry.grounding_generation_calibration:
+                total[task] += 1
+                if entry.grounding_generation_calibration[task]:
+                    calibration[task] += 1
         for is_cal in entry.retrieval_chunk_calibration.values():
+            total[Task.RETRIEVAL] += 1
             if is_cal:
-                counts[Task.RETRIEVAL] += 1
-    return counts
+                calibration[Task.RETRIEVAL] += 1
+    return TaskUnitCounts(calibration=calibration, total=total)
 
 
 # ---------------------------------------------------------------------------
@@ -403,7 +417,7 @@ def count_calibration_per_task(entries: Iterable[PartitionManifestEntry]) -> dic
 
 
 def _build_batches(
-    records: list[QueryResponsePair],
+    pairs_by_rid: dict[str, QueryResponsePair],
     assignments: dict[str, PartitionManifestEntry],
 ) -> dict[tuple[Task, bool], list[rg.Record]]:
     """Build Argilla records keyed by (task, calibration) bucket.
@@ -416,8 +430,7 @@ def _build_batches(
     batches: dict[tuple[Task, bool], list[rg.Record]] = {
         (task, is_cal): [] for task in Task for is_cal in (False, True)
     }
-    for pair in records:
-        record_uuid = derive_record_uuid(pair)
+    for record_uuid, pair in pairs_by_rid.items():
         entry = assignments[record_uuid]
         grnd_cal = entry.grounding_generation_calibration.get(Task.GROUNDING, False)
         gen_cal = entry.grounding_generation_calibration.get(Task.GENERATION, False)
@@ -505,10 +518,9 @@ def _ensure_dataset(
 
 def fan_out_records(
     client: rg.Argilla,
-    records: list[QueryResponsePair],
     settings: AnnotationSettings,
     *,
-    assignments: dict[str, PartitionManifestEntry],
+    partition: PartitionResult,
 ) -> dict[str, int]:
     """Build and log Argilla records to per-purpose datasets.
 
@@ -517,21 +529,18 @@ def fan_out_records(
 
     Args:
         client: Argilla client.
-        records: Validated input pairs.
         settings: Annotation settings (topology, dataset_id).
-        assignments: Per-record manifest entries from ``assign_partitions``.
-            Each entry carries per-task and per-chunk calibration flags; the
-            caller has already pinned each annotation item to a bucket via
-            the manifest.
+        partition: Output of ``assign_partitions``. Carries both the per-record
+            manifest entries and the pair-by-rid map needed for fan-out.
 
     Returns:
         Mapping of dataset name to record count for that dataset. Per-task
-        calibration vs production totals are computable from ``assignments``
-        and stay in the api layer.
+        calibration vs production totals are computable from
+        ``partition.assignments`` and stay in the api layer.
     """
     task_to_ws = settings.task_to_workspace()
     task_settings_map = build_task_settings(settings)
-    batches = _build_batches(records, assignments)
+    batches = _build_batches(partition.pairs_by_rid, partition.assignments)
 
     dataset_counts: dict[str, int] = {}
 

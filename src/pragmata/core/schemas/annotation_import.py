@@ -1,7 +1,7 @@
 """Boundary schemas for canonical annotation import records and partition state."""
 
 from datetime import datetime
-from typing import Any, Self
+from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -80,47 +80,6 @@ class PartitionManifestEntry(BaseModel):
     calibration_fraction_at_import: dict[Task, float]
     calibration_max_records_at_import: dict[Task, int | None] = Field(default_factory=dict)
     assigned_at: datetime
-
-    @model_validator(mode="before")
-    @classmethod
-    def _migrate_legacy_calibration(cls, values: Any) -> Any:
-        """Read legacy single-bool manifests by expanding to per-task dicts.
-
-        Legacy entries had ``calibration: bool`` and ``calibration_fraction_at_import:
-        float`` as scalars (per ``record_uuid``). Expand to the new per-task shape.
-        Per-chunk retrieval calibration is *not* reconstructible from legacy
-        entries - leave ``retrieval_chunk_calibration`` empty so re-imports
-        assign fresh per-chunk decisions for any chunks the new code encounters.
-        """
-        if not isinstance(values, dict):
-            return values
-        if "calibration" not in values:
-            return values
-        if "grounding_generation_calibration" in values:
-            raise ValueError(
-                "legacy 'calibration' and new 'grounding_generation_calibration' "
-                "are mutually exclusive on a single entry"
-            )
-        legacy_bool = values.pop("calibration")
-        values["grounding_generation_calibration"] = {
-            Task.GROUNDING: legacy_bool,
-            Task.GENERATION: legacy_bool,
-        }
-        values.setdefault("retrieval_chunk_calibration", {})
-        legacy_fraction = values.pop("calibration_fraction_at_import", None)
-        if legacy_fraction is None:
-            raise ValueError(
-                "legacy entry with 'calibration' must also carry 'calibration_fraction_at_import' (no implicit default)"
-            )
-        if isinstance(legacy_fraction, (int, float)):
-            values["calibration_fraction_at_import"] = {task: float(legacy_fraction) for task in Task}
-        else:
-            values["calibration_fraction_at_import"] = legacy_fraction
-        values.setdefault(
-            "calibration_max_records_at_import",
-            {task: None for task in Task},
-        )
-        return values
 
     @model_validator(mode="after")
     def _check_fraction_range(self) -> Self:

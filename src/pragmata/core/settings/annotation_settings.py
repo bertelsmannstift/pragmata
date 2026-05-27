@@ -82,16 +82,8 @@ class ResolvedTaskSettings:
 
 
 def _inherit(*candidates):
-    """Return the first non-``Inherit`` candidate.
-
-    Walks task → workspace → deployment in caller-supplied order. The deployment
-    value (last candidate) is always a concrete default by construction, so a
-    pure-Inherit chain is unreachable; assert as a sanity check.
-    """
-    for candidate in candidates:
-        if not isinstance(candidate, Inherit):
-            return candidate
-    raise AssertionError("inheritance chain bottomed out with INHERIT; deployment defaults missing")
+    """First non-``Inherit`` candidate. Walks task → workspace → deployment in caller order."""
+    return next(c for c in candidates if not isinstance(c, Inherit))
 
 
 class AnnotationSettings(ResolveSettings):
