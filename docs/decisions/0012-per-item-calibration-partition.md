@@ -53,7 +53,7 @@ This positioning makes per-item partition (Option C) the right fit because it wo
 
 **Negative**
 
-- Manifest schema migration: legacy `calibration: bool` entries are read via a backward-compat `@model_validator(mode="before")` that expands the scalar to per-task dicts. Per-chunk retrieval calibration is **not reconstructible** from legacy entries; the migrator leaves `retrieval_chunk_calibration` empty so re-imports assign fresh per-chunk decisions for any chunks the new code encounters.
+- Schema break for any pre-v0 on-disk manifests: legacy `calibration: bool` entries no longer load. Pragmata is pre-1.0; affected workspaces re-bootstrap by deleting `partition.meta.json` and re-importing.
 - The implicit per-`record_uuid` bundling that ADR-0010 assumed weakens - the same `record_uuid` can have some chunks in retrieval-calibration and others in production. The dataset-per-task structure itself is preserved; what changes is that calibration is a property of the annotation item, not the parent record.
 - **Order-dependence under binding cap**: when the cap is binding across multiple imports, the resulting calibration set is a function of `(corpus, seed, import_order)`, not `(corpus, seed)` alone. This is a consequence of the manifest-lock invariant - once an entry is in calibration, a later tightened cap cannot demote it. Documented in `assign_partitions` docstring.
 

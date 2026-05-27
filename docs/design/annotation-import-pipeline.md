@@ -186,10 +186,6 @@ Because the manifest is append-only, the calibration set under a binding cap is 
 - `retrieval_chunk_calibration: dict[str, bool]` - keys are `chunk_id`; entries absent at fan-out time default to production
 - `calibration_fraction_at_import: dict[Task, float]` and `calibration_max_records_at_import: dict[Task, int | None]` - per-task provenance stamped at import time
 
-### Backward-compat reading of legacy manifests
-
-Legacy entries with scalar `calibration: bool` and `calibration_fraction_at_import: float` are read via a `@model_validator(mode="before")` that expands them to per-task dicts. Per-chunk retrieval calibration is **not reconstructible** from legacy entries - the migrator leaves `retrieval_chunk_calibration` empty so re-imports assign fresh per-chunk decisions for any chunks the new code encounters.
-
 ## Failure Modes
 
 **Invalid/incomplete canonical record:**
