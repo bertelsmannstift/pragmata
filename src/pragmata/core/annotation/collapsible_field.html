@@ -28,7 +28,11 @@
 <script>
   var field = record.fields["$field_name"];
   var text = (typeof field === "object" && field !== null) ? (field.text || "") : (field || "");
-  document.getElementById("content").textContent = text;
+  // innerHTML so embedded HTML in pipeline-sourced content (e.g. publikationsbot
+  // output) renders rather than escapes. Trust assumption: record content comes
+  // from a first-party pipeline. Plain text in HTML context still renders as
+  // plain text — no double-conversion concerns.
+  document.getElementById("content").innerHTML = text;
 
   // Size iframe to match content height. scrollHeight is clamped
   // to >= viewport (iframe) height, so shrink to 0 first then
