@@ -49,10 +49,12 @@ class ImportResult:
             production dataset.
         calibration_fraction: Per-task configured fraction. May differ from
             ``realised_calibration_fraction`` on re-imports because prior
-            assignments are locked by the manifest.
+            assignments are locked by the manifest, and under a binding cap.
         realised_calibration_fraction: Per-task actual share of items routed
             to calibration this run (calibration / (calibration + production)).
             Zero when no items were assigned for that task.
+        calibration_max_records: Per-task configured absolute cap. ``None`` =
+            uncapped for that task.
         errors: Per-record validation failures (index + detail).
     """
 
@@ -62,6 +64,7 @@ class ImportResult:
     production_count: dict[Task, int] = field(default_factory=dict)
     calibration_fraction: dict[Task, float] = field(default_factory=dict)
     realised_calibration_fraction: dict[Task, float] = field(default_factory=dict)
+    calibration_max_records: dict[Task, int | None] = field(default_factory=dict)
     errors: list[RecordError] = field(default_factory=list)
 
 
@@ -75,6 +78,7 @@ def import_records(
     base_dir: str | Path | Unset = UNSET,
     config_path: str | Path | Unset = UNSET,
     calibration_fraction: float | Unset = UNSET,
+    calibration_max_records: int | None | Unset = UNSET,
     calibration_min_submitted: int | None | Unset = UNSET,
     calibration_partition_seed: int | Unset = UNSET,
     locale: Locale | Unset = UNSET,
@@ -124,6 +128,11 @@ def import_records(
             unless overridden in YAML config). Falls through to YAML config
             and the built-in default (0.1) when omitted. Set to 0.0 for
             production-only batches.
+        calibration_max_records: Deployment-level absolute cap on calibration
+            annotation items per task. ``None`` is uncapped (just the
+            fractional knob). Inherited by workspaces/tasks unless overridden
+            in YAML config. Cap unit is the annotation item: chunks for
+            retrieval, records for grounding / generation.
         calibration_min_submitted: Deployment-level overlap requirement for
             the calibration dataset. ``None`` disables calibration entirely
             (must be paired with ``calibration_fraction=0.0``). Inherits to
@@ -153,6 +162,7 @@ def import_records(
             "dataset_id": dataset_id,
             "base_dir": base_dir,
             "calibration_fraction": calibration_fraction,
+            "calibration_max_records": calibration_max_records,
             "calibration_min_submitted": calibration_min_submitted,
             "calibration_partition_seed": calibration_partition_seed,
             "locale": locale,
@@ -203,15 +213,20 @@ def import_records(
         dataset_counts = fan_out_records(client, settings, partition=partition)
         write_partition_manifest(import_paths.partition_manifest, manifest)
 
+    def _per_task_summary(task: Task) -> str:
+        cap = partition.calibration_max_records[task]
+        cap_suffix = f", cap={cap}" if cap is not None else ""
+        return (
+            f"{task.value}={summary.calibration_count[task]} "
+            f"(realised={summary.realised_fraction[task]:.3f}, "
+            f"configured={summary.configured_fraction[task]:.3f}{cap_suffix})"
+        )
+
     logger.info(
         "Import complete: %d records across %d datasets. Per-task calibration: %s",
         len(raw),
         len(dataset_counts),
-        ", ".join(
-            f"{task.value}={summary.calibration_count[task]} "
-            f"(realised={summary.realised_fraction[task]:.3f}, configured={summary.configured_fraction[task]:.3f})"
-            for task in Task
-        ),
+        ", ".join(_per_task_summary(task) for task in Task),
     )
     return ImportResult(
         total_records=len(raw),
@@ -220,5 +235,6 @@ def import_records(
         production_count=summary.production_count,
         calibration_fraction=summary.configured_fraction,
         realised_calibration_fraction=summary.realised_fraction,
+        calibration_max_records=partition.calibration_max_records,
         errors=validation.errors,
     )
