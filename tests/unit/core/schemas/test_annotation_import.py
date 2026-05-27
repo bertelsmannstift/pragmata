@@ -157,7 +157,7 @@ def valid_entry_kwargs():
 @pytest.fixture()
 def valid_manifest_kwargs():
     return {
-        "dataset_id": "run1",
+        "dataset_id": "run1",  # on-disk key (alias for partition_scope)
         "created_at": _ENTRY_NOW,
         "updated_at": _ENTRY_NOW,
         "partition_seed": 0,
@@ -217,13 +217,13 @@ class TestPartitionManifest:
         with pytest.raises(ValidationError):
             PartitionManifest(**valid_manifest_kwargs, surprise="bad")  # type: ignore[call-arg]
 
-    def test_dataset_id_can_be_empty_string(self, valid_manifest_kwargs):
+    def test_partition_scope_can_be_empty_string(self, valid_manifest_kwargs):
         valid_manifest_kwargs["dataset_id"] = ""
         manifest = PartitionManifest(**valid_manifest_kwargs)
-        assert manifest.dataset_id == ""
+        assert manifest.partition_scope == ""
 
     @pytest.mark.parametrize("bad", ["a/b", "..", "foo..bar", " run", "run\\sub"])
-    def test_unsafe_dataset_id_rejected(self, valid_manifest_kwargs, bad):
+    def test_unsafe_partition_scope_rejected(self, valid_manifest_kwargs, bad):
         valid_manifest_kwargs["dataset_id"] = bad
         with pytest.raises(ValidationError):
             PartitionManifest(**valid_manifest_kwargs)
