@@ -7,6 +7,7 @@ from pragmata.core.annotation.argilla_task_definitions import (
     DATASET_NAMES,
     build_task_settings,
 )
+from pragmata.core.annotation.locales.registry import CATALOGS, get_catalog
 from pragmata.core.schemas.annotation_task import DiscardReason, Task
 
 _TASK_SETTINGS = build_task_settings()
@@ -274,6 +275,45 @@ class TestYesNoCatalogSync:
             q.name for q in settings.questions if isinstance(q, rg.LabelQuestion) and set(q.labels) == {"yes", "no"}
         }
         assert yes_no_question_names == set(_YES_NO_QUESTIONS_BY_TASK[task])
+
+
+@pytest.mark.parametrize(
+    ("task", "settings"),
+    [
+        (Task.RETRIEVAL, _RETRIEVAL),
+        (Task.GROUNDING, _GROUNDING),
+        (Task.GENERATION, _GENERATION),
+    ],
+    ids=["retrieval", "grounding", "generation"],
+)
+class TestFieldThemeWidget:
+    """The invisible widget that paints the top visible card light blue.
+
+    "Top" means position-in-the-fields-list, not a semantic role — the
+    annotator always sees the highlight at the top of the form
+    regardless of which task they're on. This contract has two arms:
+    the widget must be wired into every task, and its rendered template
+    must target whichever field is currently first in that task's
+    visible fields list (so reordering ``fields=[...]`` doesn't leave
+    the highlight pointing at a stale card).
+    """
+
+    def test_field_present_as_optional_customfield(self, task, settings):
+        field = _get_field(settings, "field_theme")
+        assert isinstance(field, rg.CustomField)
+        assert field.required is False
+
+    def test_widget_targets_the_current_top_visible_field_in_every_locale(self, task, settings):
+        visible_fields = [f for f in settings.fields if f.name not in ("discard_flow", "field_theme")]
+        top_field_name = visible_fields[0].name
+        rendered = _get_field(settings, "field_theme").template
+        for loc in CATALOGS:
+            expected = get_catalog(loc)[(task, "field", top_field_name)]
+            assert f'"{expected}"' in rendered, (
+                f"expected top-field {top_field_name!r} title for locale {loc!r} ({expected!r}) "
+                f"missing from rendered field_theme — caller of field_theme_field({task!r}, ...) "
+                f"is probably out of sync with fields=[...] order"
+            )
 
 
 class TestCatalogDrivesRenderedOutput:

@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  html, body { margin: 0; padding: 0; }
+</style>
+</head>
+<body>
+<script>
+(function() {
+  // Purely positional: paint whichever field card sits at the top of the
+  // visible fields list in the parent Argilla page. No coupling to field
+  // names, titles, or locales — if you reorder fields=[...] the highlight
+  // moves with it.
+  var STYLE_ID = '__pragmata_top_field_theme_style';
+  var MARK_ATTR = 'data-pragmata-top-field';
+  var pdoc = window.parent.document;
+
+  // Hide this widget's own card. The field exists only to host this
+  // script; annotators should never see an empty placeholder.
+  var selfCard = null;
+  try {
+    selfCard = window.frameElement && window.frameElement.closest('.wrapper');
+    if (selfCard) selfCard.style.display = 'none';
+  } catch (e) {}
+
+  // Single global stylesheet — paints the marked card light blue.
+  // Mirrors the parent-document style-injection pattern used by
+  // discard_flow.html to hide the native discard button.
+  if (!pdoc.getElementById(STYLE_ID)) {
+    var s = pdoc.createElement('style');
+    s.id = STYLE_ID;
+    s.textContent =
+      '.wrapper[' + MARK_ATTR + '] {' +
+      '  background: #e6f2ff;' +
+      '  border: 1px solid #79b8e6;' +
+      '  border-radius: 6px;' +
+      '}';
+    pdoc.head.appendChild(s);
+  }
+
+  // Mark the first sibling .wrapper of our own card. Argilla renders
+  // each declared field as a sibling .wrapper inside one container,
+  // so the first sibling that isn't us is the first declared field.
+  function markTopCard() {
+    if (!selfCard || !selfCard.parentElement) return;
+    var children = selfCard.parentElement.children;
+    for (var i = 0; i < children.length; i++) {
+      var child = children[i];
+      if (child !== selfCard && child.classList && child.classList.contains('wrapper')) {
+        if (!child.hasAttribute(MARK_ATTR)) child.setAttribute(MARK_ATTR, '');
+        return;
+      }
+    }
+  }
+
+  // Coalesce mutation bursts to one mark per paint frame; markTopCard
+  // is idempotent. Argilla's Vue rerenders fire many mutations per
+  // record and we'd otherwise burn cycles re-marking already-marked cards.
+  var pending = false;
+  function schedule() {
+    if (pending) return;
+    pending = true;
+    requestAnimationFrame(function () { pending = false; markTopCard(); });
+  }
+
+  markTopCard();
+  try {
+    new MutationObserver(schedule).observe(pdoc.body, { childList: true, subtree: true });
+  } catch (e) {}
+  window.addEventListener('load', markTopCard);
+})();
+</script>
+</body>
+</html>

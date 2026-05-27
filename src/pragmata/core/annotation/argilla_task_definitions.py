@@ -140,6 +140,20 @@ def _render_discard_template(template_text: str, task: Task, dataset_locale: Loc
     )
 
 
+def _render_field_theme_template(template_text: str, task: Task, target_field_name: str) -> str:
+    """Substitute the target-field titles into ``field_theme.html``.
+
+    Ships every supported locale's title for the named field; the widget
+    JS matches on whichever one Argilla used when stamping the card's
+    ``aria-label`` (fixed at dataset creation, independent of the user's
+    current chrome locale).
+    """
+    titles = [get_catalog(loc)[(task, "field", target_field_name)] for loc in sorted(CATALOGS)]
+    return _DiscardTemplate(template_text).substitute(
+        ANSWER_FIELD_TITLES_JSON=json.dumps(titles, ensure_ascii=False),
+    )
+
+
 @functools.cache
 def build_task_settings(locale: Locale = "en") -> dict[Task, rg.Settings]:
     """Build Argilla Settings for each annotation task, in the given locale.
@@ -150,6 +164,7 @@ def build_task_settings(locale: Locale = "en") -> dict[Task, rg.Settings]:
     catalog = get_catalog(locale)
     template_text = files("pragmata.core.annotation").joinpath("collapsible_field.html").read_text(encoding="utf-8")
     discard_template = files("pragmata.core.annotation").joinpath("discard_flow.html").read_text(encoding="utf-8")
+    field_theme_template = files("pragmata.core.annotation").joinpath("field_theme.html").read_text(encoding="utf-8")
 
     # Fresh CustomField per task — FieldBase carries a `_dataset` attribute that
     # Argilla's Settings/Dataset plumbing mutates, so sharing one instance across
@@ -159,6 +174,21 @@ def build_task_settings(locale: Locale = "en") -> dict[Task, rg.Settings]:
             name="discard_flow",
             title=catalog[(task, "field", "discard_flow")],
             template=_render_discard_template(discard_template, task, locale),
+            advanced_mode=True,
+            required=False,
+        )
+
+    # Invisible placeholder field — exists only to host the JS that
+    # paints one named field's card light blue (see field_theme.html).
+    # Caller passes the name of the field whose card should be highlighted
+    # — by convention the top of the visible fields list, so annotators
+    # always see the highlight in the same place regardless of task.
+    # Title is hardcoded because the card itself is hidden at runtime.
+    def field_theme_field(task: Task, target_field_name: str) -> rg.CustomField:
+        return rg.CustomField(
+            name="field_theme",
+            title="field theme",
+            template=_render_field_theme_template(field_theme_template, task, target_field_name),
             advanced_mode=True,
             required=False,
         )
@@ -176,6 +206,7 @@ def build_task_settings(locale: Locale = "en") -> dict[Task, rg.Settings]:
                 rg.TextField(name="chunk", title=t(Task.RETRIEVAL, "field", "chunk"), required=True),
                 _collapsible_field("generated_answer", t(Task.RETRIEVAL, "field", "generated_answer"), template_text),
                 discard_field(Task.RETRIEVAL),
+                field_theme_field(Task.RETRIEVAL, "query"),
             ],
             questions=[
                 rg.LabelQuestion(
@@ -214,6 +245,7 @@ def build_task_settings(locale: Locale = "en") -> dict[Task, rg.Settings]:
                 rg.TextField(name="context_set", title=t(Task.GROUNDING, "field", "context_set"), required=True),
                 _collapsible_field("query", t(Task.GROUNDING, "field", "query"), template_text),
                 discard_field(Task.GROUNDING),
+                field_theme_field(Task.GROUNDING, "answer"),
             ],
             questions=[
                 rg.LabelQuestion(
@@ -261,6 +293,7 @@ def build_task_settings(locale: Locale = "en") -> dict[Task, rg.Settings]:
                 rg.TextField(name="answer", title=t(Task.GENERATION, "field", "answer"), required=True),
                 _collapsible_field("context_set", t(Task.GENERATION, "field", "context_set"), template_text),
                 discard_field(Task.GENERATION),
+                field_theme_field(Task.GENERATION, "query"),
             ],
             questions=[
                 rg.LabelQuestion(
