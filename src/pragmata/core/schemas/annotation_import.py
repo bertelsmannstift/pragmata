@@ -95,13 +95,15 @@ class PartitionManifestEntry(BaseModel):
 
 
 class PartitionManifest(BaseModel):
-    """Persistent record_uuid -> assignment map scoped to one ``dataset_id``.
+    """Persistent record_uuid -> assignment map scoped to one ``partition_scope``.
 
     Locks calibration vs production assignments across re-imports so growing
     or repeated batches never reshuffle records between Argilla datasets.
 
     Attributes:
-        dataset_id: Topology scope this manifest belongs to (empty string ok).
+        partition_scope: Calibration-budget scope this manifest belongs to
+            (empty string ok). Serialised as ``dataset_id`` for on-disk
+            backwards compatibility.
         created_at: First write timestamp.
         updated_at: Most recent write timestamp.
         partition_seed: Hash seed used for new-record assignments. Stored at
@@ -109,9 +111,9 @@ class PartitionManifest(BaseModel):
         assignments: Map of record_uuid -> PartitionManifestEntry.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
-    dataset_id: SafePathSegment
+    partition_scope: SafePathSegment = Field(alias="dataset_id")
     created_at: datetime
     updated_at: datetime
     partition_seed: int

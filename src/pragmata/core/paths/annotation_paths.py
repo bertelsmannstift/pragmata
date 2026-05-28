@@ -37,15 +37,15 @@ def resolve_annotation_paths(*, workspace: WorkspacePaths) -> AnnotationPaths:
 
 @dataclass(frozen=True, slots=True)
 class AnnotationImportPaths:
-    """Path bundle for an annotation import scope (one per ``dataset_id``).
+    """Path bundle for an annotation import scope (one per ``partition_scope``).
 
     Imports accumulate state across calls into the same logical scope, so the
-    bundle is keyed by ``dataset_id`` (persistent topology scope) rather than
-    a per-call identifier. The partition manifest sidecar tracks calibration
-    vs production assignment for every record imported into this scope.
+    bundle is keyed by ``partition_scope`` (persistent calibration-budget scope)
+    rather than a per-call identifier. The partition manifest sidecar tracks
+    calibration vs production assignment for every record imported into this scope.
 
     Attributes:
-        import_dir: Per-``dataset_id`` import directory.
+        import_dir: Per-``partition_scope`` import directory.
         partition_manifest: Partition manifest sidecar path.
     """
 
@@ -58,18 +58,18 @@ class AnnotationImportPaths:
         return self
 
 
-def resolve_import_paths(*, workspace: WorkspacePaths, dataset_id: str) -> AnnotationImportPaths:
+def resolve_import_paths(*, workspace: WorkspacePaths, partition_scope: str) -> AnnotationImportPaths:
     """Build the path bundle for an annotation import scope.
 
     Args:
         workspace: Workspace path bundle.
-        dataset_id: Topology scope. Empty string maps to the ``"default"``
-            directory so the layout is uniform across scopes.
+        partition_scope: Calibration-budget scope. Empty string maps to the
+            ``"default"`` directory so the layout is uniform across scopes.
 
     Returns:
         Path bundle for the import scope.
     """
-    scope = dataset_id or "default"
+    scope = partition_scope or "default"
     import_dir = workspace.tool_root("annotation") / "imports" / scope
     return AnnotationImportPaths(
         import_dir=import_dir,

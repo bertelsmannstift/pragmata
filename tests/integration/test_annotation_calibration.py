@@ -51,10 +51,10 @@ def _make_raw_multi_chunk(i: int, *, n_chunks: int) -> dict:
     }
 
 
-def _manifest_path(base_dir: Path, dataset_id: str) -> Path:
+def _manifest_path(base_dir: Path, partition_scope: str) -> Path:
     """Resolve the partition manifest path the same way the import API does."""
     workspace = WorkspacePaths.from_base_dir(base_dir)
-    return resolve_import_paths(workspace=workspace, dataset_id=dataset_id).partition_manifest
+    return resolve_import_paths(workspace=workspace, partition_scope=partition_scope).partition_manifest
 
 
 @pytest.fixture(scope="module")
@@ -393,3 +393,59 @@ class TestPerWorkspaceMinSubmitted:
             assert grounding_prod.distribution.min_submitted == 1
         finally:
             teardown_resources(client, carved_settings)
+
+
+class TestPartitionScopeDecoupling:
+    """Regression tests for the dataset_id / partition_scope coupling bug.
+
+    Before the fix, two configs sharing dataset_id="" (or any common value)
+    would share a single calibration budget. The first import to hit
+    calibration_max_records would exhaust it, leaving subsequent imports in a
+    different domain with zero calibration records.
+    """
+
+    def test_independent_scopes_each_get_calibration(self, client: rg.Argilla, base_dir: Path) -> None:
+        """Two configs with empty dataset_id but different partition_scope each receive calibration records."""
+        scope_a = "reg_scope_a"
+        scope_b = "reg_scope_b"
+        cal_max = 30
+        settings_a = AnnotationSettings(partition_scope=scope_a, calibration_max_records=cal_max)
+        settings_b = AnnotationSettings(partition_scope=scope_b, calibration_max_records=cal_max)
+        teardown_resources(client, settings_a)
+        teardown_resources(client, settings_b)
+        setup_workspaces(client, settings_a)
+        setup_workspaces(client, settings_b)
+
+        try:
+            # Import enough records under scope A to hit the cap.
+            result_a = import_records(
+                [_make_raw(i) for i in range(181)],
+                partition_scope=scope_a,
+                base_dir=base_dir,
+                calibration_fraction=0.2,
+                calibration_max_records=cal_max,
+                **_CREDS,
+            )
+            cal_a = result_a.calibration_count.get(Task.RETRIEVAL, 0)
+            assert cal_a == cal_max, f"scope A should have hit cap ({cal_a} vs {cal_max})"
+
+            # Import under scope B - should get its own fresh calibration budget.
+            result_b = import_records(
+                [_make_raw(i) for i in range(500, 708)],
+                partition_scope=scope_b,
+                base_dir=base_dir,
+                calibration_fraction=0.2,
+                calibration_max_records=cal_max,
+                **_CREDS,
+            )
+            cal_b_retrieval = result_b.calibration_count.get(Task.RETRIEVAL, 0)
+            cal_b_grounding = result_b.calibration_count.get(Task.GROUNDING, 0)
+            assert cal_b_retrieval > 0, (
+                f"scope B retrieval got zero calibration — partition_scope isolation broken (cal={cal_b_retrieval})"
+            )
+            assert cal_b_grounding > 0, (
+                f"scope B grounding got zero calibration — partition_scope isolation broken (cal={cal_b_grounding})"
+            )
+        finally:
+            teardown_resources(client, settings_a)
+            teardown_resources(client, settings_b)

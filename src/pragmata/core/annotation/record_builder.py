@@ -176,25 +176,25 @@ def _calibration_digest(unit_id: str, task: Task, seed: int) -> int:
 # ---------------------------------------------------------------------------
 
 
-def load_partition_manifest(path: Path, *, dataset_id: str, partition_seed: int) -> PartitionManifest:
+def load_partition_manifest(path: Path, *, partition_scope: str, partition_seed: int) -> PartitionManifest:
     """Load an existing manifest from disk or create an empty one.
 
-    Raises if the on-disk manifest's dataset_id does not match the caller's,
+    Raises if the on-disk manifest's partition_scope does not match the caller's,
     which would indicate a base_dir or scope mispoint that could silently
     corrupt assignments across scopes.
     """
     if path.exists():
         manifest = PartitionManifest.model_validate_json(path.read_text(encoding="utf-8"))
-        if manifest.dataset_id != dataset_id:
+        if manifest.partition_scope != partition_scope:
             raise ValueError(
-                f"Partition manifest at {path} has dataset_id={manifest.dataset_id!r} "
-                f"but the current scope is {dataset_id!r}. Refusing to load to avoid "
+                f"Partition manifest at {path} has partition_scope={manifest.partition_scope!r} "
+                f"but the current scope is {partition_scope!r}. Refusing to load to avoid "
                 "cross-scope assignment corruption."
             )
         return manifest
     now = datetime.now(timezone.utc)
     return PartitionManifest(
-        dataset_id=dataset_id,
+        partition_scope=partition_scope,
         created_at=now,
         updated_at=now,
         partition_seed=partition_seed,
@@ -208,7 +208,7 @@ def write_partition_manifest(path: Path, manifest: PartitionManifest) -> None:
     The parent directory must already exist; path resolution and directory
     creation belong in core/paths/ (see AnnotationImportPaths.ensure_dirs).
     """
-    payload = json.dumps(manifest.model_dump(mode="json"), indent=2)
+    payload = json.dumps(manifest.model_dump(mode="json", by_alias=True), indent=2)
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(payload, encoding="utf-8")
     tmp.replace(path)

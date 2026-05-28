@@ -84,30 +84,30 @@ class TestAnnotationExportPaths:
 
 class TestAnnotationImportPaths:
     def test_import_dir_under_imports_scope(self, workspace: WorkspacePaths) -> None:
-        paths = resolve_import_paths(workspace=workspace, dataset_id="run1")
+        paths = resolve_import_paths(workspace=workspace, partition_scope="run1")
         expected = workspace.tool_root("annotation") / "imports" / "run1"
         assert paths.import_dir == expected
 
-    def test_empty_dataset_id_maps_to_default_scope(self, workspace: WorkspacePaths) -> None:
-        paths = resolve_import_paths(workspace=workspace, dataset_id="")
+    def test_empty_partition_scope_maps_to_default_scope(self, workspace: WorkspacePaths) -> None:
+        paths = resolve_import_paths(workspace=workspace, partition_scope="")
         expected = workspace.tool_root("annotation") / "imports" / "default"
         assert paths.import_dir == expected
 
     def test_partition_manifest_under_import_dir(self, workspace: WorkspacePaths) -> None:
-        paths = resolve_import_paths(workspace=workspace, dataset_id="run1")
+        paths = resolve_import_paths(workspace=workspace, partition_scope="run1")
         assert paths.partition_manifest == paths.import_dir / "partition.meta.json"
 
     def test_ensure_dirs_creates_import_dir(self, workspace: WorkspacePaths) -> None:
-        paths = resolve_import_paths(workspace=workspace, dataset_id="run1")
+        paths = resolve_import_paths(workspace=workspace, partition_scope="run1")
         assert not paths.import_dir.exists()
         paths.ensure_dirs()
         assert paths.import_dir.exists()
 
     def test_ensure_dirs_returns_self(self, workspace: WorkspacePaths) -> None:
-        paths = resolve_import_paths(workspace=workspace, dataset_id="run1")
+        paths = resolve_import_paths(workspace=workspace, partition_scope="run1")
         assert paths.ensure_dirs() is paths
 
     def test_frozen(self, workspace: WorkspacePaths, tmp_path: Path) -> None:
-        paths = resolve_import_paths(workspace=workspace, dataset_id="run1")
+        paths = resolve_import_paths(workspace=workspace, partition_scope="run1")
         with pytest.raises((AttributeError, TypeError)):
             paths.import_dir = tmp_path  # type: ignore[misc]
