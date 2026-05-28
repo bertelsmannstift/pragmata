@@ -438,9 +438,13 @@ class TestPartitionScopeDecoupling:
                 calibration_max_records=cal_max,
                 **_CREDS,
             )
-            cal_b = result_b.calibration_count.get(Task.RETRIEVAL, 0)
-            assert cal_b > 0, (
-                f"scope B got zero calibration records — partition_scope isolation is broken (scope B cal={cal_b})"
+            cal_b_retrieval = result_b.calibration_count.get(Task.RETRIEVAL, 0)
+            cal_b_grounding = result_b.calibration_count.get(Task.GROUNDING, 0)
+            assert cal_b_retrieval > 0, (
+                f"scope B retrieval got zero calibration — partition_scope isolation broken (cal={cal_b_retrieval})"
+            )
+            assert cal_b_grounding > 0, (
+                f"scope B grounding got zero calibration — partition_scope isolation broken (cal={cal_b_grounding})"
             )
         finally:
             teardown_resources(client, settings_a)
