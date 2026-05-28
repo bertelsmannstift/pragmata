@@ -7,7 +7,6 @@ from pydantic import BaseModel, ConfigDict, Field, PositiveInt
 
 from pragmata.core.schemas.annotation_task import Task
 
-
 type Rate = Annotated[float, Field(ge=0.0, le=1.0)]
 
 
