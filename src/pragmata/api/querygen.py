@@ -124,6 +124,13 @@ def _resume_or_run_planning_batch(
             )
             return artifact.blueprints, artifact.planning_summary_state, False
 
+    logger.info(
+        "Stage 1 batch %d/%d: planning %d candidates for run %s",
+        batch_idx + 1,
+        total_batches,
+        len(batch_candidate_ids),
+        settings.run_id,
+    )
     batch_blueprints = run_planning_stage(
         spec=settings.spec,
         llm_settings=settings.llm,
@@ -223,6 +230,13 @@ def _resume_or_run_realization_batch(
             )
             return artifact.queries
 
+    logger.info(
+        "Stage 2 batch %d/%d: realizing %d candidates for run %s",
+        batch_idx + 1,
+        total_batches,
+        len(blueprint_batch),
+        settings.run_id,
+    )
     realized_queries = run_realization_stage(
         candidates=blueprint_batch,
         llm_settings=settings.llm,
