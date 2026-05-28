@@ -1,10 +1,9 @@
 """Export assembled synthetic query artifacts to disk."""
 
 import json
-import os
 from pathlib import Path
-from uuid import uuid4
 
+from pragmata.core.atomic_io import atomic_write_text
 from pragmata.core.csv_io import write_csv
 from pragmata.core.schemas.querygen_output import (
     PlanningBatchArtifact,
@@ -17,23 +16,9 @@ from pragmata.core.schemas.querygen_output import (
 
 
 def _atomic_write_json(*, data: dict, path: Path) -> None:
-    """Atomically write ``data`` as JSON to ``path`` (tempfile + rename).
-
-    The tempfile name is uniquified with PID + a random hex suffix so that two
-    writers targeting the same path (e.g. a half-dead run and a relaunch under
-    the same run_id) cannot clobber each other's tempfile mid-write; the final
-    ``Path.replace`` is atomic on a POSIX filesystem. No fsync (matching the
-    repo's existing atomic-write idiom): a torn or zero-length file left by a
-    crash fails validation on read and is treated as drift -> recompute, so the
-    durability gap cannot silently corrupt a run.
-    """
-    tmp_path = path.with_name(f"{path.name}.{os.getpid()}.{uuid4().hex}.tmp")
-    try:
-        tmp_path.write_text(json.dumps(data), encoding="utf-8")
-        tmp_path.replace(path)
-    except BaseException:
-        tmp_path.unlink(missing_ok=True)
-        raise
+    """Atomically write ``data`` as JSON to ``path`` via :func:`atomic_write_text`."""
+    with atomic_write_text(path) as handle:
+        handle.write(json.dumps(data))
 
 
 def export_queries(

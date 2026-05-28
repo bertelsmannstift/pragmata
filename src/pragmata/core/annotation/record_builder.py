@@ -25,6 +25,7 @@ from pragmata.core.annotation.argilla_task_definitions import (
     dataset_name,
 )
 from pragmata.core.annotation.locales.registry import CATALOGS
+from pragmata.core.atomic_io import atomic_write_text
 from pragmata.core.schemas.annotation_import import (
     Chunk,
     PartitionManifest,
@@ -209,9 +210,8 @@ def write_partition_manifest(path: Path, manifest: PartitionManifest) -> None:
     creation belong in core/paths/ (see AnnotationImportPaths.ensure_dirs).
     """
     payload = json.dumps(manifest.model_dump(mode="json"), indent=2)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(payload, encoding="utf-8")
-    tmp.replace(path)
+    with atomic_write_text(path) as handle:
+        handle.write(payload)
 
 
 @dataclass(frozen=True)

@@ -12,6 +12,7 @@ import argilla as rg
 
 from pragmata.core.annotation.export_fetcher import AnnotationModel, build_user_lookup, fetch_task
 from pragmata.core.annotation.logical_constraints import LogicalConstraint
+from pragmata.core.atomic_io import atomic_write_text
 from pragmata.core.csv_io import _to_csv_value
 from pragmata.core.paths.annotation_paths import AnnotationExportPaths
 from pragmata.core.schemas.annotation_export import (
@@ -93,9 +94,8 @@ def write_export_csv(
     """
     row_cls = TASK_EXPORT_ROW[task]
     headers = list(row_cls.model_fields.keys())
-    tmp = path.with_suffix(".tmp")
     try:
-        with tmp.open("w", newline="", encoding="utf-8") as f:
+        with atomic_write_text(path) as f:
             writer = csv.DictWriter(f, fieldnames=headers)
             writer.writeheader()
             for annotation, violations in rows:
@@ -106,12 +106,10 @@ def write_export_csv(
                 )
                 raw = export_row.model_dump(mode="json")
                 writer.writerow({k: _to_csv_value(raw[k]) for k in headers})
-        tmp.rename(path)
-        logger.info("Wrote %d rows to %s", len(rows), path)
     except Exception:
-        logger.error("Failed writing CSV %s — cleaning up temp file", path)
-        tmp.unlink(missing_ok=True)
+        logger.error("Failed writing CSV %s", path)
         raise
+    logger.info("Wrote %d rows to %s", len(rows), path)
 
 
 def _resolve_calibration_enabled(settings: "AnnotationSettings", tasks: list[Task]) -> dict[Task, bool]:
