@@ -214,3 +214,17 @@ def test_score_report_serialises_iso_8601_datetime(valid_retrieval_report):
     dumped = RetrievalScoreReport(**valid_retrieval_report).model_dump(mode="json")
 
     assert dumped["created_at"] == "2026-05-28T13:30:00Z"
+
+@pytest.mark.parametrize(
+    ("report_cls", "fields_fixture"),
+    [
+        (RetrievalScoreReport, "valid_retrieval_report"),
+        (GroundingScoreReport, "valid_grounding_report"),
+        (GenerationScoreReport, "valid_generation_report"),
+    ],
+)
+def test_score_report_notes_default_empty(report_cls, fields_fixture, request):
+    """Score report notes default to empty string."""
+    report = report_cls(**request.getfixturevalue(fields_fixture))
+
+    assert report.notes == ""
