@@ -17,6 +17,7 @@ class RetrievalScoreReport(BaseModel):
 
     task: Literal[Task.RETRIEVAL] = Task.RETRIEVAL
     annotation_export_id: str | None = None
+    notes: str = ""
     created_at: datetime
     n_examples: PositiveInt
     top_k: PositiveInt
@@ -35,6 +36,7 @@ class GroundingScoreReport(BaseModel):
 
     task: Literal[Task.GROUNDING] = Task.GROUNDING
     annotation_export_id: str | None = None
+    notes: str = ""
     created_at: datetime
     n_examples: PositiveInt
     grounding_presence_rate: Rate
@@ -51,6 +53,7 @@ class GenerationScoreReport(BaseModel):
 
     task: Literal[Task.GENERATION] = Task.GENERATION
     annotation_export_id: str | None = None
+    notes: str = ""
     created_at: datetime
     n_examples: PositiveInt
     proper_action_rate: Rate
