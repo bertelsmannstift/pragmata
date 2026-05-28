@@ -1,10 +1,18 @@
 """Assembly of synthetic query generation output."""
 
+import importlib.metadata
 from datetime import UTC, datetime
 
+from pragmata.core.querygen.deduplication import EMBEDDING_MODEL_CHECKPOINT
 from pragmata.core.querygen.planning_summary import fingerprint_querygen_spec
 from pragmata.core.schemas.querygen_input import QueryGenSpec
-from pragmata.core.schemas.querygen_output import PlanningSummaryArtifact, SyntheticQueriesMeta, SyntheticQueryRow
+from pragmata.core.schemas.querygen_output import (
+    PlanningBatchArtifact,
+    PlanningSummaryArtifact,
+    SelectedBlueprintsArtifact,
+    SyntheticQueriesMeta,
+    SyntheticQueryRow,
+)
 from pragmata.core.schemas.querygen_plan import QueryBlueprint
 from pragmata.core.schemas.querygen_realize import RealizedQuery
 from pragmata.core.schemas.querygen_summary import PlanningSummaryState
@@ -90,6 +98,84 @@ def assemble_queries_meta(
         model_provider=model_provider,
         planning_model=planning_model,
         realization_model=realization_model,
+    )
+
+
+def assemble_planning_batch_artifact(
+    *,
+    spec_fingerprint: str,
+    source_run_id: str,
+    n_queries: int,
+    batch_size: int,
+    batch_idx: int,
+    candidate_ids: list[str],
+    blueprints: list[QueryBlueprint],
+    planning_summary_state: PlanningSummaryState | None,
+) -> PlanningBatchArtifact:
+    """Assemble a Stage 1 planning-batch artifact, stamping version + time.
+
+    Args:
+        spec_fingerprint: Fingerprint of the resolved querygen spec.
+        source_run_id: Run identifier that produced this batch.
+        n_queries: Total queries requested for the run.
+        batch_size: Configured batch size for the run.
+        batch_idx: Zero-based index of this planning batch.
+        candidate_ids: Candidate IDs assigned to this batch.
+        blueprints: Blueprints produced for this batch.
+        planning_summary_state: Planning-summary state after this batch, if any.
+
+    Returns:
+        A validated ``PlanningBatchArtifact`` with internally stamped
+        ``pragmata_version`` and ``created_at``.
+    """
+    return PlanningBatchArtifact(
+        spec_fingerprint=spec_fingerprint,
+        pragmata_version=importlib.metadata.version("pragmata"),
+        source_run_id=source_run_id,
+        n_queries=n_queries,
+        batch_size=batch_size,
+        batch_idx=batch_idx,
+        candidate_ids=candidate_ids,
+        blueprints=blueprints,
+        planning_summary_state=planning_summary_state,
+        created_at=datetime.now(UTC),
+    )
+
+
+def assemble_selected_blueprints_artifact(
+    *,
+    spec_fingerprint: str,
+    source_run_id: str,
+    n_queries: int,
+    batch_size: int,
+    near_duplicate_tolerance: float,
+    blueprints: list[QueryBlueprint],
+) -> SelectedBlueprintsArtifact:
+    """Assemble the frozen Stage 1 result artifact, stamping provenance.
+
+    Args:
+        spec_fingerprint: Fingerprint of the resolved querygen spec.
+        source_run_id: Run identifier that produced this result.
+        n_queries: Total queries requested for the run.
+        batch_size: Configured batch size for the run.
+        near_duplicate_tolerance: Tolerance used for the deduplication that
+            produced ``blueprints``.
+        blueprints: Final post-deduplication selected blueprints.
+
+    Returns:
+        A validated ``SelectedBlueprintsArtifact`` with internally stamped
+        ``pragmata_version``, embedding-model provenance, and ``created_at``.
+    """
+    return SelectedBlueprintsArtifact(
+        spec_fingerprint=spec_fingerprint,
+        pragmata_version=importlib.metadata.version("pragmata"),
+        source_run_id=source_run_id,
+        n_queries=n_queries,
+        batch_size=batch_size,
+        near_duplicate_tolerance=near_duplicate_tolerance,
+        embedding_model=EMBEDDING_MODEL_CHECKPOINT,
+        blueprints=blueprints,
+        created_at=datetime.now(UTC),
     )
 
 

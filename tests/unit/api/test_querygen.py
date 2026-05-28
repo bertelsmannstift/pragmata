@@ -401,6 +401,8 @@ def test_gen_queries_fingerprints_spec_before_resolving_paths(
             synthetic_queries_csv=run_dir / "synthetic_queries.csv",
             synthetic_queries_meta_json=run_dir / "synthetic_queries.meta.json",
             planning_summary_artifact_json=tool_root / f"{spec_fingerprint}.json",
+            planning_batches_dir=run_dir / "planning_batches",
+            selected_blueprints_json=run_dir / "selected_blueprints.json",
         )
 
     monkeypatch.setattr(querygen_api, "fingerprint_querygen_spec", fingerprint_querygen_spec)
@@ -1193,7 +1195,11 @@ def test_gen_queries_propagates_realization_failure_and_stops_downstream_work(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Realization failures propagate and prevent assembly and export."""
+    """Realization failures propagate and prevent query assembly and export.
+
+    The cross-run planning summary is persisted at the end of Stage 1 (before
+    realization), so it is intentionally NOT prevented by a Stage 2 failure.
+    """
     monkeypatch.setattr(
         querygen_api,
         "run_realization_stage",
@@ -1209,17 +1215,149 @@ def test_gen_queries_propagates_realization_failure_and_stops_downstream_work(
         "export_queries",
         lambda **kwargs: pytest.fail("export_queries must not run after realization failure"),
     )
-    monkeypatch.setattr(
-        querygen_api,
-        "export_planning_summary",
-        lambda **kwargs: pytest.fail("export_planning_summary must not run after realization failure"),
-    )
 
     with pytest.raises(RuntimeError, match="realization failed"):
         querygen_api.gen_queries(
             **_required_querygen_kwargs(tmp_path),
             run_id="realization-failure-check",
         )
+
+
+def test_gen_queries_writes_stage1_checkpoints_and_frozen_result(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A fresh run persists one checkpoint per Stage 1 batch and the frozen result."""
+    monkeypatch.setattr(querygen_api, "iter_batch_sizes", lambda n_queries, batch_size: iter([2, 1]))
+
+    result = querygen_api.gen_queries(
+        **_required_querygen_kwargs(tmp_path),
+        n_queries=3,
+        batch_size=2,
+        run_id="checkpoint-write",
+    )
+
+    assert (result.paths.planning_batches_dir / "batch_0000.json").exists()
+    assert (result.paths.planning_batches_dir / "batch_0001.json").exists()
+    assert result.paths.selected_blueprints_json.exists()
+
+
+def test_gen_queries_rerun_loads_frozen_result_and_skips_stage1(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A rerun with a valid frozen result skips the planning loop and deduplication."""
+    monkeypatch.setattr(querygen_api, "iter_batch_sizes", lambda n_queries, batch_size: iter([2, 1]))
+    kwargs = {
+        **_required_querygen_kwargs(tmp_path),
+        "n_queries": 3,
+        "batch_size": 2,
+        "run_id": "frozen-skip",
+    }
+
+    querygen_api.gen_queries(**kwargs)
+
+    planning_calls: list[list[str]] = []
+    dedup_calls: list[object] = []
+
+    def spy_planning(
+        *,
+        spec,  # noqa: ANN001
+        llm_settings,  # noqa: ANN001
+        api_key: str,
+        batch_candidate_ids: list[str],
+        planning_summary=None,  # noqa: ANN001
+    ) -> list[QueryBlueprint]:
+        planning_calls.append(batch_candidate_ids)
+        return [_make_blueprint(candidate_id) for candidate_id in batch_candidate_ids]
+
+    def spy_dedup(candidates, near_duplicate_tolerance=0.95):  # noqa: ANN001, ANN201
+        dedup_calls.append(candidates)
+        return candidates
+
+    monkeypatch.setattr(querygen_api, "run_planning_stage", spy_planning)
+    monkeypatch.setattr(querygen_api, "deduplicate_blueprints", spy_dedup)
+
+    querygen_api.gen_queries(**kwargs)
+
+    assert planning_calls == []
+    assert dedup_calls == []
+
+
+def test_gen_queries_resumes_stage1_from_checkpoint_after_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A batch that completed before a failure is resumed; only the rest re-runs."""
+    monkeypatch.setattr(querygen_api, "iter_batch_sizes", lambda n_queries, batch_size: iter([2, 1]))
+    kwargs = {
+        **_required_querygen_kwargs(tmp_path),
+        "n_queries": 3,
+        "batch_size": 2,
+        "run_id": "stage1-resume",
+    }
+
+    def failing_planning(
+        *,
+        spec,  # noqa: ANN001
+        llm_settings,  # noqa: ANN001
+        api_key: str,
+        batch_candidate_ids: list[str],
+        planning_summary=None,  # noqa: ANN001
+    ) -> list[QueryBlueprint]:
+        if "c003" in batch_candidate_ids:
+            raise RuntimeError("planning boom")
+        return [_make_blueprint(candidate_id) for candidate_id in batch_candidate_ids]
+
+    monkeypatch.setattr(querygen_api, "run_planning_stage", failing_planning)
+    with pytest.raises(RuntimeError, match="planning boom"):
+        querygen_api.gen_queries(**kwargs)
+
+    second_run_batches: list[list[str]] = []
+
+    def ok_planning(
+        *,
+        spec,  # noqa: ANN001
+        llm_settings,  # noqa: ANN001
+        api_key: str,
+        batch_candidate_ids: list[str],
+        planning_summary=None,  # noqa: ANN001
+    ) -> list[QueryBlueprint]:
+        second_run_batches.append(batch_candidate_ids)
+        return [_make_blueprint(candidate_id) for candidate_id in batch_candidate_ids]
+
+    monkeypatch.setattr(querygen_api, "run_planning_stage", ok_planning)
+    querygen_api.gen_queries(**kwargs)
+
+    # Batch 0 (c001, c002) resumed from its checkpoint; only batch 1 (c003) re-ran.
+    assert second_run_batches == [["c003"]]
+
+
+def test_gen_queries_persists_cross_run_summary_before_realization(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The cross-run planning summary is written at end of Stage 1, surviving a Stage 2 failure."""
+    summary_exports: list[dict[str, object]] = []
+
+    monkeypatch.setattr(
+        querygen_api,
+        "export_planning_summary",
+        lambda **kwargs: summary_exports.append(kwargs),
+    )
+    monkeypatch.setattr(
+        querygen_api,
+        "run_realization_stage",
+        lambda **kwargs: (_ for _ in ()).throw(RuntimeError("stage2 boom")),
+    )
+
+    with pytest.raises(RuntimeError, match="stage2 boom"):
+        querygen_api.gen_queries(
+            **_required_querygen_kwargs(tmp_path),
+            run_id="summary-before-stage2",
+        )
+
+    assert len(summary_exports) == 1
 
 
 def test_gen_queries_handles_empty_selected_blueprints_after_stage1(
