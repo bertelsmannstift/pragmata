@@ -100,10 +100,10 @@ def gen_queries_command(
         "--enable-planning-memory/--no-enable-planning-memory",
         help="Enable or disable planning memory for the run. Accepts a boolean flag.",
     ),
-    fresh: bool = typer.Option(
+    force: bool = typer.Option(
         False,
-        "--fresh/--no-fresh",
-        help="Ignore existing checkpoints and the frozen result; recompute from scratch.",
+        "--force/--no-force",
+        help="Resume past config drift, recomputing whatever changed (default fails fast on drift).",
     ),
 ) -> None:
     """Prepare a synthetic query generation run."""
@@ -133,7 +133,7 @@ def gen_queries_command(
         batch_size=UNSET if batch_size is None else batch_size,
         near_duplicate_tolerance=UNSET if near_duplicate_tolerance is None else near_duplicate_tolerance,
         enable_planning_memory=UNSET if enable_planning_memory is None else enable_planning_memory,
-        fresh=fresh,
+        force=force,
     )
 
     typer.echo("Synthetic query generation run prepared.")

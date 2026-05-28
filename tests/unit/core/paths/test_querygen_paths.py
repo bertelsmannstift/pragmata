@@ -31,6 +31,7 @@ def test_resolve_querygen_paths_returns_expected_bundle(
     )
     expected_tool_root = workspace.base_dir / "querygen"
     expected_run_dir = workspace.base_dir / "querygen" / "runs" / run_id
+    expected_checkpoints_dir = expected_run_dir / "checkpoints"
 
     assert paths == QueryGenRunPaths(
         tool_root=expected_tool_root,
@@ -38,9 +39,10 @@ def test_resolve_querygen_paths_returns_expected_bundle(
         synthetic_queries_csv=expected_run_dir / "synthetic_queries.csv",
         synthetic_queries_meta_json=expected_run_dir / "synthetic_queries.meta.json",
         planning_summary_artifact_json=expected_tool_root / f"{spec_fingerprint}.json",
-        planning_batches_dir=expected_run_dir / "planning_batches",
-        selected_blueprints_json=expected_run_dir / "selected_blueprints.json",
-        realization_batches_dir=expected_run_dir / "realization_batches",
+        checkpoints_dir=expected_checkpoints_dir,
+        planning_batches_dir=expected_checkpoints_dir / "planning_batches",
+        selected_blueprints_json=expected_checkpoints_dir / "selected_blueprints.json",
+        realization_batches_dir=expected_checkpoints_dir / "realization_batches",
     )
 
 

@@ -20,6 +20,7 @@ from pragmata.core.querygen.assembly import (
     assemble_selected_blueprints_artifact,
 )
 from pragmata.core.querygen.batching import build_candidate_ids, chunk_blueprints, iter_batch_sizes
+from pragmata.core.querygen.checkpoint_read import DriftedField
 from pragmata.core.querygen.deduplication import EMBEDDING_MODEL_CHECKPOINT, deduplicate_blueprints
 from pragmata.core.querygen.export import (
     export_planning_batch_artifact,
@@ -63,6 +64,35 @@ class QueryGenRunResult(BaseModel):
     paths: QueryGenRunPaths
 
 
+class QueryGenDriftError(RuntimeError):
+    """Raised when a checkpoint was produced under settings that differ from the current run.
+
+    The run halts instead of silently reusing or recomputing the drifted work.
+    Resolve by re-running with ``force=True`` (CLI ``--force``) to resume and
+    recompute whatever changed, deleting the run directory to rebuild from
+    scratch, or a new ``run_id`` to start a separate run and keep this one.
+    """
+
+
+def _shorten(value: object) -> str:
+    """Render a drift value compactly, truncating long strings such as fingerprints."""
+    text = str(value)
+    return f"{text[:12]}..." if len(text) > 16 else text
+
+
+def _drift_message(*, run_id: str, checkpoint_path: Path, drifted: list[DriftedField]) -> str:
+    """Build the fail-fast message naming each drifted field as stored -> current."""
+    changes = "\n".join(
+        f"  - {field.field}: {_shorten(field.stored)} -> {_shorten(field.expected)}" for field in drifted
+    )
+    return (
+        f"Run {run_id} cannot resume: checkpoint {checkpoint_path.name} was produced with "
+        f"different settings.\nChanged (stored -> current):\n{changes}\n"
+        f"Re-run with --force to resume and recompute what changed, delete the run directory "
+        f"to rebuild from scratch, or use a new --run-id to start a separate run."
+    )
+
+
 def _resume_or_run_planning_batch(
     *,
     paths: QueryGenRunPaths,
@@ -75,6 +105,7 @@ def _resume_or_run_planning_batch(
     batch_candidate_ids: list[str],
     planning_summary_state: PlanningSummaryState | None,
     resume_exhausted: bool,
+    force: bool,
 ) -> tuple[list[QueryBlueprint], PlanningSummaryState | None, bool]:
     """Resume one Stage 1 batch from a valid checkpoint, or run it fresh and persist.
 
@@ -96,12 +127,17 @@ def _resume_or_run_planning_batch(
         batch_candidate_ids: Candidate IDs assigned to this batch.
         planning_summary_state: Planning-summary state seeding this batch.
         resume_exhausted: Whether an earlier batch already ran fresh this run.
+        force: When True, recompute a drifted checkpoint instead of failing fast.
+
+    Raises:
+        QueryGenDriftError: The checkpoint exists but its settings drifted and
+            ``force`` is False.
     """
     checkpoint_path = paths.planning_batches_dir / f"batch_{batch_idx:04d}.json"
 
     if not resume_exhausted:
         try:
-            artifact = read_planning_batch_artifact(
+            artifact, drifted = read_planning_batch_artifact(
                 path=checkpoint_path,
                 expected_spec_fingerprint=spec_fingerprint,
                 expected_source_run_id=settings.run_id,
@@ -113,13 +149,17 @@ def _resume_or_run_planning_batch(
             )
         except (json.JSONDecodeError, ValidationError, UnicodeDecodeError) as exc:
             logger.warning(
-                "Stage 1 batch %d/%d checkpoint %s unreadable (%s); rerunning it and all later batches",
+                "Stage 1 batch %d/%d checkpoint %s is damaged (%s); recomputing it and all later batches",
                 batch_idx + 1,
                 total_batches,
                 checkpoint_path.name,
                 exc,
             )
-            artifact = None
+            artifact, drifted = None, []
+        if drifted and not force:
+            raise QueryGenDriftError(
+                _drift_message(run_id=settings.run_id, checkpoint_path=checkpoint_path, drifted=drifted)
+            )
         if artifact is not None:
             logger.info(
                 "Stage 1 batch %d/%d resumed from checkpoint for run %s",
@@ -128,6 +168,14 @@ def _resume_or_run_planning_batch(
                 settings.run_id,
             )
             return artifact.blueprints, artifact.planning_summary_state, False
+        if drifted:
+            logger.warning(
+                "Stage 1 batch %d/%d checkpoint %s drifted (%s); recomputing it and all later batches (--force)",
+                batch_idx + 1,
+                total_batches,
+                checkpoint_path.name,
+                ", ".join(field.field for field in drifted),
+            )
 
     logger.info(
         "Stage 1 batch %d/%d: planning %d candidates for run %s",
@@ -188,7 +236,7 @@ def _resume_or_run_realization_batch(
     batch_idx: int,
     total_batches: int,
     blueprint_batch: list[QueryBlueprint],
-    fresh: bool,
+    force: bool,
 ) -> list[RealizedQuery]:
     """Resume one Stage 2 batch from a valid checkpoint, or run it fresh and persist.
 
@@ -206,39 +254,54 @@ def _resume_or_run_realization_batch(
         batch_idx: Zero-based index of this realization batch.
         total_batches: Total number of realization batches (for logging).
         blueprint_batch: Selected blueprints to realize in this batch.
-        fresh: When True, ignore any existing checkpoint and recompute.
+        force: When True, recompute a drifted checkpoint instead of failing fast.
+
+    Raises:
+        QueryGenDriftError: The checkpoint exists but its settings drifted and
+            ``force`` is False.
     """
     checkpoint_path = paths.realization_batches_dir / f"batch_{batch_idx:04d}.json"
     batch_candidate_ids = [blueprint.candidate_id for blueprint in blueprint_batch]
 
-    if not fresh:
-        try:
-            artifact = read_realization_batch_artifact(
-                path=checkpoint_path,
-                expected_spec_fingerprint=spec_fingerprint,
-                expected_source_run_id=settings.run_id,
-                expected_n_queries=settings.n_queries,
-                expected_batch_size=settings.batch_size,
-                expected_candidate_ids=batch_candidate_ids,
-                expected_llm_fingerprint=llm_fingerprint,
-            )
-        except (json.JSONDecodeError, ValidationError, UnicodeDecodeError) as exc:
-            logger.warning(
-                "Stage 2 batch %d/%d checkpoint %s unreadable (%s); rerunning it",
-                batch_idx + 1,
-                total_batches,
-                checkpoint_path.name,
-                exc,
-            )
-            artifact = None
-        if artifact is not None:
-            logger.info(
-                "Stage 2 batch %d/%d resumed from checkpoint for run %s",
-                batch_idx + 1,
-                total_batches,
-                settings.run_id,
-            )
-            return artifact.queries
+    try:
+        artifact, drifted = read_realization_batch_artifact(
+            path=checkpoint_path,
+            expected_spec_fingerprint=spec_fingerprint,
+            expected_source_run_id=settings.run_id,
+            expected_n_queries=settings.n_queries,
+            expected_batch_size=settings.batch_size,
+            expected_candidate_ids=batch_candidate_ids,
+            expected_llm_fingerprint=llm_fingerprint,
+        )
+    except (json.JSONDecodeError, ValidationError, UnicodeDecodeError) as exc:
+        logger.warning(
+            "Stage 2 batch %d/%d checkpoint %s is damaged (%s); recomputing it",
+            batch_idx + 1,
+            total_batches,
+            checkpoint_path.name,
+            exc,
+        )
+        artifact, drifted = None, []
+    if drifted and not force:
+        raise QueryGenDriftError(
+            _drift_message(run_id=settings.run_id, checkpoint_path=checkpoint_path, drifted=drifted)
+        )
+    if artifact is not None:
+        logger.info(
+            "Stage 2 batch %d/%d resumed from checkpoint for run %s",
+            batch_idx + 1,
+            total_batches,
+            settings.run_id,
+        )
+        return artifact.queries
+    if drifted:
+        logger.warning(
+            "Stage 2 batch %d/%d checkpoint %s drifted (%s); recomputing it (--force)",
+            batch_idx + 1,
+            total_batches,
+            checkpoint_path.name,
+            ", ".join(field.field for field in drifted),
+        )
 
     logger.info(
         "Stage 2 batch %d/%d: realizing %d candidates for run %s",
@@ -303,7 +366,7 @@ def gen_queries(
     batch_size: PositiveInt | Unset = UNSET,
     near_duplicate_tolerance: float | Unset = UNSET,
     enable_planning_memory: bool | Unset = UNSET,
-    fresh: bool = False,
+    force: bool = False,
 ) -> QueryGenRunResult:
     """Generate synthetic chatbot queries from a query-generation specification.
 
@@ -345,9 +408,11 @@ def gen_queries(
             Defaults to True. When enabled, an additional LLM updates and persists a
             compact summary of prior blueprint generation across batches and compatible
             runs to reduce redundant or near-duplicate queries and improve diversity.
-        fresh: When True, ignore any existing on-disk checkpoints and frozen
-            result for this run and recompute from scratch (artifacts are still
-            written). Defaults to False, i.e. resume from whatever is present.
+        force: When True, resume past configuration drift by recomputing whatever
+            changed (reusing the rest). Defaults to False, i.e. fail fast with a
+            ``QueryGenDriftError`` naming the drifted fields if an existing
+            checkpoint was produced under different settings. To rebuild from
+            scratch, delete the run directory and re-run.
         run_id: Explicit run identifier. Defaults to an auto-generated UUID
             hex string.
         model_provider: Chat model provider to use. Defaults to "mistralai".
@@ -460,24 +525,38 @@ def gen_queries(
         # the per-batch loop, deduplicate, persist cross-run memory, and freeze
         # the result.
         frozen_result = None
-        if not fresh:
-            try:
-                frozen_result = read_selected_blueprints_artifact(
-                    path=paths.selected_blueprints_json,
-                    expected_spec_fingerprint=spec_fingerprint,
-                    expected_source_run_id=settings.run_id,
-                    expected_n_queries=settings.n_queries,
-                    expected_batch_size=settings.batch_size,
-                    expected_near_duplicate_tolerance=settings.near_duplicate_tolerance,
-                    expected_enable_planning_memory=settings.enable_planning_memory,
-                    expected_llm_fingerprint=llm_fingerprint,
+        frozen_drift: list[DriftedField] = []
+        try:
+            frozen_result, frozen_drift = read_selected_blueprints_artifact(
+                path=paths.selected_blueprints_json,
+                expected_spec_fingerprint=spec_fingerprint,
+                expected_source_run_id=settings.run_id,
+                expected_n_queries=settings.n_queries,
+                expected_batch_size=settings.batch_size,
+                expected_near_duplicate_tolerance=settings.near_duplicate_tolerance,
+                expected_enable_planning_memory=settings.enable_planning_memory,
+                expected_llm_fingerprint=llm_fingerprint,
+            )
+        except (json.JSONDecodeError, ValidationError, UnicodeDecodeError) as exc:
+            logger.warning(
+                "Frozen Stage 1 result %s is damaged (%s); recomputing Stage 1",
+                paths.selected_blueprints_json,
+                exc,
+            )
+        if frozen_drift and not force:
+            raise QueryGenDriftError(
+                _drift_message(
+                    run_id=settings.run_id,
+                    checkpoint_path=paths.selected_blueprints_json,
+                    drifted=frozen_drift,
                 )
-            except (json.JSONDecodeError, ValidationError, UnicodeDecodeError) as exc:
-                logger.warning(
-                    "Frozen Stage 1 result %s is unreadable (%s); recomputing Stage 1",
-                    paths.selected_blueprints_json,
-                    exc,
-                )
+            )
+        if frozen_drift:
+            logger.warning(
+                "Frozen Stage 1 result %s drifted (%s); recomputing Stage 1 (--force)",
+                paths.selected_blueprints_json,
+                ", ".join(field.field for field in frozen_drift),
+            )
 
         if frozen_result is not None:
             selected_blueprints = frozen_result.blueprints
@@ -500,7 +579,7 @@ def gen_queries(
             total_batches = len(batch_candidate_id_lists)
 
             planning_outputs: list[QueryBlueprint] = []
-            resume_exhausted = fresh
+            resume_exhausted = False
             for batch_idx, batch_candidate_ids in enumerate(batch_candidate_id_lists):
                 batch_blueprints, planning_summary_state, resume_exhausted = _resume_or_run_planning_batch(
                     paths=paths,
@@ -513,6 +592,7 @@ def gen_queries(
                     batch_candidate_ids=batch_candidate_ids,
                     planning_summary_state=planning_summary_state,
                     resume_exhausted=resume_exhausted,
+                    force=force,
                 )
                 planning_outputs.extend(batch_blueprints)
 
@@ -591,7 +671,7 @@ def gen_queries(
                     batch_idx=batch_idx,
                     total_batches=total_realization_batches,
                     blueprint_batch=blueprint_batch,
-                    fresh=fresh,
+                    force=force,
                 )
             )
 
