@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from pragmata.core.querygen.checkpoint_read import read_checkpoint_artifact
+from pragmata.core.querygen.checkpoint_read import DriftedField, read_checkpoint_artifact
 from pragmata.core.schemas.querygen_output import PlanningBatchArtifact
 
 
@@ -16,7 +16,7 @@ def read_planning_batch_artifact(
     expected_candidate_ids: list[str],
     expected_enable_planning_memory: bool,
     expected_llm_fingerprint: str,
-) -> tuple[PlanningBatchArtifact | None, list[str]]:
+) -> tuple[PlanningBatchArtifact | None, list[DriftedField]]:
     """Load a Stage 1 planning-batch checkpoint at ``path`` and report drift.
 
     Returns ``(artifact, [])`` when the checkpoint is reusable, ``(None, [])``

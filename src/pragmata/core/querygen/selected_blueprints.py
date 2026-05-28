@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from pragmata.core.querygen.checkpoint_read import read_checkpoint_artifact
+from pragmata.core.querygen.checkpoint_read import DriftedField, read_checkpoint_artifact
 from pragmata.core.schemas.querygen_output import SelectedBlueprintsArtifact
 
 
@@ -16,7 +16,7 @@ def read_selected_blueprints_artifact(
     expected_near_duplicate_tolerance: float,
     expected_enable_planning_memory: bool,
     expected_llm_fingerprint: str,
-) -> tuple[SelectedBlueprintsArtifact | None, list[str]]:
+) -> tuple[SelectedBlueprintsArtifact | None, list[DriftedField]]:
     """Load the frozen Stage 1 result at ``path`` and report drift.
 
     Returns ``(artifact, [])`` when the frozen result is reusable, ``(None, [])``

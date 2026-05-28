@@ -75,7 +75,11 @@ class QueryGenDriftError(RuntimeError):
 
 
 def _shorten(value: object) -> str:
-    """Render a drift value compactly, truncating long strings such as fingerprints."""
+    """Render a drift value compactly, truncating long strings such as fingerprints.
+
+    Short values (settings like n_queries/tolerance) print in full; 64-char hex
+    fingerprints are clipped to a scannable prefix so the message stays readable.
+    """
     text = str(value)
     return f"{text[:12]}..." if len(text) > 16 else text
 

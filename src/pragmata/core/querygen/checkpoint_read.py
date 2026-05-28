@@ -65,16 +65,15 @@ def read_checkpoint_artifact(
 
     artifact = model_cls.model_validate(json.loads(path.read_text(encoding="utf-8")))
 
+    # The running pragmata version is always part of the expected header: a
+    # version change can alter prompt templates or schemas without touching the
+    # spec, so a checkpoint written by another version must not be reused.
+    expected = {**expected_header, "pragmata_version": importlib.metadata.version("pragmata")}
     drifted = [
-        DriftedField(field=attribute, stored=getattr(artifact, attribute), expected=expected_value)
-        for attribute, expected_value in expected_header.items()
-        if getattr(artifact, attribute) != expected_value
+        DriftedField(field=attribute, stored=getattr(artifact, attribute), expected=value)
+        for attribute, value in expected.items()
+        if getattr(artifact, attribute) != value
     ]
-    running_version = importlib.metadata.version("pragmata")
-    if artifact.pragmata_version != running_version:
-        drifted.append(
-            DriftedField(field="pragmata_version", stored=artifact.pragmata_version, expected=running_version)
-        )
 
     if drifted:
         return None, drifted
