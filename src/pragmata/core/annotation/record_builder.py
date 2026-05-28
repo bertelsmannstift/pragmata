@@ -195,7 +195,7 @@ def load_partition_manifest(path: Path, *, partition_scope: str, partition_seed:
         return manifest
     now = datetime.now(timezone.utc)
     return PartitionManifest(
-        dataset_id=partition_scope,
+        partition_scope=partition_scope,
         created_at=now,
         updated_at=now,
         partition_seed=partition_seed,

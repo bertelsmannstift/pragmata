@@ -126,12 +126,6 @@ class AnnotationSettings(ResolveSettings):
     base_dir: Path = Field(default_factory=Path.cwd)
     dataset_id: SafePathSegment = ""
     partition_scope: SafePathSegment = ""
-
-    @model_validator(mode="after")
-    def _default_partition_scope(self) -> Self:
-        if not self.partition_scope:
-            self.partition_scope = self.dataset_id
-        return self
     production_min_submitted: PositiveInt = 1
     calibration_min_submitted: PositiveInt | None = 3
     locale: Locale = "en"
@@ -206,6 +200,12 @@ class AnnotationSettings(ResolveSettings):
             defaults = cls.model_fields["constraint_severity"].default_factory()
             data["constraint_severity"] = {**defaults, **data["constraint_severity"]}
         return data
+
+    @model_validator(mode="after")
+    def _default_partition_scope(self) -> Self:
+        if not self.partition_scope:
+            self.partition_scope = self.dataset_id
+        return self
 
     @model_validator(mode="after")
     def _validate_constraint_severity_keys(self) -> Self:

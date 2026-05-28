@@ -210,7 +210,7 @@ class TestPartitionManifest:
     def test_assignments_round_trip(self, valid_manifest_kwargs, valid_entry_kwargs):
         entry = PartitionManifestEntry(**valid_entry_kwargs)
         manifest = PartitionManifest(**valid_manifest_kwargs, assignments={"uuid-1": entry})
-        restored = PartitionManifest.model_validate_json(manifest.model_dump_json())
+        restored = PartitionManifest.model_validate_json(manifest.model_dump_json(by_alias=True))
         assert restored == manifest
 
     def test_extra_fields_rejected(self, valid_manifest_kwargs):
