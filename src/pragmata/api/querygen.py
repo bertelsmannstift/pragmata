@@ -16,6 +16,7 @@ from pragmata.core.querygen.assembly import (
     assemble_planning_summary,
     assemble_queries_meta,
     assemble_query_rows,
+    assemble_realization_batch_artifact,
     assemble_selected_blueprints_artifact,
 )
 from pragmata.core.querygen.batching import build_candidate_ids, chunk_blueprints, iter_batch_sizes
@@ -24,6 +25,7 @@ from pragmata.core.querygen.export import (
     export_planning_batch_artifact,
     export_planning_summary,
     export_queries,
+    export_realization_batch_artifact,
     export_selected_blueprints,
 )
 from pragmata.core.querygen.filtering import filter_aligned_candidate_ids
@@ -35,6 +37,7 @@ from pragmata.core.querygen.planning_summary import (
     run_planning_summary,
 )
 from pragmata.core.querygen.realization import run_realization_stage
+from pragmata.core.querygen.realization_batches import read_realization_batch_artifact
 from pragmata.core.querygen.selected_blueprints import read_selected_blueprints_artifact
 from pragmata.core.schemas.querygen_plan import QueryBlueprint
 from pragmata.core.schemas.querygen_realize import RealizedQuery
@@ -161,6 +164,93 @@ def _resume_or_run_planning_batch(
     return batch_blueprints, planning_summary_state, True
 
 
+def _resume_or_run_realization_batch(
+    *,
+    paths: QueryGenRunPaths,
+    settings: QueryGenRunSettings,
+    spec_fingerprint: str,
+    api_key: str,
+    batch_idx: int,
+    total_batches: int,
+    blueprint_batch: list[QueryBlueprint],
+    fresh: bool,
+) -> list[RealizedQuery]:
+    """Resume one Stage 2 batch from a valid checkpoint, or run it fresh and persist.
+
+    Stage 2 batches are independent (no chained state), so each batch resumes on
+    its own merits -- a missing or drifted batch does not force later batches to
+    re-run. The ``candidate_ids`` check on read guarantees a checkpoint is only
+    reused for the exact blueprints in this chunk of the frozen result.
+
+    Args:
+        paths: Resolved run paths (provides ``realization_batches_dir``).
+        settings: Resolved run settings.
+        spec_fingerprint: Fingerprint of the resolved spec for this run.
+        api_key: Provider API key.
+        batch_idx: Zero-based index of this realization batch.
+        total_batches: Total number of realization batches (for logging).
+        blueprint_batch: Selected blueprints to realize in this batch.
+        fresh: When True, ignore any existing checkpoint and recompute.
+    """
+    checkpoint_path = paths.realization_batches_dir / f"batch_{batch_idx:04d}.json"
+    batch_candidate_ids = [blueprint.candidate_id for blueprint in blueprint_batch]
+
+    if not fresh:
+        try:
+            artifact = read_realization_batch_artifact(
+                path=checkpoint_path,
+                expected_spec_fingerprint=spec_fingerprint,
+                expected_source_run_id=settings.run_id,
+                expected_n_queries=settings.n_queries,
+                expected_batch_size=settings.batch_size,
+                expected_candidate_ids=batch_candidate_ids,
+            )
+        except (json.JSONDecodeError, ValidationError) as exc:
+            logger.warning(
+                "Stage 2 batch %d/%d checkpoint %s unreadable (%s); rerunning it",
+                batch_idx + 1,
+                total_batches,
+                checkpoint_path.name,
+                exc,
+            )
+            artifact = None
+        if artifact is not None:
+            logger.info(
+                "Stage 2 batch %d/%d resumed from checkpoint for run %s",
+                batch_idx + 1,
+                total_batches,
+                settings.run_id,
+            )
+            return artifact.queries
+
+    realized_queries = run_realization_stage(
+        candidates=blueprint_batch,
+        llm_settings=settings.llm,
+        api_key=api_key,
+    )
+
+    export_realization_batch_artifact(
+        artifact=assemble_realization_batch_artifact(
+            spec_fingerprint=spec_fingerprint,
+            source_run_id=settings.run_id,
+            n_queries=settings.n_queries,
+            batch_size=settings.batch_size,
+            batch_idx=batch_idx,
+            candidate_ids=batch_candidate_ids,
+            queries=realized_queries,
+        ),
+        path=checkpoint_path,
+    )
+    logger.info(
+        "Stage 2 batch %d/%d complete for run %s (%d realized)",
+        batch_idx + 1,
+        total_batches,
+        settings.run_id,
+        len(realized_queries),
+    )
+    return realized_queries
+
+
 def gen_queries(
     *,
     domains: str | list[str] | list[dict[str, object]] | Unset = UNSET,
@@ -188,6 +278,7 @@ def gen_queries(
     batch_size: PositiveInt | Unset = UNSET,
     near_duplicate_tolerance: float | Unset = UNSET,
     enable_planning_memory: bool | Unset = UNSET,
+    fresh: bool = False,
 ) -> QueryGenRunResult:
     """Generate synthetic chatbot queries from a query-generation specification.
 
@@ -229,6 +320,9 @@ def gen_queries(
             Defaults to True. When enabled, an additional LLM updates and persists a
             compact summary of prior blueprint generation across batches and compatible
             runs to reduce redundant or near-duplicate queries and improve diversity.
+        fresh: When True, ignore any existing on-disk checkpoints and frozen
+            result for this run and recompute from scratch (artifacts are still
+            written). Defaults to False, i.e. resume from whatever is present.
         run_id: Explicit run identifier. Defaults to an auto-generated UUID
             hex string.
         model_provider: Chat model provider to use. Defaults to "mistralai".
@@ -331,13 +425,17 @@ def gen_queries(
         # planning loop, deduplication, and embedding-model load); otherwise run
         # the per-batch loop, deduplicate, persist cross-run memory, and freeze
         # the result.
-        frozen_result = read_selected_blueprints_artifact(
-            path=paths.selected_blueprints_json,
-            expected_spec_fingerprint=spec_fingerprint,
-            expected_source_run_id=settings.run_id,
-            expected_n_queries=settings.n_queries,
-            expected_batch_size=settings.batch_size,
-            expected_near_duplicate_tolerance=settings.near_duplicate_tolerance,
+        frozen_result = (
+            None
+            if fresh
+            else read_selected_blueprints_artifact(
+                path=paths.selected_blueprints_json,
+                expected_spec_fingerprint=spec_fingerprint,
+                expected_source_run_id=settings.run_id,
+                expected_n_queries=settings.n_queries,
+                expected_batch_size=settings.batch_size,
+                expected_near_duplicate_tolerance=settings.near_duplicate_tolerance,
+            )
         )
 
         if frozen_result is not None:
@@ -361,7 +459,7 @@ def gen_queries(
             total_batches = len(batch_candidate_id_lists)
 
             planning_outputs: list[QueryBlueprint] = []
-            resume_exhausted = False
+            resume_exhausted = fresh
             for batch_idx, batch_candidate_ids in enumerate(batch_candidate_id_lists):
                 batch_blueprints, planning_summary_state, resume_exhausted = _resume_or_run_planning_batch(
                     paths=paths,
@@ -419,18 +517,29 @@ def gen_queries(
                 path=paths.selected_blueprints_json,
             )
 
-        # Stage 2: realization
-        realization_outputs: list[RealizedQuery] = []
+        # Stage 2: realization (with per-batch checkpointing). Batches are
+        # independent, so each resumes on its own; the final CSV is a
+        # deterministic projection of the frozen result + these outputs.
+        realization_batches = list(
+            chunk_blueprints(
+                blueprints=selected_blueprints,
+                chunk_size=settings.batch_size,
+            )
+        )
+        total_realization_batches = len(realization_batches)
 
-        for blueprint_batch in chunk_blueprints(
-            blueprints=selected_blueprints,
-            chunk_size=settings.batch_size,
-        ):
+        realization_outputs: list[RealizedQuery] = []
+        for batch_idx, blueprint_batch in enumerate(realization_batches):
             realization_outputs.extend(
-                run_realization_stage(
-                    candidates=blueprint_batch,
-                    llm_settings=settings.llm,
+                _resume_or_run_realization_batch(
+                    paths=paths,
+                    settings=settings,
+                    spec_fingerprint=spec_fingerprint,
                     api_key=api_key,
+                    batch_idx=batch_idx,
+                    total_batches=total_realization_batches,
+                    blueprint_batch=blueprint_batch,
+                    fresh=fresh,
                 )
             )
 
@@ -445,6 +554,18 @@ def gen_queries(
             len(realization_outputs),
             len(filtered_realization_outputs),
         )
+
+        # The final CSV is a positional projection of the realized set. Warn (do
+        # not fail -- short results are tolerated) if realization is incomplete,
+        # since then row count and query_ids differ from the frozen blueprint set.
+        if len(filtered_realization_outputs) < len(selected_blueprints):
+            logger.warning(
+                "Stage 2 for run %s realized %d of %d selected blueprints; the CSV "
+                "reflects only realized queries and positional query_ids may shift",
+                settings.run_id,
+                len(filtered_realization_outputs),
+                len(selected_blueprints),
+            )
 
         # Assembly and export:
         rows = assemble_query_rows(

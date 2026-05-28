@@ -111,7 +111,9 @@ def test_querygen_cli_maps_omitted_options_to_unset(monkeypatch) -> None:
     }
 
     assert result.exit_code == 0
-    assert set(captured) == expected_keys
+    # ``fresh`` is a direct bool control flag (default False), not a settings-resolved UNSET option.
+    assert set(captured) == expected_keys | {"fresh"}
+    assert captured["fresh"] is False
 
     for key in expected_keys:
         assert captured[key] is UNSET

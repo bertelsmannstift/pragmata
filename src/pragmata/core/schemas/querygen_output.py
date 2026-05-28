@@ -5,6 +5,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, NonNegativeInt, PositiveInt, model_validator
 
 from pragmata.core.schemas.querygen_plan import QueryBlueprint
+from pragmata.core.schemas.querygen_realize import RealizedQuery
 from pragmata.core.schemas.querygen_summary import PlanningSummaryState
 from pragmata.core.types import NonEmptyStr
 
@@ -112,3 +113,32 @@ class SelectedBlueprintsArtifact(BaseModel):
     embedding_model: NonEmptyStr
     blueprints: list[QueryBlueprint]
     created_at: datetime
+
+
+class RealizationBatchArtifact(BaseModel):
+    """Persisted result of one Stage 2 realization batch.
+
+    Written atomically to ``<run_dir>/realization_batches/batch_NNNN.json``
+    after each successful Stage 2 batch. Stage 2 batches are independent, so a
+    rerun resumes any batch whose header and ``candidate_ids`` still match the
+    current frozen ``selected_blueprints`` chunk -- no contiguity requirement.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    spec_fingerprint: NonEmptyStr
+    pragmata_version: NonEmptyStr
+    source_run_id: NonEmptyStr
+    n_queries: PositiveInt
+    batch_size: PositiveInt
+    batch_idx: NonNegativeInt
+    candidate_ids: list[NonEmptyStr]
+    queries: list[RealizedQuery]
+    created_at: datetime
+
+    @model_validator(mode="after")
+    def validate_query_count(self) -> "RealizationBatchArtifact":
+        """Enforce a 1:1 mapping between batch candidate IDs and realized queries."""
+        if len(self.candidate_ids) != len(self.queries):
+            raise ValueError("candidate_ids and queries must have equal length")
+        return self

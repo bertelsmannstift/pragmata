@@ -403,6 +403,7 @@ def test_gen_queries_fingerprints_spec_before_resolving_paths(
             planning_summary_artifact_json=tool_root / f"{spec_fingerprint}.json",
             planning_batches_dir=run_dir / "planning_batches",
             selected_blueprints_json=run_dir / "selected_blueprints.json",
+            realization_batches_dir=run_dir / "realization_batches",
         )
 
     monkeypatch.setattr(querygen_api, "fingerprint_querygen_spec", fingerprint_querygen_spec)
@@ -1358,6 +1359,143 @@ def test_gen_queries_persists_cross_run_summary_before_realization(
         )
 
     assert len(summary_exports) == 1
+
+
+def test_gen_queries_writes_stage2_checkpoints(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A fresh run persists one checkpoint per Stage 2 realization batch."""
+    monkeypatch.setattr(
+        querygen_api,
+        "chunk_blueprints",
+        lambda *, blueprints, chunk_size: iter([[blueprint] for blueprint in blueprints]),
+    )
+
+    result = querygen_api.gen_queries(
+        **_required_querygen_kwargs(tmp_path),
+        n_queries=2,
+        run_id="stage2-write",
+    )
+
+    assert (result.paths.realization_batches_dir / "batch_0000.json").exists()
+    assert (result.paths.realization_batches_dir / "batch_0001.json").exists()
+
+
+def test_gen_queries_resumes_stage2_from_checkpoint_after_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A realized batch is resumed after a failure; only the rest re-runs."""
+    monkeypatch.setattr(
+        querygen_api,
+        "chunk_blueprints",
+        lambda *, blueprints, chunk_size: iter([[blueprint] for blueprint in blueprints]),
+    )
+    kwargs = {
+        **_required_querygen_kwargs(tmp_path),
+        "n_queries": 2,
+        "run_id": "stage2-resume",
+    }
+
+    def failing_realization(
+        *,
+        candidates: list[QueryBlueprint],
+        llm_settings,  # noqa: ANN001
+        api_key: str,
+    ) -> list[RealizedQuery]:
+        if any(candidate.candidate_id == "c002" for candidate in candidates):
+            raise RuntimeError("realize boom")
+        return [_make_realized_query(candidate.candidate_id) for candidate in candidates]
+
+    monkeypatch.setattr(querygen_api, "run_realization_stage", failing_realization)
+    with pytest.raises(RuntimeError, match="realize boom"):
+        querygen_api.gen_queries(**kwargs)
+
+    second_run_batches: list[list[str]] = []
+
+    def ok_realization(
+        *,
+        candidates: list[QueryBlueprint],
+        llm_settings,  # noqa: ANN001
+        api_key: str,
+    ) -> list[RealizedQuery]:
+        second_run_batches.append([candidate.candidate_id for candidate in candidates])
+        return [_make_realized_query(candidate.candidate_id) for candidate in candidates]
+
+    monkeypatch.setattr(querygen_api, "run_realization_stage", ok_realization)
+    querygen_api.gen_queries(**kwargs)
+
+    # Stage 1 frozen result reused; only the unrealized batch (c002) re-ran.
+    assert second_run_batches == [["c002"]]
+
+
+def test_gen_queries_fresh_ignores_existing_checkpoints(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """fresh=True recomputes both stages even when all artifacts already exist."""
+    kwargs = {
+        **_required_querygen_kwargs(tmp_path),
+        "n_queries": 2,
+        "run_id": "fresh-run",
+    }
+
+    querygen_api.gen_queries(**kwargs)
+
+    planning_calls: list[list[str]] = []
+    realization_calls: list[list[str]] = []
+    base_planning = querygen_api.run_planning_stage
+    base_realization = querygen_api.run_realization_stage
+
+    def spy_planning(*, batch_candidate_ids: list[str], **rest: object) -> list[QueryBlueprint]:
+        planning_calls.append(batch_candidate_ids)
+        return base_planning(batch_candidate_ids=batch_candidate_ids, **rest)
+
+    def spy_realization(*, candidates: list[QueryBlueprint], **rest: object) -> list[RealizedQuery]:
+        realization_calls.append([candidate.candidate_id for candidate in candidates])
+        return base_realization(candidates=candidates, **rest)
+
+    monkeypatch.setattr(querygen_api, "run_planning_stage", spy_planning)
+    monkeypatch.setattr(querygen_api, "run_realization_stage", spy_realization)
+
+    querygen_api.gen_queries(**kwargs, fresh=True)
+
+    assert planning_calls != []
+    assert realization_calls != []
+
+
+def test_gen_queries_csv_projection_stable_across_partial_stage2_resume(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The projected CSV rows are identical whether Stage 2 ran fresh or partly resumed."""
+    from pragmata.core.querygen.assembly import assemble_query_rows as real_assemble_query_rows
+    from pragmata.core.querygen.filtering import filter_aligned_candidate_ids as real_filter
+
+    monkeypatch.setattr(
+        querygen_api,
+        "chunk_blueprints",
+        lambda *, blueprints, chunk_size: iter([[blueprint] for blueprint in blueprints]),
+    )
+    monkeypatch.setattr(querygen_api, "assemble_query_rows", real_assemble_query_rows)
+    monkeypatch.setattr(querygen_api, "filter_aligned_candidate_ids", real_filter)
+
+    captured_rows: list[list[SyntheticQueryRow]] = []
+    monkeypatch.setattr(querygen_api, "export_queries", lambda **kwargs: captured_rows.append(kwargs["rows"]))
+
+    kwargs = {
+        **_required_querygen_kwargs(tmp_path),
+        "n_queries": 3,
+        "run_id": "csv-projection",
+    }
+
+    result = querygen_api.gen_queries(**kwargs)
+    (result.paths.realization_batches_dir / "batch_0002.json").unlink()
+    querygen_api.gen_queries(**kwargs)
+
+    assert len(captured_rows) == 2
+    assert captured_rows[0] == captured_rows[1]
 
 
 def test_gen_queries_handles_empty_selected_blueprints_after_stage1(

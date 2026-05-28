@@ -20,6 +20,7 @@ class QueryGenRunPaths:
        planning_batches_dir: Directory for per-batch Stage 1 planning checkpoints.
        selected_blueprints_json: Output path for the frozen post-deduplication
            Stage 1 result (the "Stage 1 done" marker / Stage 2 input).
+       realization_batches_dir: Directory for per-batch Stage 2 realization checkpoints.
     """
 
     tool_root: Path
@@ -29,6 +30,7 @@ class QueryGenRunPaths:
     planning_summary_artifact_json: Path
     planning_batches_dir: Path
     selected_blueprints_json: Path
+    realization_batches_dir: Path
 
     def ensure_dirs(
         self,
@@ -36,6 +38,7 @@ class QueryGenRunPaths:
         """Create the run directory scaffold."""
         self.run_dir.mkdir(parents=True, exist_ok=True)
         self.planning_batches_dir.mkdir(parents=True, exist_ok=True)
+        self.realization_batches_dir.mkdir(parents=True, exist_ok=True)
         return self
 
 
@@ -66,4 +69,5 @@ def resolve_querygen_paths(
         planning_summary_artifact_json=tool_root / f"{spec_fingerprint}.json",
         planning_batches_dir=run_dir / "planning_batches",
         selected_blueprints_json=run_dir / "selected_blueprints.json",
+        realization_batches_dir=run_dir / "realization_batches",
     )
