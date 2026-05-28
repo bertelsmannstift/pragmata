@@ -215,6 +215,7 @@ def test_score_report_serialises_iso_8601_datetime(valid_retrieval_report):
 
     assert dumped["created_at"] == "2026-05-28T13:30:00Z"
 
+
 @pytest.mark.parametrize(
     ("report_cls", "fields_fixture"),
     [
