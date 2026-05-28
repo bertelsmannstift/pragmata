@@ -16,17 +16,17 @@ def read_selected_blueprints_artifact(
     expected_near_duplicate_tolerance: float,
     expected_enable_planning_memory: bool,
     expected_llm_fingerprint: str,
-) -> SelectedBlueprintsArtifact | None:
-    """Load and validate the frozen Stage 1 result at ``path``.
+) -> tuple[SelectedBlueprintsArtifact | None, list[str]]:
+    """Load the frozen Stage 1 result at ``path`` and report drift.
 
-    Returns ``None`` when the file is absent or its validated header does not
-    match the current run (spec fingerprint, running pragmata version,
-    LLM-config fingerprint, source run id, n_queries, batch_size,
-    near_duplicate_tolerance, enable_planning_memory). ``embedding_model`` is
-    recorded for provenance but intentionally NOT validated. Raises
-    ``json.JSONDecodeError`` / ``UnicodeDecodeError`` / ``pydantic.ValidationError``
-    on a malformed or torn file, which the api layer treats as drift. See
-    :func:`read_checkpoint_artifact`.
+    Returns ``(artifact, [])`` when the frozen result is reusable, ``(None, [])``
+    when the file is absent, and ``(None, drifted)`` when its header differs
+    from the current run (spec fingerprint, running pragmata version, LLM-config
+    fingerprint, source run id, n_queries, batch_size, near_duplicate_tolerance,
+    enable_planning_memory). ``embedding_model`` is recorded for provenance but
+    intentionally NOT compared. Raises ``json.JSONDecodeError`` /
+    ``UnicodeDecodeError`` / ``pydantic.ValidationError`` on a malformed or torn
+    file (self-heal case). See :func:`read_checkpoint_artifact`.
     """
     return read_checkpoint_artifact(
         path=path,

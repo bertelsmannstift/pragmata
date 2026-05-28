@@ -55,20 +55,24 @@ def _write_valid(path: Path) -> None:
 
 
 def test_read_selected_blueprints_roundtrip_via_export(tmp_path: Path) -> None:
-    """A written frozen result reads back with matching content."""
+    """A written frozen result reads back with matching content and no drift."""
     path = tmp_path / "selected_blueprints.json"
     _write_valid(path)
 
-    artifact = read_selected_blueprints_artifact(path=path, **_EXPECTED)
+    artifact, drifted = read_selected_blueprints_artifact(path=path, **_EXPECTED)
 
+    assert drifted == []
     assert artifact is not None
     assert [bp.candidate_id for bp in artifact.blueprints] == ["c001", "c003"]
     assert artifact.embedding_model == "all-MiniLM-L6-v2"
 
 
 def test_read_selected_blueprints_returns_none_for_missing_path(tmp_path: Path) -> None:
-    """A missing frozen result reads as None."""
-    assert read_selected_blueprints_artifact(path=tmp_path / "absent.json", **_EXPECTED) is None
+    """A missing frozen result reads as ``(None, [])`` -- nothing to resume, no drift."""
+    artifact, drifted = read_selected_blueprints_artifact(path=tmp_path / "absent.json", **_EXPECTED)
+
+    assert artifact is None
+    assert drifted == []
 
 
 @pytest.mark.parametrize(
@@ -83,21 +87,24 @@ def test_read_selected_blueprints_returns_none_for_missing_path(tmp_path: Path) 
         ("expected_llm_fingerprint", "llm-other"),
     ],
 )
-def test_read_selected_blueprints_returns_none_for_header_mismatch(
+def test_read_selected_blueprints_reports_drift_for_header_mismatch(
     tmp_path: Path,
     override_key: str,
     override_value: object,
 ) -> None:
-    """A mismatch on any validated header field reads as None."""
+    """A mismatch on any validated header field is reported as drift, not reused."""
     path = tmp_path / "selected_blueprints.json"
     _write_valid(path)
 
     expected = {**_EXPECTED, override_key: override_value}
-    assert read_selected_blueprints_artifact(path=path, **expected) is None
+    artifact, drifted = read_selected_blueprints_artifact(path=path, **expected)
+
+    assert artifact is None
+    assert override_key.removeprefix("expected_") in {field.field for field in drifted}
 
 
 def test_read_selected_blueprints_ignores_embedding_model_for_validation(tmp_path: Path) -> None:
-    """embedding_model is recorded for provenance but not used to invalidate."""
+    """embedding_model is recorded for provenance but not used to detect drift."""
     path = tmp_path / "selected_blueprints.json"
     artifact = SelectedBlueprintsArtifact(
         spec_fingerprint="fp-1",
@@ -114,16 +121,17 @@ def test_read_selected_blueprints_ignores_embedding_model_for_validation(tmp_pat
     )
     path.write_text(json.dumps(artifact.model_dump(mode="json")), encoding="utf-8")
 
-    result = read_selected_blueprints_artifact(path=path, **_EXPECTED)
+    result, drifted = read_selected_blueprints_artifact(path=path, **_EXPECTED)
+    assert drifted == []
     assert result is not None
     assert result.embedding_model == "some-other-embedding-model"
 
 
-def test_read_selected_blueprints_returns_none_for_pragmata_version_mismatch(
+def test_read_selected_blueprints_reports_drift_for_pragmata_version_mismatch(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A frozen result written by a different pragmata version reads as None."""
+    """A frozen result written by a different pragmata version is reported as drift."""
     path = tmp_path / "selected_blueprints.json"
     _write_valid(path)
 
@@ -135,7 +143,10 @@ def test_read_selected_blueprints_returns_none_for_pragmata_version_mismatch(
         return real_version(name)
 
     monkeypatch.setattr("pragmata.core.querygen.checkpoint_read.importlib.metadata.version", fake_version)
-    assert read_selected_blueprints_artifact(path=path, **_EXPECTED) is None
+    artifact, drifted = read_selected_blueprints_artifact(path=path, **_EXPECTED)
+
+    assert artifact is None
+    assert "pragmata_version" in {field.field for field in drifted}
 
 
 def test_read_selected_blueprints_raises_for_malformed_json(tmp_path: Path) -> None:

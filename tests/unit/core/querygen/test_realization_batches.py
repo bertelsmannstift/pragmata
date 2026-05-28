@@ -42,20 +42,24 @@ def _write_valid(path: Path) -> None:
 
 
 def test_read_realization_batch_artifact_roundtrip_via_export(tmp_path: Path) -> None:
-    """A written artifact reads back with matching content."""
+    """A written artifact reads back with matching content, no drift, no leftover tempfile."""
     path = tmp_path / "batch_0000.json"
     _write_valid(path)
 
-    artifact = read_realization_batch_artifact(path=path, **_EXPECTED)
+    artifact, drifted = read_realization_batch_artifact(path=path, **_EXPECTED)
 
+    assert drifted == []
     assert artifact is not None
     assert [q.candidate_id for q in artifact.queries] == ["c001", "c002"]
     assert list(tmp_path.glob("*.tmp")) == []
 
 
 def test_read_realization_batch_artifact_returns_none_for_missing_path(tmp_path: Path) -> None:
-    """A missing checkpoint reads as None."""
-    assert read_realization_batch_artifact(path=tmp_path / "absent.json", **_EXPECTED) is None
+    """A missing checkpoint reads as ``(None, [])`` -- nothing to resume, no drift."""
+    artifact, drifted = read_realization_batch_artifact(path=tmp_path / "absent.json", **_EXPECTED)
+
+    assert artifact is None
+    assert drifted == []
 
 
 @pytest.mark.parametrize(
@@ -69,24 +73,27 @@ def test_read_realization_batch_artifact_returns_none_for_missing_path(tmp_path:
         ("expected_llm_fingerprint", "llm-other"),
     ],
 )
-def test_read_realization_batch_artifact_returns_none_for_header_mismatch(
+def test_read_realization_batch_artifact_reports_drift_for_header_mismatch(
     tmp_path: Path,
     override_key: str,
     override_value: object,
 ) -> None:
-    """A mismatch on any validated header field reads as None (drift)."""
+    """A mismatch on any validated header field is reported as drift, not reused."""
     path = tmp_path / "batch_0000.json"
     _write_valid(path)
 
     expected = {**_EXPECTED, override_key: override_value}
-    assert read_realization_batch_artifact(path=path, **expected) is None
+    artifact, drifted = read_realization_batch_artifact(path=path, **expected)
+
+    assert artifact is None
+    assert override_key.removeprefix("expected_") in {field.field for field in drifted}
 
 
-def test_read_realization_batch_artifact_returns_none_for_pragmata_version_mismatch(
+def test_read_realization_batch_artifact_reports_drift_for_pragmata_version_mismatch(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A checkpoint written by a different pragmata version reads as None."""
+    """A checkpoint written by a different pragmata version is reported as drift."""
     path = tmp_path / "batch_0000.json"
     _write_valid(path)
 
@@ -98,7 +105,10 @@ def test_read_realization_batch_artifact_returns_none_for_pragmata_version_misma
         return real_version(name)
 
     monkeypatch.setattr("pragmata.core.querygen.checkpoint_read.importlib.metadata.version", fake_version)
-    assert read_realization_batch_artifact(path=path, **_EXPECTED) is None
+    artifact, drifted = read_realization_batch_artifact(path=path, **_EXPECTED)
+
+    assert artifact is None
+    assert "pragmata_version" in {field.field for field in drifted}
 
 
 def test_read_realization_batch_artifact_raises_for_malformed_json(tmp_path: Path) -> None:

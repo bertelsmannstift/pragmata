@@ -15,16 +15,17 @@ def read_realization_batch_artifact(
     expected_batch_size: int,
     expected_candidate_ids: list[str],
     expected_llm_fingerprint: str,
-) -> RealizationBatchArtifact | None:
-    """Load and validate a Stage 2 realization-batch checkpoint at ``path``.
+) -> tuple[RealizationBatchArtifact | None, list[str]]:
+    """Load a Stage 2 realization-batch checkpoint at ``path`` and report drift.
 
-    Returns ``None`` when the file is absent or its header does not match the
-    current run (spec fingerprint, running pragmata version, LLM-config
+    Returns ``(artifact, [])`` when the checkpoint is reusable, ``(None, [])``
+    when the file is absent, and ``(None, drifted)`` when its header differs
+    from the current run (spec fingerprint, running pragmata version, LLM-config
     fingerprint, source run id, n_queries, batch_size, or candidate_ids). The
     candidate_ids check is what binds a checkpoint to the exact frozen-result
     chunk, so a stale checkpoint cannot realize a different blueprint. Raises
     ``json.JSONDecodeError`` / ``UnicodeDecodeError`` / ``pydantic.ValidationError``
-    on a malformed or torn file, which the api layer treats as drift. See
+    on a malformed or torn file (self-heal case). See
     :func:`read_checkpoint_artifact`.
     """
     return read_checkpoint_artifact(

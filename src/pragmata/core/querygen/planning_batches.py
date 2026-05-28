@@ -16,15 +16,16 @@ def read_planning_batch_artifact(
     expected_candidate_ids: list[str],
     expected_enable_planning_memory: bool,
     expected_llm_fingerprint: str,
-) -> PlanningBatchArtifact | None:
-    """Load and validate a Stage 1 planning-batch checkpoint at ``path``.
+) -> tuple[PlanningBatchArtifact | None, list[str]]:
+    """Load a Stage 1 planning-batch checkpoint at ``path`` and report drift.
 
-    Returns ``None`` when the file is absent or its header does not match the
-    current run (spec fingerprint, running pragmata version, LLM-config
+    Returns ``(artifact, [])`` when the checkpoint is reusable, ``(None, [])``
+    when the file is absent, and ``(None, drifted)`` when its header differs
+    from the current run (spec fingerprint, running pragmata version, LLM-config
     fingerprint, source run id, n_queries, batch_size, enable_planning_memory,
-    or candidate_ids); raises ``json.JSONDecodeError`` / ``UnicodeDecodeError``
-    / ``pydantic.ValidationError`` on a malformed or torn file, which the api
-    layer treats as drift. See :func:`read_checkpoint_artifact`.
+    or candidate_ids). Raises ``json.JSONDecodeError`` / ``UnicodeDecodeError``
+    / ``pydantic.ValidationError`` on a malformed or torn file (self-heal case).
+    See :func:`read_checkpoint_artifact`.
     """
     return read_checkpoint_artifact(
         path=path,
