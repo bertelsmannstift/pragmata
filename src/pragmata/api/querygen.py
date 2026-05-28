@@ -32,6 +32,7 @@ from pragmata.core.querygen.filtering import filter_aligned_candidate_ids
 from pragmata.core.querygen.planning import run_planning_stage
 from pragmata.core.querygen.planning_batches import read_planning_batch_artifact
 from pragmata.core.querygen.planning_summary import (
+    fingerprint_llm_settings,
     fingerprint_querygen_spec,
     read_planning_summary_artifact,
     run_planning_summary,
@@ -67,6 +68,7 @@ def _resume_or_run_planning_batch(
     paths: QueryGenRunPaths,
     settings: QueryGenRunSettings,
     spec_fingerprint: str,
+    llm_fingerprint: str,
     api_key: str,
     batch_idx: int,
     total_batches: int,
@@ -87,6 +89,7 @@ def _resume_or_run_planning_batch(
         paths: Resolved run paths (provides ``planning_batches_dir``).
         settings: Resolved run settings.
         spec_fingerprint: Fingerprint of the resolved spec for this run.
+        llm_fingerprint: Fingerprint of the output-shaping LLM settings for this run.
         api_key: Provider API key.
         batch_idx: Zero-based index of this planning batch.
         total_batches: Total number of planning batches (for logging).
@@ -106,8 +109,9 @@ def _resume_or_run_planning_batch(
                 expected_batch_size=settings.batch_size,
                 expected_candidate_ids=batch_candidate_ids,
                 expected_enable_planning_memory=settings.enable_planning_memory,
+                expected_llm_fingerprint=llm_fingerprint,
             )
-        except (json.JSONDecodeError, ValidationError) as exc:
+        except (json.JSONDecodeError, ValidationError, UnicodeDecodeError) as exc:
             logger.warning(
                 "Stage 1 batch %d/%d checkpoint %s unreadable (%s); rerunning it and all later batches",
                 batch_idx + 1,
@@ -160,6 +164,7 @@ def _resume_or_run_planning_batch(
             blueprints=batch_blueprints,
             planning_summary_state=planning_summary_state,
             enable_planning_memory=settings.enable_planning_memory,
+            llm_fingerprint=llm_fingerprint,
         ),
         path=checkpoint_path,
     )
@@ -178,6 +183,7 @@ def _resume_or_run_realization_batch(
     paths: QueryGenRunPaths,
     settings: QueryGenRunSettings,
     spec_fingerprint: str,
+    llm_fingerprint: str,
     api_key: str,
     batch_idx: int,
     total_batches: int,
@@ -195,6 +201,7 @@ def _resume_or_run_realization_batch(
         paths: Resolved run paths (provides ``realization_batches_dir``).
         settings: Resolved run settings.
         spec_fingerprint: Fingerprint of the resolved spec for this run.
+        llm_fingerprint: Fingerprint of the output-shaping LLM settings for this run.
         api_key: Provider API key.
         batch_idx: Zero-based index of this realization batch.
         total_batches: Total number of realization batches (for logging).
@@ -213,8 +220,9 @@ def _resume_or_run_realization_batch(
                 expected_n_queries=settings.n_queries,
                 expected_batch_size=settings.batch_size,
                 expected_candidate_ids=batch_candidate_ids,
+                expected_llm_fingerprint=llm_fingerprint,
             )
-        except (json.JSONDecodeError, ValidationError) as exc:
+        except (json.JSONDecodeError, ValidationError, UnicodeDecodeError) as exc:
             logger.warning(
                 "Stage 2 batch %d/%d checkpoint %s unreadable (%s); rerunning it",
                 batch_idx + 1,
@@ -254,6 +262,7 @@ def _resume_or_run_realization_batch(
             batch_idx=batch_idx,
             candidate_ids=batch_candidate_ids,
             queries=realized_queries,
+            llm_fingerprint=llm_fingerprint,
         ),
         path=checkpoint_path,
     )
@@ -413,6 +422,7 @@ def gen_queries(
     api_key = resolve_api_key(settings.llm.model_provider)
 
     spec_fingerprint = fingerprint_querygen_spec(settings.spec)
+    llm_fingerprint = fingerprint_llm_settings(settings.llm)
     paths = resolve_querygen_paths(
         workspace=WorkspacePaths.from_base_dir(settings.base_dir),
         run_id=settings.run_id,
@@ -435,7 +445,7 @@ def gen_queries(
                     artifact_path=paths.planning_summary_artifact_json,
                     spec=settings.spec,
                 )
-            except (json.JSONDecodeError, ValidationError) as exc:
+            except (json.JSONDecodeError, ValidationError, UnicodeDecodeError) as exc:
                 logger.warning(
                     "Cross-run planning summary %s is unreadable (%s); ignoring it",
                     paths.planning_summary_artifact_json,
@@ -460,8 +470,9 @@ def gen_queries(
                     expected_batch_size=settings.batch_size,
                     expected_near_duplicate_tolerance=settings.near_duplicate_tolerance,
                     expected_enable_planning_memory=settings.enable_planning_memory,
+                    expected_llm_fingerprint=llm_fingerprint,
                 )
-            except (json.JSONDecodeError, ValidationError) as exc:
+            except (json.JSONDecodeError, ValidationError, UnicodeDecodeError) as exc:
                 logger.warning(
                     "Frozen Stage 1 result %s is unreadable (%s); recomputing Stage 1",
                     paths.selected_blueprints_json,
@@ -495,6 +506,7 @@ def gen_queries(
                     paths=paths,
                     settings=settings,
                     spec_fingerprint=spec_fingerprint,
+                    llm_fingerprint=llm_fingerprint,
                     api_key=api_key,
                     batch_idx=batch_idx,
                     total_batches=total_batches,
@@ -544,6 +556,7 @@ def gen_queries(
             export_selected_blueprints(
                 artifact=assemble_selected_blueprints_artifact(
                     spec_fingerprint=spec_fingerprint,
+                    llm_fingerprint=llm_fingerprint,
                     source_run_id=settings.run_id,
                     n_queries=settings.n_queries,
                     batch_size=settings.batch_size,
@@ -573,6 +586,7 @@ def gen_queries(
                     paths=paths,
                     settings=settings,
                     spec_fingerprint=spec_fingerprint,
+                    llm_fingerprint=llm_fingerprint,
                     api_key=api_key,
                     batch_idx=batch_idx,
                     total_batches=total_realization_batches,

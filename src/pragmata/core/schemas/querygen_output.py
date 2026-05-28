@@ -72,6 +72,7 @@ class PlanningBatchArtifact(BaseModel):
 
     spec_fingerprint: NonEmptyStr
     pragmata_version: NonEmptyStr
+    llm_fingerprint: NonEmptyStr
     source_run_id: NonEmptyStr
     n_queries: PositiveInt
     batch_size: PositiveInt
@@ -107,6 +108,7 @@ class SelectedBlueprintsArtifact(BaseModel):
 
     spec_fingerprint: NonEmptyStr
     pragmata_version: NonEmptyStr
+    llm_fingerprint: NonEmptyStr
     source_run_id: NonEmptyStr
     n_queries: PositiveInt
     batch_size: PositiveInt
@@ -130,6 +132,7 @@ class RealizationBatchArtifact(BaseModel):
 
     spec_fingerprint: NonEmptyStr
     pragmata_version: NonEmptyStr
+    llm_fingerprint: NonEmptyStr
     source_run_id: NonEmptyStr
     n_queries: PositiveInt
     batch_size: PositiveInt

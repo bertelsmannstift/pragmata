@@ -58,6 +58,36 @@ def fingerprint_querygen_spec(
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
 
+def fingerprint_llm_settings(
+    llm_settings: LlmSettings,
+) -> str:
+    """Return a deterministic fingerprint of the output-shaping LLM settings.
+
+    Covers the fields that affect generated content -- provider, per-stage
+    models, per-stage model kwargs (e.g. ``reasoning_effort``/``temperature``),
+    and ``base_url`` -- but excludes the rate-limiter settings, which pace
+    requests without changing output. Used as a resume-invalidation key so that
+    changing the model or decoding parameters mid-run forces a recompute rather
+    than silently reusing checkpoints produced under a different configuration.
+
+    Args:
+        llm_settings: Resolved LLM settings for the run.
+
+    Returns:
+        Stable SHA-256 hex digest over the output-shaping LLM settings.
+    """
+    payload = {
+        "model_provider": llm_settings.model_provider,
+        "planning_model": llm_settings.planning_model,
+        "realization_model": llm_settings.realization_model,
+        "planning_model_kwargs": llm_settings.planning_model_kwargs,
+        "realization_model_kwargs": llm_settings.realization_model_kwargs,
+        "base_url": llm_settings.base_url,
+    }
+    serialized = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+
 def read_planning_summary_artifact(
     artifact_path: Path,
     spec: QueryGenSpec,

@@ -23,12 +23,14 @@ _EXPECTED = {
     "expected_n_queries": 10,
     "expected_batch_size": 5,
     "expected_candidate_ids": ["c001", "c002"],
+    "expected_llm_fingerprint": "llm-fp-1",
 }
 
 
 def _write_valid(path: Path) -> None:
     artifact = assemble_realization_batch_artifact(
         spec_fingerprint="fp-1",
+        llm_fingerprint="llm-fp-1",
         source_run_id="run-1",
         n_queries=10,
         batch_size=5,
@@ -64,6 +66,7 @@ def test_read_realization_batch_artifact_returns_none_for_missing_path(tmp_path:
         ("expected_n_queries", 20),
         ("expected_batch_size", 7),
         ("expected_candidate_ids", ["c001", "c999"]),
+        ("expected_llm_fingerprint", "llm-other"),
     ],
 )
 def test_read_realization_batch_artifact_returns_none_for_header_mismatch(
@@ -94,7 +97,7 @@ def test_read_realization_batch_artifact_returns_none_for_pragmata_version_misma
             return "0.0.0-other"
         return real_version(name)
 
-    monkeypatch.setattr("pragmata.core.querygen.realization_batches.importlib.metadata.version", fake_version)
+    monkeypatch.setattr("pragmata.core.querygen.checkpoint_read.importlib.metadata.version", fake_version)
     assert read_realization_batch_artifact(path=path, **_EXPECTED) is None
 
 
@@ -112,6 +115,7 @@ def test_realization_batch_artifact_rejects_candidate_query_length_mismatch() ->
     with pytest.raises(ValidationError):
         assemble_realization_batch_artifact(
             spec_fingerprint="fp-1",
+            llm_fingerprint="llm-fp-1",
             source_run_id="run-1",
             n_queries=10,
             batch_size=5,

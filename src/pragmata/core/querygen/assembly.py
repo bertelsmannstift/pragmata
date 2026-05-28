@@ -104,6 +104,7 @@ def assemble_queries_meta(
 def assemble_planning_batch_artifact(
     *,
     spec_fingerprint: str,
+    llm_fingerprint: str,
     source_run_id: str,
     n_queries: int,
     batch_size: int,
@@ -117,6 +118,8 @@ def assemble_planning_batch_artifact(
 
     Args:
         spec_fingerprint: Fingerprint of the resolved querygen spec.
+        llm_fingerprint: Fingerprint of the output-shaping LLM settings; a
+            change invalidates the checkpoint.
         source_run_id: Run identifier that produced this batch.
         n_queries: Total queries requested for the run.
         batch_size: Configured batch size for the run.
@@ -134,6 +137,7 @@ def assemble_planning_batch_artifact(
     return PlanningBatchArtifact(
         spec_fingerprint=spec_fingerprint,
         pragmata_version=importlib.metadata.version("pragmata"),
+        llm_fingerprint=llm_fingerprint,
         source_run_id=source_run_id,
         n_queries=n_queries,
         batch_size=batch_size,
@@ -149,6 +153,7 @@ def assemble_planning_batch_artifact(
 def assemble_selected_blueprints_artifact(
     *,
     spec_fingerprint: str,
+    llm_fingerprint: str,
     source_run_id: str,
     n_queries: int,
     batch_size: int,
@@ -161,6 +166,8 @@ def assemble_selected_blueprints_artifact(
 
     Args:
         spec_fingerprint: Fingerprint of the resolved querygen spec.
+        llm_fingerprint: Fingerprint of the output-shaping LLM settings; a
+            change invalidates the checkpoint.
         source_run_id: Run identifier that produced this result.
         n_queries: Total queries requested for the run.
         batch_size: Configured batch size for the run.
@@ -179,6 +186,7 @@ def assemble_selected_blueprints_artifact(
     return SelectedBlueprintsArtifact(
         spec_fingerprint=spec_fingerprint,
         pragmata_version=importlib.metadata.version("pragmata"),
+        llm_fingerprint=llm_fingerprint,
         source_run_id=source_run_id,
         n_queries=n_queries,
         batch_size=batch_size,
@@ -193,6 +201,7 @@ def assemble_selected_blueprints_artifact(
 def assemble_realization_batch_artifact(
     *,
     spec_fingerprint: str,
+    llm_fingerprint: str,
     source_run_id: str,
     n_queries: int,
     batch_size: int,
@@ -204,6 +213,8 @@ def assemble_realization_batch_artifact(
 
     Args:
         spec_fingerprint: Fingerprint of the resolved querygen spec.
+        llm_fingerprint: Fingerprint of the output-shaping LLM settings; a
+            change invalidates the checkpoint.
         source_run_id: Run identifier that produced this batch.
         n_queries: Total queries requested for the run.
         batch_size: Configured batch size for the run.
@@ -218,6 +229,7 @@ def assemble_realization_batch_artifact(
     return RealizationBatchArtifact(
         spec_fingerprint=spec_fingerprint,
         pragmata_version=importlib.metadata.version("pragmata"),
+        llm_fingerprint=llm_fingerprint,
         source_run_id=source_run_id,
         n_queries=n_queries,
         batch_size=batch_size,

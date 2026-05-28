@@ -35,12 +35,14 @@ _EXPECTED = {
     "expected_batch_size": 5,
     "expected_near_duplicate_tolerance": 0.95,
     "expected_enable_planning_memory": True,
+    "expected_llm_fingerprint": "llm-fp-1",
 }
 
 
 def _write_valid(path: Path) -> None:
     artifact = assemble_selected_blueprints_artifact(
         spec_fingerprint="fp-1",
+        llm_fingerprint="llm-fp-1",
         source_run_id="run-1",
         n_queries=10,
         batch_size=5,
@@ -78,6 +80,7 @@ def test_read_selected_blueprints_returns_none_for_missing_path(tmp_path: Path) 
         ("expected_batch_size", 7),
         ("expected_near_duplicate_tolerance", 0.80),
         ("expected_enable_planning_memory", False),
+        ("expected_llm_fingerprint", "llm-other"),
     ],
 )
 def test_read_selected_blueprints_returns_none_for_header_mismatch(
@@ -99,6 +102,7 @@ def test_read_selected_blueprints_ignores_embedding_model_for_validation(tmp_pat
     artifact = SelectedBlueprintsArtifact(
         spec_fingerprint="fp-1",
         pragmata_version=importlib.metadata.version("pragmata"),
+        llm_fingerprint="llm-fp-1",
         source_run_id="run-1",
         n_queries=10,
         batch_size=5,
@@ -130,7 +134,7 @@ def test_read_selected_blueprints_returns_none_for_pragmata_version_mismatch(
             return "0.0.0-other"
         return real_version(name)
 
-    monkeypatch.setattr("pragmata.core.querygen.selected_blueprints.importlib.metadata.version", fake_version)
+    monkeypatch.setattr("pragmata.core.querygen.checkpoint_read.importlib.metadata.version", fake_version)
     assert read_selected_blueprints_artifact(path=path, **_EXPECTED) is None
 
 
