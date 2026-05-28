@@ -32,6 +32,7 @@ _EXPECTED = {
     "expected_n_queries": 10,
     "expected_batch_size": 5,
     "expected_candidate_ids": ["c001", "c002"],
+    "expected_enable_planning_memory": True,
 }
 
 
@@ -45,6 +46,7 @@ def _write_valid(path: Path) -> None:
         candidate_ids=["c001", "c002"],
         blueprints=[_blueprint("c001"), _blueprint("c002")],
         planning_summary_state=None,
+        enable_planning_memory=True,
     )
     export_planning_batch_artifact(artifact=artifact, path=path)
 
@@ -83,6 +85,7 @@ def test_read_planning_batch_artifact_returns_none_for_missing_path(tmp_path: Pa
         ("expected_n_queries", 20),
         ("expected_batch_size", 7),
         ("expected_candidate_ids", ["c001", "c999"]),
+        ("expected_enable_planning_memory", False),
     ],
 )
 def test_read_planning_batch_artifact_returns_none_for_header_mismatch(
@@ -151,4 +154,5 @@ def test_planning_batch_artifact_rejects_candidate_blueprint_length_mismatch() -
             candidate_ids=["c001", "c002"],
             blueprints=[_blueprint("c001")],
             planning_summary_state=None,
+            enable_planning_memory=True,
         )

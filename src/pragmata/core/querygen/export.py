@@ -67,10 +67,7 @@ def export_planning_summary(
         artifact: Validated planning-summary artifact to persist.
         artifact_path: Destination path for the JSON artifact.
     """
-    artifact_path.write_text(
-        json.dumps(artifact.model_dump(mode="json")),
-        encoding="utf-8",
-    )
+    _atomic_write_json(data=artifact.model_dump(mode="json"), path=artifact_path)
 
 
 def export_planning_batch_artifact(

@@ -20,7 +20,7 @@ from pragmata.core.querygen.assembly import (
     assemble_selected_blueprints_artifact,
 )
 from pragmata.core.querygen.batching import build_candidate_ids, chunk_blueprints, iter_batch_sizes
-from pragmata.core.querygen.deduplication import deduplicate_blueprints
+from pragmata.core.querygen.deduplication import EMBEDDING_MODEL_CHECKPOINT, deduplicate_blueprints
 from pragmata.core.querygen.export import (
     export_planning_batch_artifact,
     export_planning_summary,
@@ -105,6 +105,7 @@ def _resume_or_run_planning_batch(
                 expected_n_queries=settings.n_queries,
                 expected_batch_size=settings.batch_size,
                 expected_candidate_ids=batch_candidate_ids,
+                expected_enable_planning_memory=settings.enable_planning_memory,
             )
         except (json.JSONDecodeError, ValidationError) as exc:
             logger.warning(
@@ -158,6 +159,7 @@ def _resume_or_run_planning_batch(
             candidate_ids=batch_candidate_ids,
             blueprints=batch_blueprints,
             planning_summary_state=planning_summary_state,
+            enable_planning_memory=settings.enable_planning_memory,
         ),
         path=checkpoint_path,
     )
@@ -428,10 +430,18 @@ def gen_queries(
         planning_summary_state: PlanningSummaryState | None = None
 
         if settings.enable_planning_memory:
-            planning_summary_artifact = read_planning_summary_artifact(
-                artifact_path=paths.planning_summary_artifact_json,
-                spec=settings.spec,
-            )
+            try:
+                planning_summary_artifact = read_planning_summary_artifact(
+                    artifact_path=paths.planning_summary_artifact_json,
+                    spec=settings.spec,
+                )
+            except (json.JSONDecodeError, ValidationError) as exc:
+                logger.warning(
+                    "Cross-run planning summary %s is unreadable (%s); ignoring it",
+                    paths.planning_summary_artifact_json,
+                    exc,
+                )
+                planning_summary_artifact = None
             if planning_summary_artifact is not None:
                 planning_summary_state = planning_summary_artifact.state
 
@@ -439,18 +449,24 @@ def gen_queries(
         # planning loop, deduplication, and embedding-model load); otherwise run
         # the per-batch loop, deduplicate, persist cross-run memory, and freeze
         # the result.
-        frozen_result = (
-            None
-            if fresh
-            else read_selected_blueprints_artifact(
-                path=paths.selected_blueprints_json,
-                expected_spec_fingerprint=spec_fingerprint,
-                expected_source_run_id=settings.run_id,
-                expected_n_queries=settings.n_queries,
-                expected_batch_size=settings.batch_size,
-                expected_near_duplicate_tolerance=settings.near_duplicate_tolerance,
-            )
-        )
+        frozen_result = None
+        if not fresh:
+            try:
+                frozen_result = read_selected_blueprints_artifact(
+                    path=paths.selected_blueprints_json,
+                    expected_spec_fingerprint=spec_fingerprint,
+                    expected_source_run_id=settings.run_id,
+                    expected_n_queries=settings.n_queries,
+                    expected_batch_size=settings.batch_size,
+                    expected_near_duplicate_tolerance=settings.near_duplicate_tolerance,
+                    expected_enable_planning_memory=settings.enable_planning_memory,
+                )
+            except (json.JSONDecodeError, ValidationError) as exc:
+                logger.warning(
+                    "Frozen Stage 1 result %s is unreadable (%s); recomputing Stage 1",
+                    paths.selected_blueprints_json,
+                    exc,
+                )
 
         if frozen_result is not None:
             selected_blueprints = frozen_result.blueprints
@@ -517,6 +533,12 @@ def gen_queries(
                     artifact_path=paths.planning_summary_artifact_json,
                 )
 
+            # A freshly recomputed Stage 1 result supersedes any Stage 2
+            # checkpoints bound to a prior result (only reachable if the old
+            # frozen result was lost/invalid); discard them before realization.
+            for stale_checkpoint in paths.realization_batches_dir.glob("batch_*.json"):
+                stale_checkpoint.unlink()
+
             # Freeze the Stage 1 result last: its presence is the "Stage 1 done"
             # marker that lets a rerun skip everything above.
             export_selected_blueprints(
@@ -526,6 +548,8 @@ def gen_queries(
                     n_queries=settings.n_queries,
                     batch_size=settings.batch_size,
                     near_duplicate_tolerance=settings.near_duplicate_tolerance,
+                    enable_planning_memory=settings.enable_planning_memory,
+                    embedding_model=EMBEDDING_MODEL_CHECKPOINT,
                     blueprints=selected_blueprints,
                 ),
                 path=paths.selected_blueprints_json,

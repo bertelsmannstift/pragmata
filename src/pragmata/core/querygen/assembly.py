@@ -3,7 +3,6 @@
 import importlib.metadata
 from datetime import UTC, datetime
 
-from pragmata.core.querygen.deduplication import EMBEDDING_MODEL_CHECKPOINT
 from pragmata.core.querygen.planning_summary import fingerprint_querygen_spec
 from pragmata.core.schemas.querygen_input import QueryGenSpec
 from pragmata.core.schemas.querygen_output import (
@@ -112,6 +111,7 @@ def assemble_planning_batch_artifact(
     candidate_ids: list[str],
     blueprints: list[QueryBlueprint],
     planning_summary_state: PlanningSummaryState | None,
+    enable_planning_memory: bool,
 ) -> PlanningBatchArtifact:
     """Assemble a Stage 1 planning-batch artifact, stamping version + time.
 
@@ -124,6 +124,8 @@ def assemble_planning_batch_artifact(
         candidate_ids: Candidate IDs assigned to this batch.
         blueprints: Blueprints produced for this batch.
         planning_summary_state: Planning-summary state after this batch, if any.
+        enable_planning_memory: Whether planning memory was enabled (a change
+            invalidates the checkpoint, since it shapes the blueprints).
 
     Returns:
         A validated ``PlanningBatchArtifact`` with internally stamped
@@ -136,6 +138,7 @@ def assemble_planning_batch_artifact(
         n_queries=n_queries,
         batch_size=batch_size,
         batch_idx=batch_idx,
+        enable_planning_memory=enable_planning_memory,
         candidate_ids=candidate_ids,
         blueprints=blueprints,
         planning_summary_state=planning_summary_state,
@@ -150,6 +153,8 @@ def assemble_selected_blueprints_artifact(
     n_queries: int,
     batch_size: int,
     near_duplicate_tolerance: float,
+    enable_planning_memory: bool,
+    embedding_model: str,
     blueprints: list[QueryBlueprint],
 ) -> SelectedBlueprintsArtifact:
     """Assemble the frozen Stage 1 result artifact, stamping provenance.
@@ -161,11 +166,15 @@ def assemble_selected_blueprints_artifact(
         batch_size: Configured batch size for the run.
         near_duplicate_tolerance: Tolerance used for the deduplication that
             produced ``blueprints``.
+        enable_planning_memory: Whether planning memory was enabled (a change
+            invalidates the frozen result, since it shapes the blueprints).
+        embedding_model: Embedding model checkpoint used for deduplication
+            (recorded for provenance).
         blueprints: Final post-deduplication selected blueprints.
 
     Returns:
         A validated ``SelectedBlueprintsArtifact`` with internally stamped
-        ``pragmata_version``, embedding-model provenance, and ``created_at``.
+        ``pragmata_version`` and ``created_at``.
     """
     return SelectedBlueprintsArtifact(
         spec_fingerprint=spec_fingerprint,
@@ -174,7 +183,8 @@ def assemble_selected_blueprints_artifact(
         n_queries=n_queries,
         batch_size=batch_size,
         near_duplicate_tolerance=near_duplicate_tolerance,
-        embedding_model=EMBEDDING_MODEL_CHECKPOINT,
+        enable_planning_memory=enable_planning_memory,
+        embedding_model=embedding_model,
         blueprints=blueprints,
         created_at=datetime.now(UTC),
     )

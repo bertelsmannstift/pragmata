@@ -15,6 +15,7 @@ def read_selected_blueprints_artifact(
     expected_n_queries: int,
     expected_batch_size: int,
     expected_near_duplicate_tolerance: float,
+    expected_enable_planning_memory: bool,
 ) -> SelectedBlueprintsArtifact | None:
     """Load and validate the frozen Stage 1 result at ``path``.
 
@@ -26,13 +27,15 @@ def read_selected_blueprints_artifact(
         expected_batch_size: Batch size the current run expects.
         expected_near_duplicate_tolerance: Deduplication tolerance the current
             run expects.
+        expected_enable_planning_memory: Planning-memory setting the current run
+            expects (it shapes the blueprints, so a change invalidates).
 
     Returns:
         The validated artifact, or ``None`` when the file is absent or its
         validated header does not match the current run (spec fingerprint,
         running pragmata version, source run id, n_queries, batch_size,
-        near_duplicate_tolerance). ``embedding_model`` is recorded for
-        provenance but is intentionally NOT validated here.
+        near_duplicate_tolerance, enable_planning_memory). ``embedding_model``
+        is recorded for provenance but is intentionally NOT validated here.
 
     Raises:
         json.JSONDecodeError: The file content is not valid JSON.
@@ -53,6 +56,7 @@ def read_selected_blueprints_artifact(
         or artifact.n_queries != expected_n_queries
         or artifact.batch_size != expected_batch_size
         or artifact.near_duplicate_tolerance != expected_near_duplicate_tolerance
+        or artifact.enable_planning_memory != expected_enable_planning_memory
     ):
         return None
 

@@ -76,6 +76,7 @@ class PlanningBatchArtifact(BaseModel):
     n_queries: PositiveInt
     batch_size: PositiveInt
     batch_idx: NonNegativeInt
+    enable_planning_memory: bool
     candidate_ids: list[NonEmptyStr]
     blueprints: list[QueryBlueprint]
     planning_summary_state: PlanningSummaryState | None
@@ -110,6 +111,7 @@ class SelectedBlueprintsArtifact(BaseModel):
     n_queries: PositiveInt
     batch_size: PositiveInt
     near_duplicate_tolerance: float
+    enable_planning_memory: bool
     embedding_model: NonEmptyStr
     blueprints: list[QueryBlueprint]
     created_at: datetime

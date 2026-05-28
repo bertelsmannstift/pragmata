@@ -34,6 +34,7 @@ _EXPECTED = {
     "expected_n_queries": 10,
     "expected_batch_size": 5,
     "expected_near_duplicate_tolerance": 0.95,
+    "expected_enable_planning_memory": True,
 }
 
 
@@ -44,6 +45,8 @@ def _write_valid(path: Path) -> None:
         n_queries=10,
         batch_size=5,
         near_duplicate_tolerance=0.95,
+        enable_planning_memory=True,
+        embedding_model="all-MiniLM-L6-v2",
         blueprints=[_blueprint("c001"), _blueprint("c003")],
     )
     export_selected_blueprints(artifact=artifact, path=path)
@@ -74,6 +77,7 @@ def test_read_selected_blueprints_returns_none_for_missing_path(tmp_path: Path) 
         ("expected_n_queries", 20),
         ("expected_batch_size", 7),
         ("expected_near_duplicate_tolerance", 0.80),
+        ("expected_enable_planning_memory", False),
     ],
 )
 def test_read_selected_blueprints_returns_none_for_header_mismatch(
@@ -99,6 +103,7 @@ def test_read_selected_blueprints_ignores_embedding_model_for_validation(tmp_pat
         n_queries=10,
         batch_size=5,
         near_duplicate_tolerance=0.95,
+        enable_planning_memory=True,
         embedding_model="some-other-embedding-model",
         blueprints=[_blueprint("c001")],
         created_at=datetime.now(UTC),
