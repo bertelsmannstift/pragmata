@@ -8,6 +8,7 @@ from pragmata.core.schemas.querygen_input import QueryGenSpec
 from pragmata.core.schemas.querygen_output import (
     PlanningBatchArtifact,
     PlanningSummaryArtifact,
+    SelectedBlueprintsArtifact,
     SyntheticQueriesMeta,
     SyntheticQueryRow,
 )
@@ -144,6 +145,54 @@ def assemble_planning_batch_artifact(
         candidate_ids=candidate_ids,
         blueprints=blueprints,
         planning_summary_state=planning_summary_state,
+        created_at=datetime.now(UTC),
+    )
+
+
+def assemble_selected_blueprints_artifact(
+    *,
+    spec_fingerprint: str,
+    llm_fingerprint: str,
+    source_run_id: str,
+    n_queries: int,
+    batch_size: int,
+    near_duplicate_tolerance: float,
+    enable_planning_memory: bool,
+    embedding_model: str,
+    blueprints: list[QueryBlueprint],
+) -> SelectedBlueprintsArtifact:
+    """Assemble the frozen Stage 1 result artifact, stamping provenance.
+
+    Args:
+        spec_fingerprint: Fingerprint of the resolved querygen spec.
+        llm_fingerprint: Fingerprint of the output-shaping LLM settings; a
+            change invalidates the checkpoint.
+        source_run_id: Run identifier that produced this result.
+        n_queries: Total queries requested for the run.
+        batch_size: Configured batch size for the run.
+        near_duplicate_tolerance: Tolerance used for the deduplication that
+            produced ``blueprints``.
+        enable_planning_memory: Whether planning memory was enabled (a change
+            invalidates the frozen result, since it shapes the blueprints).
+        embedding_model: Embedding model checkpoint used for deduplication
+            (recorded for provenance).
+        blueprints: Final post-deduplication selected blueprints.
+
+    Returns:
+        A validated ``SelectedBlueprintsArtifact`` with internally stamped
+        ``pragmata_version`` and ``created_at``.
+    """
+    return SelectedBlueprintsArtifact(
+        spec_fingerprint=spec_fingerprint,
+        pragmata_version=importlib.metadata.version("pragmata"),
+        llm_fingerprint=llm_fingerprint,
+        source_run_id=source_run_id,
+        n_queries=n_queries,
+        batch_size=batch_size,
+        near_duplicate_tolerance=near_duplicate_tolerance,
+        enable_planning_memory=enable_planning_memory,
+        embedding_model=embedding_model,
+        blueprints=blueprints,
         created_at=datetime.now(UTC),
     )
 

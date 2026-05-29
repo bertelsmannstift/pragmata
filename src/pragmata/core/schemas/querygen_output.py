@@ -88,3 +88,31 @@ class PlanningBatchArtifact(BaseModel):
         if len(self.candidate_ids) != len(self.blueprints):
             raise ValueError("candidate_ids and blueprints must have equal length")
         return self
+
+
+class SelectedBlueprintsArtifact(BaseModel):
+    """Persisted frozen result of Stage 1 (post-filter, post-deduplication).
+
+    Written atomically to ``<run_dir>/selected_blueprints.json`` once, after the
+    Stage 1 loop and deduplication complete. Its presence is the authoritative
+    "Stage 1 is done" marker: on a matching rerun the planning loop and
+    deduplication are skipped and Stage 2 chunks this immutable list.
+
+    ``near_duplicate_tolerance`` is part of the validated header because the
+    deduplicated set is a function of it. ``embedding_model`` is recorded for
+    provenance/diagnosis but is intentionally NOT validated on read.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    spec_fingerprint: NonEmptyStr
+    pragmata_version: NonEmptyStr
+    llm_fingerprint: NonEmptyStr
+    source_run_id: NonEmptyStr
+    n_queries: PositiveInt
+    batch_size: PositiveInt
+    near_duplicate_tolerance: float
+    enable_planning_memory: bool
+    embedding_model: NonEmptyStr
+    blueprints: list[QueryBlueprint]
+    created_at: datetime
