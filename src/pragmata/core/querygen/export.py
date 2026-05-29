@@ -6,6 +6,7 @@ from pathlib import Path
 from pragmata.core.atomic_io import atomic_write_text
 from pragmata.core.csv_io import write_csv
 from pragmata.core.schemas.querygen_output import (
+    PlanningBatchArtifact,
     PlanningSummaryArtifact,
     SyntheticQueriesMeta,
     SyntheticQueryRow,
@@ -55,3 +56,17 @@ def export_planning_summary(
         artifact_path: Destination path for the JSON artifact.
     """
     _atomic_write_json(data=artifact.model_dump(mode="json"), path=artifact_path)
+
+
+def export_planning_batch_artifact(
+    *,
+    artifact: PlanningBatchArtifact,
+    path: Path,
+) -> None:
+    """Atomically persist a Stage 1 planning-batch artifact as JSON.
+
+    Args:
+        artifact: Validated planning-batch artifact to persist.
+        path: Destination path (``planning_batches/batch_NNNN.json``).
+    """
+    _atomic_write_json(data=artifact.model_dump(mode="json"), path=path)
