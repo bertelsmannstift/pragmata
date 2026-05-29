@@ -213,7 +213,13 @@ def validate_eval_score_frame(
         EvalInputSchemaError: If the input is not a dataframe or violates the
             task-specific scoring contract.
     """
-    return validate_eval_train_frame(df, task=task)
+    if not isinstance(df, pd.DataFrame):
+        raise EvalInputSchemaError(f"Expected a pandas DataFrame, got {type(df).__name__}.")
+
+    try:
+        return _TRAIN_SCHEMAS_BY_TASK[task].validate(df, lazy=True)
+    except (SchemaError, SchemaErrors) as exc:
+        raise EvalInputSchemaError("Input dataframe violates the eval scoring data contract.") from exc
 
 
 def validate_eval_predict_frame(
