@@ -1,6 +1,7 @@
 """Unit tests for evaluation workflow settings."""
 
 from pathlib import Path
+from uuid import UUID
 
 import pytest
 from pydantic import BaseModel, ValidationError
@@ -12,7 +13,9 @@ from pragmata.core.settings.eval_settings import EvalPredictSettings, EvalScoreS
 def _assert_uuid_hex(value: str) -> None:
     """Assert that a value is a UUID4-style hex string."""
     assert len(value) == 32
-    assert int(value, 16) >= 0
+    parsed = UUID(hex=value)
+    assert parsed.version == 4
+    assert parsed.hex == value
 
 
 @pytest.mark.parametrize(
