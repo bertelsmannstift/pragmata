@@ -6,10 +6,11 @@ import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import argilla as rg
 
+from pragmata.core.annotation.completeness import CompletenessReport, PanelCompleteness, compute_completeness
 from pragmata.core.annotation.export_fetcher import AnnotationModel, build_user_lookup, fetch_task
 from pragmata.core.annotation.logical_constraints import LogicalConstraint
 from pragmata.core.atomic_io import atomic_write_text
@@ -17,6 +18,7 @@ from pragmata.core.csv_io import _to_csv_value
 from pragmata.core.paths.annotation_paths import AnnotationExportPaths
 from pragmata.core.schemas.annotation_export import (
     AnnotationExportMeta,
+    CompletenessSummary,
     GenerationAnnotation,
     GenerationExportRow,
     GroundingAnnotation,
@@ -63,6 +65,8 @@ class ExportResult:
         constraint_summary: Violation count per ``constraint_id`` (the stable
             short identifier defined in :mod:`logical_constraints`).
         n_annotators: Count of distinct annotators per task.
+        completeness: Retrieval panel-completeness report (``None`` when
+            retrieval was not in the exported task set).
     """
 
     paths: AnnotationExportPaths
@@ -70,17 +74,21 @@ class ExportResult:
     row_counts: dict[Task, int]
     constraint_summary: dict[str, int]
     n_annotators: dict[Task, int]
+    completeness: CompletenessReport | None = None
 
 
 def write_export_csv(
     rows: list[tuple[RetrievalAnnotation | GroundingAnnotation | GenerationAnnotation, list[LogicalConstraint]]],
     path: Path,
     task: Task,
+    *,
+    completeness: dict[str, PanelCompleteness] | None = None,
 ) -> None:
     """Write annotation rows to a CSV using the task's export-row schema.
 
     The schema (``TASK_EXPORT_ROW[task]``) models the full on-disk format,
-    including ``constraint_violated`` and ``constraint_details``. Writes
+    including ``constraint_violated`` / ``constraint_details`` (all tasks)
+    and ``panel_complete`` / ``n_annotated_chunks`` (retrieval only). Writes
     atomically via a .tmp file; cleans up on failure. Always writes the
     header row even when rows is empty.
 
@@ -91,6 +99,10 @@ def write_export_csv(
             in the legacy verbose ``";"``-joined format for human readers.
         path: Final output path.
         task: Task type — determines the export-row schema.
+        completeness: Optional per-``record_uuid`` panel-completeness map.
+            Only used for retrieval; ignored otherwise. Rows whose
+            ``record_uuid`` is absent fall back to the schema defaults
+            (``False`` / ``0``).
     """
     row_cls = TASK_EXPORT_ROW[task]
     headers = list(row_cls.model_fields.keys())
@@ -99,10 +111,17 @@ def write_export_csv(
             writer = csv.DictWriter(f, fieldnames=headers)
             writer.writeheader()
             for annotation, violations in rows:
+                extras: dict[str, Any] = {}
+                if task == Task.RETRIEVAL and completeness is not None:
+                    pc = completeness.get(annotation.record_uuid)
+                    if pc is not None:
+                        extras["panel_complete"] = pc.panel_complete
+                        extras["n_annotated_chunks"] = pc.n_annotated_chunks
                 export_row = row_cls(
                     **annotation.model_dump(),
                     constraint_violated=bool(violations),
                     constraint_details=";".join(c.violation_string() for c in violations),
+                    **extras,
                 )
                 raw = export_row.model_dump(mode="json")
                 writer.writerow({k: _to_csv_value(raw[k]) for k in headers})
@@ -142,6 +161,7 @@ def assemble_export_meta(
     n_annotators: dict[Task, int],
     calibration_enabled: dict[Task, bool],
     constraint_summary: dict[str, int],
+    completeness_summary: CompletenessSummary | None = None,
 ) -> AnnotationExportMeta:
     """Assemble run-level provenance metadata for an annotation export.
 
@@ -155,6 +175,8 @@ def assemble_export_meta(
         calibration_enabled: Whether the topology declared a calibration
             dataset for each task.
         constraint_summary: Violation count keyed by ``constraint_id``.
+        completeness_summary: Retrieval panel-completeness aggregates;
+            ``None`` when retrieval was not exported.
 
     Returns:
         Provenance sidecar with an internally stamped creation time.
@@ -169,6 +191,7 @@ def assemble_export_meta(
         n_annotators=n_annotators,
         calibration_enabled=calibration_enabled,
         constraint_summary=constraint_summary,
+        completeness_summary=completeness_summary,
     )
 
 
@@ -211,12 +234,17 @@ def run_export(
     for task in tasks:
         task_rows[task] = fetch_task(client, settings, task, user_lookup, include_discarded=include_discarded)
 
+    completeness_report: CompletenessReport | None = None
+    if Task.RETRIEVAL in tasks:
+        completeness_report = compute_completeness(client, settings)
+
     task_paths = {task: getattr(paths, TASK_CSV_ATTR[task]) for task in tasks}
 
     written: list[Path] = []
     try:
         for task in tasks:
-            write_export_csv(task_rows[task], task_paths[task], task)
+            completeness_map = completeness_report.by_uuid if (completeness_report and task == Task.RETRIEVAL) else None
+            write_export_csv(task_rows[task], task_paths[task], task, completeness=completeness_map)
             written.append(task_paths[task])
     except Exception:
         logger.error("Export failed — rolling back %d written file(s)", len(written))
@@ -243,6 +271,7 @@ def run_export(
         n_annotators=n_annotators,
         calibration_enabled=calibration_enabled,
         constraint_summary=constraint_summary,
+        completeness_summary=completeness_report.summary if completeness_report else None,
     )
     write_export_meta(meta, paths.export_meta_json)
 
@@ -252,6 +281,7 @@ def run_export(
         row_counts=row_counts,
         constraint_summary=constraint_summary,
         n_annotators=n_annotators,
+        completeness=completeness_report,
     )
 
 

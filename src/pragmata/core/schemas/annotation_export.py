@@ -91,10 +91,12 @@ class GenerationAnnotation(AnnotationBase):
 
 
 class RetrievalExportRow(RetrievalAnnotation):
-    """Full on-disk CSV row for retrieval: extends RetrievalAnnotation with constraint metadata."""
+    """Full on-disk CSV row for retrieval: annotation + constraint + panel-completeness metadata."""
 
     constraint_violated: bool
     constraint_details: str = ""
+    panel_complete: bool = False
+    n_annotated_chunks: int = 0
 
 
 class GroundingExportRow(GroundingAnnotation):
@@ -111,6 +113,38 @@ class GenerationExportRow(GenerationAnnotation):
     constraint_details: str = ""
 
 
+class KBucketStat(BaseModel):
+    """Per K-bucket panel counts for retrieval completeness MNAR analysis.
+
+    Incompleteness correlates with K (the panel size), so reporting coverage
+    bucketed by K lets the eval side detect bias from dropping partial panels.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    n_panels: NonNegativeInt
+    n_complete: NonNegativeInt
+
+
+class CompletenessSummary(BaseModel):
+    """Retrieval panel-completeness aggregates for one export run.
+
+    ``n_panels`` counts distinct non-orphan ``record_uuid``s; ``n_complete``
+    counts those whose all K chunks have a terminal (submitted-or-discarded)
+    response. ``by_k_bucket`` cross-tabs the same counts by K bucket
+    (``k_lt_5`` / ``k_eq_5`` / ``k_gt_5``).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    n_panels: NonNegativeInt
+    n_complete: NonNegativeInt
+    fraction_complete: float = Field(ge=0.0, le=1.0)
+    by_k_bucket: dict[str, KBucketStat]
+    n_integrity_warnings: NonNegativeInt
+    n_orphans_skipped: NonNegativeInt
+
+
 class AnnotationExportMeta(BaseModel):
     """Schema for annotation export run provenance (sidecar to the task CSVs)."""
 
@@ -125,6 +159,7 @@ class AnnotationExportMeta(BaseModel):
     n_annotators: dict[Task, NonNegativeInt]
     calibration_enabled: dict[Task, bool] = Field(default_factory=dict)
     constraint_summary: dict[str, NonNegativeInt]
+    completeness_summary: CompletenessSummary | None = None
 
     @model_validator(mode="after")
     def validate_keys_match_tasks(self) -> "AnnotationExportMeta":

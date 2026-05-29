@@ -93,6 +93,26 @@ def _build_row(
     )
 
 
+def resolve_task_purposes(settings: AnnotationSettings, task: Task) -> tuple[str | None, list[bool]]:
+    """Topology lookup: workspace owning the task, and which purposes to fetch.
+
+    Returns ``(workspace_name, purposes)`` where purposes is ``[False]`` for
+    production-only or ``[False, True]`` when the task has a calibration
+    dataset declared. Used by both ``fetch_task`` and the completeness /
+    status passes so they walk identical dataset sets.
+    """
+    workspace_name: str | None = None
+    for ws_base, ws_settings in settings.workspaces.items():
+        if task in ws_settings.tasks:
+            workspace_name = ws_base
+            break
+    purposes: list[bool] = [False]
+    if workspace_name is not None:
+        if settings.resolved_task(workspace_name, task).calibration_min_submitted is not None:
+            purposes.append(True)
+    return workspace_name, purposes
+
+
 def fetch_task(
     client: rg.Argilla,
     settings: AnnotationSettings,
@@ -110,16 +130,7 @@ def fetch_task(
     By default returns only submitted responses; pass ``include_discarded=True``
     to also include responses the annotator discarded.
     """
-    workspace_name: str | None = None
-    for ws_base, ws_settings in settings.workspaces.items():
-        if task in ws_settings.tasks:
-            workspace_name = ws_base
-            break
-
-    purposes: list[bool] = [False]
-    if workspace_name is not None:
-        if settings.resolved_task(workspace_name, task).calibration_min_submitted is not None:
-            purposes.append(True)
+    workspace_name, purposes = resolve_task_purposes(settings, task)
 
     statuses = ["submitted", "discarded"] if include_discarded else ["submitted"]
     query = rg.Query(filter=rg.Filter([("response.status", "in", statuses)]))

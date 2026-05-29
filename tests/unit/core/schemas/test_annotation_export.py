@@ -237,17 +237,24 @@ def test_export_row_requires_constraint_violated(valid_retrieval):
 
 
 @pytest.mark.parametrize(
-    ("row_cls", "annotation_cls"),
+    ("row_cls", "annotation_cls", "extra_cols"),
     [
-        (RetrievalExportRow, RetrievalAnnotation),
-        (GroundingExportRow, GroundingAnnotation),
-        (GenerationExportRow, GenerationAnnotation),
+        (
+            RetrievalExportRow,
+            RetrievalAnnotation,
+            ["constraint_violated", "constraint_details", "panel_complete", "n_annotated_chunks"],
+        ),
+        (GroundingExportRow, GroundingAnnotation, ["constraint_violated", "constraint_details"]),
+        (GenerationExportRow, GenerationAnnotation, ["constraint_violated", "constraint_details"]),
     ],
 )
-def test_export_row_field_order(row_cls, annotation_cls):
-    """Export row fields are annotation fields followed by the two constraint columns, in order."""
+def test_export_row_field_order(row_cls, annotation_cls, extra_cols):
+    """Export row fields are annotation fields followed by the task's tail columns, in order.
+
+    Retrieval gains panel_complete + n_annotated_chunks after the constraint columns.
+    """
     fields = list(row_cls.model_fields.keys())
-    expected = list(annotation_cls.model_fields.keys()) + ["constraint_violated", "constraint_details"]
+    expected = list(annotation_cls.model_fields.keys()) + extra_cols
     assert fields == expected
 
 
