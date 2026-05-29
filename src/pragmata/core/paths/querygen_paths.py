@@ -17,6 +17,16 @@ class QueryGenRunPaths:
        synthetic_queries_csv: Output path for the generated query rows CSV.
        synthetic_queries_meta_json: Output path for the dataset metadata.
        planning_summary_artifact_json: Output path for the planning-summary artifact.
+       checkpoints_dir: Directory holding all resumable intermediate state for
+           the run (the per-batch checkpoints and the frozen Stage 1 result),
+           kept separate from the final deliverables in ``run_dir``.
+       planning_batches_dir: Directory for per-batch Stage 1 planning checkpoints
+           (under ``checkpoints_dir``).
+       selected_blueprints_json: Path for the frozen post-deduplication Stage 1
+           result (the "Stage 1 done" marker / Stage 2 input), under
+           ``checkpoints_dir``.
+       realization_batches_dir: Directory for per-batch Stage 2 realization
+           checkpoints (under ``checkpoints_dir``).
     """
 
     tool_root: Path
@@ -24,12 +34,18 @@ class QueryGenRunPaths:
     synthetic_queries_csv: Path
     synthetic_queries_meta_json: Path
     planning_summary_artifact_json: Path
+    checkpoints_dir: Path
+    planning_batches_dir: Path
+    selected_blueprints_json: Path
+    realization_batches_dir: Path
 
     def ensure_dirs(
         self,
     ) -> Self:
         """Create the run directory scaffold."""
         self.run_dir.mkdir(parents=True, exist_ok=True)
+        self.planning_batches_dir.mkdir(parents=True, exist_ok=True)
+        self.realization_batches_dir.mkdir(parents=True, exist_ok=True)
         return self
 
 
@@ -51,6 +67,7 @@ def resolve_querygen_paths(
     """
     tool_root = workspace.tool_root("querygen")
     run_dir = workspace.run_root(tool="querygen", run_id=run_id)
+    checkpoints_dir = run_dir / "checkpoints"
 
     return QueryGenRunPaths(
         tool_root=tool_root,
@@ -58,4 +75,8 @@ def resolve_querygen_paths(
         synthetic_queries_csv=run_dir / "synthetic_queries.csv",
         synthetic_queries_meta_json=run_dir / "synthetic_queries.meta.json",
         planning_summary_artifact_json=tool_root / f"{spec_fingerprint}.json",
+        checkpoints_dir=checkpoints_dir,
+        planning_batches_dir=checkpoints_dir / "planning_batches",
+        selected_blueprints_json=checkpoints_dir / "selected_blueprints.json",
+        realization_batches_dir=checkpoints_dir / "realization_batches",
     )

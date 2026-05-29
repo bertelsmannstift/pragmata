@@ -15,6 +15,10 @@ from pragmata.core.schemas.querygen_plan import QueryBlueprint
 if TYPE_CHECKING:
     from sentence_transformers import SentenceTransformer
 
+# Embedding model used for semantic near-duplicate detection. Exposed so callers
+# that persist a deduplicated result can record which model produced it.
+EMBEDDING_MODEL_CHECKPOINT = "all-MiniLM-L6-v2"
+
 _BLUEPRINT_FIELD_ORDER: tuple[str, ...] = (
     "domain",
     "role",
@@ -84,7 +88,7 @@ def _select_non_duplicate_indices(
 
 
 @lru_cache(maxsize=1)
-def _load_embedding_model(checkpoint: str = "all-MiniLM-L6-v2") -> SentenceTransformer:
+def _load_embedding_model(checkpoint: str = EMBEDDING_MODEL_CHECKPOINT) -> SentenceTransformer:
     """Load the embedding model used for semantic blueprint deduplication."""
     try:
         from sentence_transformers import SentenceTransformer
