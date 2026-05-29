@@ -275,17 +275,24 @@ class TestValidateEvalTrainFrame:
 class TestValidateEvalScoreFrame:
     """Tests for validating labeled eval scoring dataframes."""
 
-    def test_reuses_train_contract(self, retrieval_train_frame: FrameFactory) -> None:
+    def test_validates_labeled_score_frame(self, retrieval_train_frame: FrameFactory) -> None:
         df = retrieval_train_frame(record_uuid=["a", "b"])
 
         validated = validate_eval_score_frame(df, task=Task.RETRIEVAL)
 
         pd.testing.assert_frame_equal(validated, df)
 
-    def test_rejects_invalid_labeled_score_frame(self, retrieval_train_frame: FrameFactory) -> None:
+    def test_rejects_non_dataframe_score_input(self) -> None:
+        with pytest.raises(EvalInputSchemaError, match="Expected a pandas DataFrame"):
+            validate_eval_score_frame("not a dataframe", task=Task.RETRIEVAL)  # type: ignore[arg-type]
+
+    def test_rejects_invalid_labeled_score_frame_with_score_specific_error(
+        self,
+        retrieval_train_frame: FrameFactory,
+    ) -> None:
         df = retrieval_train_frame(topically_relevant=[1, 2])
 
-        with pytest.raises(EvalInputSchemaError, match="training data contract"):
+        with pytest.raises(EvalInputSchemaError, match="scoring data contract"):
             validate_eval_score_frame(df, task=Task.RETRIEVAL)
 
 
