@@ -4,6 +4,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, NonNegativeInt, PositiveInt, model_validator
 
+from pragmata.core.schemas.querygen_plan import QueryBlueprint
 from pragmata.core.schemas.querygen_summary import PlanningSummaryState
 from pragmata.core.types import NonEmptyStr
 
@@ -55,3 +56,35 @@ class PlanningSummaryArtifact(BaseModel):
     source_run_id: NonEmptyStr
     created_at: datetime
     state: PlanningSummaryState
+
+
+class PlanningBatchArtifact(BaseModel):
+    """Persisted result of one Stage 1 planning batch.
+
+    Written atomically to ``<run_dir>/planning_batches/batch_NNNN.json`` after
+    each successful Stage 1 batch. Lets a rerun of the same ``source_run_id``
+    skip already-planned batches when the header fields and ``candidate_ids``
+    still match.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    spec_fingerprint: NonEmptyStr
+    pragmata_version: NonEmptyStr
+    llm_fingerprint: NonEmptyStr
+    source_run_id: NonEmptyStr
+    n_queries: PositiveInt
+    batch_size: PositiveInt
+    batch_idx: NonNegativeInt
+    enable_planning_memory: bool
+    candidate_ids: list[NonEmptyStr]
+    blueprints: list[QueryBlueprint]
+    planning_summary_state: PlanningSummaryState | None
+    created_at: datetime
+
+    @model_validator(mode="after")
+    def validate_blueprint_count(self) -> "PlanningBatchArtifact":
+        """Enforce a 1:1 mapping between batch candidate IDs and blueprints."""
+        if len(self.candidate_ids) != len(self.blueprints):
+            raise ValueError("candidate_ids and blueprints must have equal length")
+        return self

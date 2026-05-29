@@ -1,10 +1,16 @@
 """Assembly of synthetic query generation output."""
 
+import importlib.metadata
 from datetime import UTC, datetime
 
 from pragmata.core.querygen.planning_summary import fingerprint_querygen_spec
 from pragmata.core.schemas.querygen_input import QueryGenSpec
-from pragmata.core.schemas.querygen_output import PlanningSummaryArtifact, SyntheticQueriesMeta, SyntheticQueryRow
+from pragmata.core.schemas.querygen_output import (
+    PlanningBatchArtifact,
+    PlanningSummaryArtifact,
+    SyntheticQueriesMeta,
+    SyntheticQueryRow,
+)
 from pragmata.core.schemas.querygen_plan import QueryBlueprint
 from pragmata.core.schemas.querygen_realize import RealizedQuery
 from pragmata.core.schemas.querygen_summary import PlanningSummaryState
@@ -90,6 +96,55 @@ def assemble_queries_meta(
         model_provider=model_provider,
         planning_model=planning_model,
         realization_model=realization_model,
+    )
+
+
+def assemble_planning_batch_artifact(
+    *,
+    spec_fingerprint: str,
+    llm_fingerprint: str,
+    source_run_id: str,
+    n_queries: int,
+    batch_size: int,
+    batch_idx: int,
+    candidate_ids: list[str],
+    blueprints: list[QueryBlueprint],
+    planning_summary_state: PlanningSummaryState | None,
+    enable_planning_memory: bool,
+) -> PlanningBatchArtifact:
+    """Assemble a Stage 1 planning-batch artifact, stamping version + time.
+
+    Args:
+        spec_fingerprint: Fingerprint of the resolved querygen spec.
+        llm_fingerprint: Fingerprint of the output-shaping LLM settings; a
+            change invalidates the checkpoint.
+        source_run_id: Run identifier that produced this batch.
+        n_queries: Total queries requested for the run.
+        batch_size: Configured batch size for the run.
+        batch_idx: Zero-based index of this planning batch.
+        candidate_ids: Candidate IDs assigned to this batch.
+        blueprints: Blueprints produced for this batch.
+        planning_summary_state: Planning-summary state after this batch, if any.
+        enable_planning_memory: Whether planning memory was enabled (a change
+            invalidates the checkpoint, since it shapes the blueprints).
+
+    Returns:
+        A validated ``PlanningBatchArtifact`` with internally stamped
+        ``pragmata_version`` and ``created_at``.
+    """
+    return PlanningBatchArtifact(
+        spec_fingerprint=spec_fingerprint,
+        pragmata_version=importlib.metadata.version("pragmata"),
+        llm_fingerprint=llm_fingerprint,
+        source_run_id=source_run_id,
+        n_queries=n_queries,
+        batch_size=batch_size,
+        batch_idx=batch_idx,
+        enable_planning_memory=enable_planning_memory,
+        candidate_ids=candidate_ids,
+        blueprints=blueprints,
+        planning_summary_state=planning_summary_state,
+        created_at=datetime.now(UTC),
     )
 
 
