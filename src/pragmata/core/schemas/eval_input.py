@@ -238,7 +238,8 @@ def validate_eval_predict_frame(
 
     Raises:
         EvalInputSchemaError: If the input is not a dataframe, contains label
-            columns, or violates the task-specific prediction contract.
+            columns for the selected task, contains generic `label_*` columns, or
+            violates the task-specific prediction contract.
     """
     if not isinstance(df, pd.DataFrame):
         raise EvalInputSchemaError(f"Expected a pandas DataFrame, got {type(df).__name__}.")
@@ -255,7 +256,8 @@ def validate_eval_predict_frame(
     ]
     if forbidden_label_cols:
         raise EvalInputSchemaError(
-            f"Prediction input must be unlabeled, but found label columns: {forbidden_label_cols}."
+            f"Prediction input must be unlabeled for task {task.value}, "
+            f"but found label columns: {forbidden_label_cols}."
         )
 
     return validated
