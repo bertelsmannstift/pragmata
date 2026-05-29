@@ -58,34 +58,68 @@ def fingerprint_querygen_spec(
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
 
-def fingerprint_llm_settings(
+def _sha256_json(payload: object) -> str:
+    """Return a SHA-256 hex digest over the canonical JSON form of ``payload``.
+
+    Uses ``default=str`` so non-JSON values in model kwargs hash by their string
+    form rather than raising.
+    """
+    serialized = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+
+def fingerprint_planning_llm_settings(
     llm_settings: LlmSettings,
 ) -> str:
-    """Return a deterministic fingerprint of the output-shaping LLM settings.
+    """Return a fingerprint of the LLM settings that shape Stage 1 planning output.
 
-    Covers the fields that affect generated content -- provider, per-stage
-    models, per-stage model kwargs (e.g. ``reasoning_effort``/``temperature``),
-    and ``base_url`` -- but excludes the rate-limiter settings, which pace
-    requests without changing output. Used as a resume-invalidation key so that
-    changing the model or decoding parameters mid-run forces a recompute rather
-    than silently reusing checkpoints produced under a different configuration.
+    Covers the inputs that determine the blueprints -- provider, planning model,
+    planning model kwargs (e.g. ``reasoning_effort``/``temperature``), and
+    ``base_url``. Excludes realization settings (which do not affect planning)
+    and the rate limiter (which only paces requests). Changing any of these on a
+    resume forces Stage 1 to recompute; changing only realization settings does
+    not, so planning work is reused.
 
     Args:
         llm_settings: Resolved LLM settings for the run.
 
     Returns:
-        Stable SHA-256 hex digest over the output-shaping LLM settings.
+        Stable SHA-256 hex digest over the planning-shaping LLM settings.
     """
-    payload = {
-        "model_provider": llm_settings.model_provider,
-        "planning_model": llm_settings.planning_model,
-        "realization_model": llm_settings.realization_model,
-        "planning_model_kwargs": llm_settings.planning_model_kwargs,
-        "realization_model_kwargs": llm_settings.realization_model_kwargs,
-        "base_url": llm_settings.base_url,
-    }
-    serialized = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
-    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+    return _sha256_json(
+        {
+            "model_provider": llm_settings.model_provider,
+            "planning_model": llm_settings.planning_model,
+            "planning_model_kwargs": llm_settings.planning_model_kwargs,
+            "base_url": llm_settings.base_url,
+        }
+    )
+
+
+def fingerprint_realization_llm_settings(
+    llm_settings: LlmSettings,
+) -> str:
+    """Return a fingerprint of the LLM settings that shape Stage 2 realization output.
+
+    Covers the inputs that determine the realized queries -- provider,
+    realization model, realization model kwargs, and ``base_url``. Excludes
+    planning settings and the rate limiter. Changing any of these on a resume
+    forces only Stage 2 to recompute (the frozen Stage 1 result is reused).
+
+    Args:
+        llm_settings: Resolved LLM settings for the run.
+
+    Returns:
+        Stable SHA-256 hex digest over the realization-shaping LLM settings.
+    """
+    return _sha256_json(
+        {
+            "model_provider": llm_settings.model_provider,
+            "realization_model": llm_settings.realization_model,
+            "realization_model_kwargs": llm_settings.realization_model_kwargs,
+            "base_url": llm_settings.base_url,
+        }
+    )
 
 
 def read_planning_summary_artifact(
