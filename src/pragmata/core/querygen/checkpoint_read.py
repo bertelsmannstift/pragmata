@@ -2,15 +2,17 @@
 
 import importlib.metadata
 import json
+from dataclasses import dataclass
 from pathlib import Path
-from typing import NamedTuple, TypeVar
+from typing import TypeVar
 
 from pydantic import BaseModel
 
 ArtifactT = TypeVar("ArtifactT", bound=BaseModel)
 
 
-class DriftedField(NamedTuple):
+@dataclass(frozen=True, slots=True)
+class DriftedField:
     """One header field whose stored value no longer matches the current run.
 
     Attributes:
@@ -22,6 +24,16 @@ class DriftedField(NamedTuple):
     field: str
     stored: object
     expected: object
+
+
+class QueryGenDriftError(RuntimeError):
+    """Raised when a checkpoint was produced under settings that differ from the current run.
+
+    The run halts instead of silently reusing or recomputing the drifted work.
+    Resolve by re-running with ``force=True`` (CLI ``--force``) to resume and
+    recompute whatever changed, deleting the run directory to rebuild from
+    scratch, or a new ``run_id`` to start a separate run and keep this one.
+    """
 
 
 def read_checkpoint_artifact(

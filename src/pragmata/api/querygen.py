@@ -2,9 +2,10 @@
 
 import json
 import logging
+from collections.abc import Callable
 from itertools import islice
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 from pydantic import BaseModel, ConfigDict, PositiveInt, ValidationError
 
@@ -20,7 +21,7 @@ from pragmata.core.querygen.assembly import (
     assemble_selected_blueprints_artifact,
 )
 from pragmata.core.querygen.batching import build_candidate_ids, chunk_blueprints, iter_batch_sizes
-from pragmata.core.querygen.checkpoint_read import DriftedField
+from pragmata.core.querygen.checkpoint_read import DriftedField, QueryGenDriftError
 from pragmata.core.querygen.deduplication import EMBEDDING_MODEL_CHECKPOINT, deduplicate_blueprints
 from pragmata.core.querygen.export import (
     export_planning_batch_artifact,
@@ -33,8 +34,9 @@ from pragmata.core.querygen.filtering import filter_aligned_candidate_ids
 from pragmata.core.querygen.planning import run_planning_stage
 from pragmata.core.querygen.planning_batches import read_planning_batch_artifact
 from pragmata.core.querygen.planning_summary import (
-    fingerprint_llm_settings,
+    fingerprint_planning_llm_settings,
     fingerprint_querygen_spec,
+    fingerprint_realization_llm_settings,
     read_planning_summary_artifact,
     run_planning_summary,
 )
@@ -64,16 +66,6 @@ class QueryGenRunResult(BaseModel):
     paths: QueryGenRunPaths
 
 
-class QueryGenDriftError(RuntimeError):
-    """Raised when a checkpoint was produced under settings that differ from the current run.
-
-    The run halts instead of silently reusing or recomputing the drifted work.
-    Resolve by re-running with ``force=True`` (CLI ``--force``) to resume and
-    recompute whatever changed, deleting the run directory to rebuild from
-    scratch, or a new ``run_id`` to start a separate run and keep this one.
-    """
-
-
 def _shorten(value: object) -> str:
     """Render a drift value compactly, truncating long strings such as fingerprints.
 
@@ -95,6 +87,49 @@ def _drift_message(*, run_id: str, checkpoint_path: Path, drifted: list[DriftedF
         f"Re-run with --force to resume and recompute what changed, delete the run directory "
         f"to rebuild from scratch, or use a new --run-id to start a separate run."
     )
+
+
+_CheckpointT = TypeVar("_CheckpointT")
+
+
+def _read_reusable_checkpoint(
+    read: Callable[[], tuple[_CheckpointT | None, list[DriftedField]]],
+    *,
+    run_id: str,
+    checkpoint_path: Path,
+    force: bool,
+) -> _CheckpointT | None:
+    """Return a checkpoint only if it is reusable, else ``None`` (caller recomputes).
+
+    The single gate every checkpoint read goes through:
+
+    - damaged file (JSON/validation/UTF-8 error) -> self-heal: log and return
+      ``None`` so the caller recomputes;
+    - drifted checkpoint with ``force=False`` -> raise :class:`QueryGenDriftError`
+      (fail fast);
+    - drifted checkpoint with ``force=True`` -> log and return ``None`` to recompute;
+    - clean match -> return the artifact.
+
+    Args:
+        read: Zero-arg call returning ``(artifact, drifted)`` from a typed reader.
+        run_id: Run identifier, for the drift message.
+        checkpoint_path: Checkpoint path, for the drift/damage message.
+        force: When True, recompute drifted checkpoints instead of failing fast.
+    """
+    try:
+        artifact, drifted = read()
+    except (json.JSONDecodeError, ValidationError, UnicodeDecodeError) as exc:
+        logger.warning("Checkpoint %s is damaged (%s); recomputing", checkpoint_path.name, exc)
+        return None
+    if drifted and not force:
+        raise QueryGenDriftError(_drift_message(run_id=run_id, checkpoint_path=checkpoint_path, drifted=drifted))
+    if drifted:
+        logger.warning(
+            "Checkpoint %s drifted (%s); recomputing under --force",
+            checkpoint_path.name,
+            ", ".join(field.field for field in drifted),
+        )
+    return artifact
 
 
 def _resume_or_run_planning_batch(
@@ -140,8 +175,8 @@ def _resume_or_run_planning_batch(
     checkpoint_path = paths.planning_batches_dir / f"batch_{batch_idx:04d}.json"
 
     if not resume_exhausted:
-        try:
-            artifact, drifted = read_planning_batch_artifact(
+        artifact = _read_reusable_checkpoint(
+            lambda: read_planning_batch_artifact(
                 path=checkpoint_path,
                 expected_spec_fingerprint=spec_fingerprint,
                 expected_source_run_id=settings.run_id,
@@ -150,20 +185,11 @@ def _resume_or_run_planning_batch(
                 expected_candidate_ids=batch_candidate_ids,
                 expected_enable_planning_memory=settings.enable_planning_memory,
                 expected_llm_fingerprint=llm_fingerprint,
-            )
-        except (json.JSONDecodeError, ValidationError, UnicodeDecodeError) as exc:
-            logger.warning(
-                "Stage 1 batch %d/%d checkpoint %s is damaged (%s); recomputing it and all later batches",
-                batch_idx + 1,
-                total_batches,
-                checkpoint_path.name,
-                exc,
-            )
-            artifact, drifted = None, []
-        if drifted and not force:
-            raise QueryGenDriftError(
-                _drift_message(run_id=settings.run_id, checkpoint_path=checkpoint_path, drifted=drifted)
-            )
+            ),
+            run_id=settings.run_id,
+            checkpoint_path=checkpoint_path,
+            force=force,
+        )
         if artifact is not None:
             logger.info(
                 "Stage 1 batch %d/%d resumed from checkpoint for run %s",
@@ -172,14 +198,6 @@ def _resume_or_run_planning_batch(
                 settings.run_id,
             )
             return artifact.blueprints, artifact.planning_summary_state, False
-        if drifted:
-            logger.warning(
-                "Stage 1 batch %d/%d checkpoint %s drifted (%s); recomputing it and all later batches (--force)",
-                batch_idx + 1,
-                total_batches,
-                checkpoint_path.name,
-                ", ".join(field.field for field in drifted),
-            )
 
     logger.info(
         "Stage 1 batch %d/%d: planning %d candidates for run %s",
@@ -267,8 +285,8 @@ def _resume_or_run_realization_batch(
     checkpoint_path = paths.realization_batches_dir / f"batch_{batch_idx:04d}.json"
     batch_candidate_ids = [blueprint.candidate_id for blueprint in blueprint_batch]
 
-    try:
-        artifact, drifted = read_realization_batch_artifact(
+    artifact = _read_reusable_checkpoint(
+        lambda: read_realization_batch_artifact(
             path=checkpoint_path,
             expected_spec_fingerprint=spec_fingerprint,
             expected_source_run_id=settings.run_id,
@@ -276,20 +294,11 @@ def _resume_or_run_realization_batch(
             expected_batch_size=settings.batch_size,
             expected_candidate_ids=batch_candidate_ids,
             expected_llm_fingerprint=llm_fingerprint,
-        )
-    except (json.JSONDecodeError, ValidationError, UnicodeDecodeError) as exc:
-        logger.warning(
-            "Stage 2 batch %d/%d checkpoint %s is damaged (%s); recomputing it",
-            batch_idx + 1,
-            total_batches,
-            checkpoint_path.name,
-            exc,
-        )
-        artifact, drifted = None, []
-    if drifted and not force:
-        raise QueryGenDriftError(
-            _drift_message(run_id=settings.run_id, checkpoint_path=checkpoint_path, drifted=drifted)
-        )
+        ),
+        run_id=settings.run_id,
+        checkpoint_path=checkpoint_path,
+        force=force,
+    )
     if artifact is not None:
         logger.info(
             "Stage 2 batch %d/%d resumed from checkpoint for run %s",
@@ -298,14 +307,6 @@ def _resume_or_run_realization_batch(
             settings.run_id,
         )
         return artifact.queries
-    if drifted:
-        logger.warning(
-            "Stage 2 batch %d/%d checkpoint %s drifted (%s); recomputing it (--force)",
-            batch_idx + 1,
-            total_batches,
-            checkpoint_path.name,
-            ", ".join(field.field for field in drifted),
-        )
 
     logger.info(
         "Stage 2 batch %d/%d: realizing %d candidates for run %s",
@@ -491,7 +492,11 @@ def gen_queries(
     api_key = resolve_api_key(settings.llm.model_provider)
 
     spec_fingerprint = fingerprint_querygen_spec(settings.spec)
-    llm_fingerprint = fingerprint_llm_settings(settings.llm)
+    # Per-stage LLM fingerprints: a planning-model change re-runs Stage 1, while
+    # a realization-model change re-runs only Stage 2 (the frozen result and
+    # planning checkpoints stay valid).
+    planning_llm_fingerprint = fingerprint_planning_llm_settings(settings.llm)
+    realization_llm_fingerprint = fingerprint_realization_llm_settings(settings.llm)
     paths = resolve_querygen_paths(
         workspace=WorkspacePaths.from_base_dir(settings.base_dir),
         run_id=settings.run_id,
@@ -528,10 +533,8 @@ def gen_queries(
         # planning loop, deduplication, and embedding-model load); otherwise run
         # the per-batch loop, deduplicate, persist cross-run memory, and freeze
         # the result.
-        frozen_result = None
-        frozen_drift: list[DriftedField] = []
-        try:
-            frozen_result, frozen_drift = read_selected_blueprints_artifact(
+        frozen_result = _read_reusable_checkpoint(
+            lambda: read_selected_blueprints_artifact(
                 path=paths.selected_blueprints_json,
                 expected_spec_fingerprint=spec_fingerprint,
                 expected_source_run_id=settings.run_id,
@@ -539,28 +542,12 @@ def gen_queries(
                 expected_batch_size=settings.batch_size,
                 expected_near_duplicate_tolerance=settings.near_duplicate_tolerance,
                 expected_enable_planning_memory=settings.enable_planning_memory,
-                expected_llm_fingerprint=llm_fingerprint,
-            )
-        except (json.JSONDecodeError, ValidationError, UnicodeDecodeError) as exc:
-            logger.warning(
-                "Frozen Stage 1 result %s is damaged (%s); recomputing Stage 1",
-                paths.selected_blueprints_json,
-                exc,
-            )
-        if frozen_drift and not force:
-            raise QueryGenDriftError(
-                _drift_message(
-                    run_id=settings.run_id,
-                    checkpoint_path=paths.selected_blueprints_json,
-                    drifted=frozen_drift,
-                )
-            )
-        if frozen_drift:
-            logger.warning(
-                "Frozen Stage 1 result %s drifted (%s); recomputing Stage 1 (--force)",
-                paths.selected_blueprints_json,
-                ", ".join(field.field for field in frozen_drift),
-            )
+                expected_llm_fingerprint=planning_llm_fingerprint,
+            ),
+            run_id=settings.run_id,
+            checkpoint_path=paths.selected_blueprints_json,
+            force=force,
+        )
 
         if frozen_result is not None:
             selected_blueprints = frozen_result.blueprints
@@ -589,7 +576,7 @@ def gen_queries(
                     paths=paths,
                     settings=settings,
                     spec_fingerprint=spec_fingerprint,
-                    llm_fingerprint=llm_fingerprint,
+                    llm_fingerprint=planning_llm_fingerprint,
                     api_key=api_key,
                     batch_idx=batch_idx,
                     total_batches=total_batches,
@@ -640,7 +627,7 @@ def gen_queries(
             export_selected_blueprints(
                 artifact=assemble_selected_blueprints_artifact(
                     spec_fingerprint=spec_fingerprint,
-                    llm_fingerprint=llm_fingerprint,
+                    llm_fingerprint=planning_llm_fingerprint,
                     source_run_id=settings.run_id,
                     n_queries=settings.n_queries,
                     batch_size=settings.batch_size,
@@ -670,7 +657,7 @@ def gen_queries(
                     paths=paths,
                     settings=settings,
                     spec_fingerprint=spec_fingerprint,
-                    llm_fingerprint=llm_fingerprint,
+                    llm_fingerprint=realization_llm_fingerprint,
                     api_key=api_key,
                     batch_idx=batch_idx,
                     total_batches=total_realization_batches,

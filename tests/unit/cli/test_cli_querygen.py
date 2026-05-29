@@ -6,6 +6,7 @@ from typer.testing import CliRunner
 
 from pragmata.api import UNSET
 from pragmata.cli.app import app
+from pragmata.querygen import QueryGenDriftError
 
 runner = CliRunner()
 
@@ -185,3 +186,18 @@ def test_querygen_cli_prints_prepared_run_summary(monkeypatch) -> None:
     assert "run_directory:" in result.output
     assert "synthetic_queries.csv" in result.output
     assert "synthetic_queries.meta.json" in result.output
+
+
+def test_querygen_cli_translates_drift_error_to_clean_exit(monkeypatch) -> None:
+    """A QueryGenDriftError surfaces as a clean exit code + message, not a traceback."""
+
+    def fake_gen_queries(**kwargs):
+        raise QueryGenDriftError("Run r cannot resume: checkpoint drifted. Re-run with --force.")
+
+    monkeypatch.setattr("pragmata.querygen.gen_queries", fake_gen_queries)
+
+    result = runner.invoke(app, ["querygen", "gen-queries"])
+
+    assert result.exit_code == 1
+    assert "cannot resume" in result.output
+    assert result.exception is None or isinstance(result.exception, SystemExit)
