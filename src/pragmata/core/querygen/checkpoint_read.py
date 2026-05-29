@@ -26,6 +26,16 @@ class DriftedField:
     expected: object
 
 
+class QueryGenDriftError(RuntimeError):
+    """Raised when a checkpoint was produced under settings that differ from the current run.
+
+    The run halts instead of silently reusing or recomputing the drifted work.
+    Resolve by re-running with ``force=True`` (CLI ``--force``) to resume and
+    recompute whatever changed, deleting the run directory to rebuild from
+    scratch, or a new ``run_id`` to start a separate run and keep this one.
+    """
+
+
 def read_checkpoint_artifact(
     *,
     path: Path,

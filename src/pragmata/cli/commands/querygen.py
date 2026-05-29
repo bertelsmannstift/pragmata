@@ -70,29 +70,39 @@ def gen_queries_command(
         "--realization-model-kwargs",
         help="Additional realization-stage model keyword arguments. Accepts a JSON object.",
     ),
+    force: bool = typer.Option(
+        False,
+        "--force/--no-force",
+        help="Resume past config drift, recomputing whatever changed (default fails fast on drift).",
+    ),
 ) -> None:
     """Prepare a synthetic query generation run."""
-    result = querygen.gen_queries(
-        domains=parse_cli_value(domains),
-        roles=parse_cli_value(roles),
-        languages=parse_cli_value(languages),
-        topics=parse_cli_value(topics),
-        intents=parse_cli_value(intents),
-        tasks=parse_cli_value(tasks),
-        disallowed_topics=parse_cli_value(disallowed_topics),
-        difficulty=parse_cli_value(difficulty),
-        formats=parse_cli_value(formats),
-        base_dir=UNSET if base_dir is None else base_dir,
-        config_path=UNSET if config_path is None else config_path,
-        n_queries=UNSET if n_queries is None else n_queries,
-        run_id=UNSET if run_id is None else run_id,
-        model_provider=UNSET if model_provider is None else model_provider,
-        planning_model=UNSET if planning_model is None else planning_model,
-        realization_model=UNSET if realization_model is None else realization_model,
-        base_url=UNSET if base_url is None else base_url,
-        planning_model_kwargs=parse_cli_value(planning_model_kwargs),
-        realization_model_kwargs=parse_cli_value(realization_model_kwargs),
-    )
+    try:
+        result = querygen.gen_queries(
+            domains=parse_cli_value(domains),
+            roles=parse_cli_value(roles),
+            languages=parse_cli_value(languages),
+            topics=parse_cli_value(topics),
+            intents=parse_cli_value(intents),
+            tasks=parse_cli_value(tasks),
+            disallowed_topics=parse_cli_value(disallowed_topics),
+            difficulty=parse_cli_value(difficulty),
+            formats=parse_cli_value(formats),
+            base_dir=UNSET if base_dir is None else base_dir,
+            config_path=UNSET if config_path is None else config_path,
+            n_queries=UNSET if n_queries is None else n_queries,
+            run_id=UNSET if run_id is None else run_id,
+            model_provider=UNSET if model_provider is None else model_provider,
+            planning_model=UNSET if planning_model is None else planning_model,
+            realization_model=UNSET if realization_model is None else realization_model,
+            base_url=UNSET if base_url is None else base_url,
+            planning_model_kwargs=parse_cli_value(planning_model_kwargs),
+            realization_model_kwargs=parse_cli_value(realization_model_kwargs),
+            force=force,
+        )
+    except querygen.QueryGenDriftError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
 
     typer.echo("Synthetic query generation run prepared.")
     typer.echo(f"run_id: {result.settings.run_id}")
