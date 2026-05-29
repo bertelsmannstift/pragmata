@@ -3,8 +3,24 @@
 import json
 from pathlib import Path
 
+from pragmata.core.atomic_io import atomic_write_text
 from pragmata.core.csv_io import write_csv
-from pragmata.core.schemas.querygen_output import PlanningSummaryArtifact, SyntheticQueriesMeta, SyntheticQueryRow
+from pragmata.core.schemas.querygen_output import (
+    PlanningSummaryArtifact,
+    SyntheticQueriesMeta,
+    SyntheticQueryRow,
+)
+
+
+def _atomic_write_json(*, data: dict, path: Path) -> None:
+    """Atomically write ``data`` as indented JSON to ``path`` via :func:`atomic_write_text`.
+
+    Indented (``indent=2``) so the persisted checkpoint/summary artifacts are
+    human-scannable when inspected; round-trip reads validate semantically, so
+    the formatting carries no functional meaning.
+    """
+    with atomic_write_text(path) as handle:
+        handle.write(json.dumps(data, indent=2) + "\n")
 
 
 def export_queries(
@@ -38,7 +54,4 @@ def export_planning_summary(
         artifact: Validated planning-summary artifact to persist.
         artifact_path: Destination path for the JSON artifact.
     """
-    artifact_path.write_text(
-        json.dumps(artifact.model_dump(mode="json")),
-        encoding="utf-8",
-    )
+    _atomic_write_json(data=artifact.model_dump(mode="json"), path=artifact_path)
