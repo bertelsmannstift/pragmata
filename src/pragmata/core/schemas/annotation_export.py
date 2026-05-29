@@ -56,6 +56,7 @@ class RetrievalAnnotation(AnnotationBase):
     chunk_id: NonEmptyStr  # IAA pivots retrieval rows by (record_uuid, chunk_id); empty would silently collapse chunks
     doc_id: str
     chunk_rank: int
+    n_retrieved_chunks: int
     topically_relevant: bool | None = None
     evidence_sufficient: bool | None = None
     misleading: bool | None = None

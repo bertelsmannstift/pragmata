@@ -44,6 +44,7 @@ def valid_retrieval(base_fields):
         "chunk_id": "c1",
         "doc_id": "d1",
         "chunk_rank": 1,
+        "n_retrieved_chunks": 5,
         "topically_relevant": True,
         "evidence_sufficient": False,
         "misleading": False,
