@@ -8,6 +8,7 @@ from pragmata.core.schemas.querygen_input import QueryGenSpec
 from pragmata.core.schemas.querygen_output import (
     PlanningBatchArtifact,
     PlanningSummaryArtifact,
+    RealizationBatchArtifact,
     SelectedBlueprintsArtifact,
     SyntheticQueriesMeta,
     SyntheticQueryRow,
@@ -193,6 +194,48 @@ def assemble_selected_blueprints_artifact(
         enable_planning_memory=enable_planning_memory,
         embedding_model=embedding_model,
         blueprints=blueprints,
+        created_at=datetime.now(UTC),
+    )
+
+
+def assemble_realization_batch_artifact(
+    *,
+    spec_fingerprint: str,
+    llm_fingerprint: str,
+    source_run_id: str,
+    n_queries: int,
+    batch_size: int,
+    batch_idx: int,
+    candidate_ids: list[str],
+    queries: list[RealizedQuery],
+) -> RealizationBatchArtifact:
+    """Assemble a Stage 2 realization-batch artifact, stamping version + time.
+
+    Args:
+        spec_fingerprint: Fingerprint of the resolved querygen spec.
+        llm_fingerprint: Fingerprint of the output-shaping LLM settings; a
+            change invalidates the checkpoint.
+        source_run_id: Run identifier that produced this batch.
+        n_queries: Total queries requested for the run.
+        batch_size: Configured batch size for the run.
+        batch_idx: Zero-based index of this realization batch.
+        candidate_ids: Candidate IDs of the blueprints realized in this batch.
+        queries: Realized queries produced for this batch.
+
+    Returns:
+        A validated ``RealizationBatchArtifact`` with internally stamped
+        ``pragmata_version`` and ``created_at``.
+    """
+    return RealizationBatchArtifact(
+        spec_fingerprint=spec_fingerprint,
+        pragmata_version=importlib.metadata.version("pragmata"),
+        llm_fingerprint=llm_fingerprint,
+        source_run_id=source_run_id,
+        n_queries=n_queries,
+        batch_size=batch_size,
+        batch_idx=batch_idx,
+        candidate_ids=candidate_ids,
+        queries=queries,
         created_at=datetime.now(UTC),
     )
 
