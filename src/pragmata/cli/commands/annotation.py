@@ -227,6 +227,51 @@ def export_command(
         typer.echo(f"  {path}")
 
 
+@annotation_app.command("status")
+def status_command(
+    api_url: str | None = _api_url_opt,
+    api_key: str | None = _api_key_opt,
+    dataset_id: str | None = _dataset_id_opt,
+    base_dir: str | None = _base_dir_opt,
+    config: str | None = _config_opt,
+    tag_incomplete: bool = typer.Option(
+        False,
+        "--tag-incomplete",
+        help=(
+            "Stamp a 'needs_completion' metadata tag on incomplete unresolved retrieval chunks (and "
+            "idempotently clear stale tags). The tag is visible to annotators in the Argilla UI for filtering."
+        ),
+    ),
+) -> None:
+    """Report live retrieval panel-completeness across prod + cal datasets."""
+    from pragmata import annotation
+
+    report, tag_result = annotation.report_status(
+        api_url=UNSET if api_url is None else api_url,
+        api_key=UNSET if api_key is None else api_key,
+        base_dir=UNSET if base_dir is None else base_dir,
+        dataset_id=UNSET if dataset_id is None else dataset_id,
+        config_path=UNSET if config is None else config,
+        tag_incomplete=tag_incomplete,
+    )
+    h = report.headline
+    typer.echo(f"records: total={h.total} completed={h.completed} pending={h.pending}")
+    pct = (100.0 * report.n_complete / report.n_panels) if report.n_panels else 0.0
+    typer.echo(
+        f"panels: {report.n_panels} ({report.n_complete} complete = {pct:.1f}%, "
+        f"{report.n_distribution_satisfied} distribution-satisfied)"
+    )
+    if report.n_integrity_warnings:
+        typer.echo(f"integrity warnings: {report.n_integrity_warnings} panel(s) (records != n_retrieved_chunks)")
+    if report.n_orphans_skipped:
+        typer.echo(f"orphans skipped: {report.n_orphans_skipped} record(s) with empty record_uuid")
+    if tag_result is not None:
+        typer.echo(
+            f"tag-incomplete: tagged={tag_result.n_tagged} cleared={tag_result.n_cleared} "
+            f"already_tagged={tag_result.n_already_tagged}"
+        )
+
+
 @annotation_app.command("iaa")
 def iaa_command(
     export_id: str = typer.Argument(..., help="Export run identifier whose CSVs to analyse."),
