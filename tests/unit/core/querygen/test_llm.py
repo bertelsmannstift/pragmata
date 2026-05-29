@@ -151,6 +151,72 @@ def test_build_llm_runnable_inserts_optional_init_kwargs_conditionally(
     assert expected_absent.isdisjoint(init_kwargs.keys())
 
 
+def test_build_llm_runnable_applies_default_timeout(
+    mock_llm_setup: dict[str, Any],
+) -> None:
+    """A default request timeout is forwarded when the caller supplies none."""
+    build_llm_runnable(
+        system_text="s",
+        user_text="u",
+        model_provider="azure_openai",
+        model="gpt-5.4",
+        api_key="k",
+        output_schema=_DummyOutputSchema,
+        requests_per_second=1.0,
+        check_every_n_seconds=1.0,
+        max_bucket_size=1,
+        base_url=None,
+        model_kwargs={},
+    )
+
+    init_kwargs = mock_llm_setup["init"].call_args.kwargs
+    assert init_kwargs["timeout"] == 600
+
+
+def test_build_llm_runnable_default_timeout_is_int(
+    mock_llm_setup: dict[str, Any],
+) -> None:
+    """The default timeout is an int (ChatMistralAI rejects float timeouts)."""
+    build_llm_runnable(
+        system_text="s",
+        user_text="u",
+        model_provider="mistralai",
+        model="magistral-medium-latest",
+        api_key="k",
+        output_schema=_DummyOutputSchema,
+        requests_per_second=1.0,
+        check_every_n_seconds=1.0,
+        max_bucket_size=1,
+        base_url=None,
+        model_kwargs={},
+    )
+
+    init_kwargs = mock_llm_setup["init"].call_args.kwargs
+    assert isinstance(init_kwargs["timeout"], int)
+
+
+def test_build_llm_runnable_caller_timeout_overrides_default(
+    mock_llm_setup: dict[str, Any],
+) -> None:
+    """A caller-supplied model_kwargs['timeout'] overrides the default."""
+    build_llm_runnable(
+        system_text="s",
+        user_text="u",
+        model_provider="azure_openai",
+        model="gpt-5.4",
+        api_key="k",
+        output_schema=_DummyOutputSchema,
+        requests_per_second=1.0,
+        check_every_n_seconds=1.0,
+        max_bucket_size=1,
+        base_url=None,
+        model_kwargs={"timeout": 120},
+    )
+
+    init_kwargs = mock_llm_setup["init"].call_args.kwargs
+    assert init_kwargs["timeout"] == 120
+
+
 def test_build_llm_runnable_wraps_init_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

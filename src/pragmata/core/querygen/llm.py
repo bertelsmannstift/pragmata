@@ -17,6 +17,12 @@ _RESERVED_MODEL_KWARGS = {
     "rate_limiter",
 }
 
+# Default per-request timeout (seconds) applied to every chat model so a stalled
+# response cannot hang a run indefinitely. Callers override it via
+# model_kwargs["timeout"] (not reserved). int, not float: ChatMistralAI declares
+# ``timeout: int`` and rejects floats; OpenAI/Azure accept both.
+_DEFAULT_REQUEST_TIMEOUT_SECONDS = 600
+
 
 class LlmInitializationError(RuntimeError):
     """Raised when the configured chat model cannot be initialized."""
@@ -72,6 +78,8 @@ def build_llm_runnable(
         max_bucket_size: Rate limiter burst size.
         base_url: Optional provider base URL.
         model_kwargs: Optional extra keyword arguments forwarded to model init.
+            A default request ``timeout`` of ``_DEFAULT_REQUEST_TIMEOUT_SECONDS``
+            is applied unless ``model_kwargs`` supplies its own ``timeout``.
 
     Returns:
         A composed LangChain runnable that accepts prompt variables and returns
@@ -89,6 +97,7 @@ def build_llm_runnable(
         "model": model,
         "model_provider": model_provider,
         "api_key": api_key,
+        "timeout": _DEFAULT_REQUEST_TIMEOUT_SECONDS,
         "rate_limiter": InMemoryRateLimiter(
             requests_per_second=requests_per_second,
             check_every_n_seconds=check_every_n_seconds,
@@ -99,6 +108,8 @@ def build_llm_runnable(
     if base_url is not None:
         init_kwargs["base_url"] = base_url
 
+    # Applied after the defaults so a caller-supplied model_kwargs["timeout"]
+    # overrides _DEFAULT_REQUEST_TIMEOUT_SECONDS.
     if model_kwargs:
         init_kwargs.update(model_kwargs)
 
