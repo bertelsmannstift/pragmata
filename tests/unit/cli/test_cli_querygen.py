@@ -7,6 +7,7 @@ from typer.testing import CliRunner
 
 from pragmata.api import UNSET
 from pragmata.cli.app import app
+from pragmata.querygen import QueryGenDriftError
 
 runner = CliRunner()
 
@@ -38,7 +39,7 @@ def test_querygen_command_registered() -> None:
 
 
 def test_querygen_gen_queries_help_available() -> None:
-    result = runner.invoke(app, ["querygen", "gen-queries", "--help"], color=False)
+    result = runner.invoke(app, ["querygen", "gen-queries", "--help"], color=False, env={"COLUMNS": "200"})
     output = strip_ansi(result.output)
 
     assert result.exit_code == 0
@@ -118,7 +119,9 @@ def test_querygen_cli_maps_omitted_options_to_unset(monkeypatch) -> None:
     }
 
     assert result.exit_code == 0
-    assert set(captured) == expected_keys
+    # ``force`` is a direct bool control flag (default False), not a settings-resolved UNSET option.
+    assert set(captured) == expected_keys | {"force"}
+    assert captured["force"] is False
 
     for key in expected_keys:
         assert captured[key] is UNSET
@@ -138,3 +141,18 @@ def test_querygen_cli_prints_prepared_run_summary(monkeypatch) -> None:
     assert "run_directory:" in result.output
     assert "synthetic_queries.csv" in result.output
     assert "synthetic_queries.meta.json" in result.output
+
+
+def test_querygen_cli_translates_drift_error_to_clean_exit(monkeypatch) -> None:
+    """A QueryGenDriftError surfaces as a clean exit code + message, not a traceback."""
+
+    def fake_gen_queries(**kwargs):
+        raise QueryGenDriftError("Run r cannot resume: checkpoint drifted. Re-run with --force.")
+
+    monkeypatch.setattr("pragmata.querygen.gen_queries", fake_gen_queries)
+
+    result = runner.invoke(app, ["querygen", "gen-queries"])
+
+    assert result.exit_code == 1
+    assert "cannot resume" in result.output
+    assert result.exception is None or isinstance(result.exception, SystemExit)
