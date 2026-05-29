@@ -8,6 +8,7 @@ from pragmata.core.csv_io import write_csv
 from pragmata.core.schemas.querygen_output import (
     PlanningBatchArtifact,
     PlanningSummaryArtifact,
+    SelectedBlueprintsArtifact,
     SyntheticQueriesMeta,
     SyntheticQueryRow,
 )
@@ -68,5 +69,19 @@ def export_planning_batch_artifact(
     Args:
         artifact: Validated planning-batch artifact to persist.
         path: Destination path (``planning_batches/batch_NNNN.json``).
+    """
+    _atomic_write_json(data=artifact.model_dump(mode="json"), path=path)
+
+
+def export_selected_blueprints(
+    *,
+    artifact: SelectedBlueprintsArtifact,
+    path: Path,
+) -> None:
+    """Atomically persist the frozen Stage 1 result artifact as JSON.
+
+    Args:
+        artifact: Validated selected-blueprints artifact to persist.
+        path: Destination path (``selected_blueprints.json``).
     """
     _atomic_write_json(data=artifact.model_dump(mode="json"), path=path)
