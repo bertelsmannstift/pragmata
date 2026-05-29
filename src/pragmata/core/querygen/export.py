@@ -16,9 +16,14 @@ from pragmata.core.schemas.querygen_output import (
 
 
 def _atomic_write_json(*, data: dict, path: Path) -> None:
-    """Atomically write ``data`` as JSON to ``path`` via :func:`atomic_write_text`."""
+    """Atomically write ``data`` as indented JSON to ``path`` via :func:`atomic_write_text`.
+
+    Indented (``indent=2``) so the persisted checkpoint/summary artifacts are
+    human-scannable when inspected; round-trip reads validate semantically, so
+    the formatting carries no functional meaning.
+    """
     with atomic_write_text(path) as handle:
-        handle.write(json.dumps(data))
+        handle.write(json.dumps(data, indent=2) + "\n")
 
 
 def export_queries(
