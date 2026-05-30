@@ -63,10 +63,10 @@ class TestReportStatus:
     def test_empty_dataset_reports_zero(self, tmp_path: Path, mock_client: MagicMock) -> None:
         from pragmata.api.annotation_status import report_status
 
-        report, tag_result = report_status(base_dir=tmp_path)
+        report = report_status(base_dir=tmp_path)
         assert report.n_panels == 0
         assert report.n_complete == 0
-        assert tag_result is None
+        assert report.tag_result is None
 
     def test_panel_facts_returned(self, tmp_path: Path, mock_client: MagicMock) -> None:
         from pragmata.api.annotation_status import report_status
@@ -78,7 +78,7 @@ class TestReportStatus:
         dataset.settings.metadata.__getitem__ = MagicMock(return_value=None)
         _set_production_dataset(mock_client, dataset)
 
-        report, _ = report_status(base_dir=tmp_path)
+        report = report_status(base_dir=tmp_path)
         assert report.n_panels == 1
         assert report.n_complete == 1
         assert report.panels["u1"].panel_complete is True
@@ -99,13 +99,13 @@ class TestReportStatus:
         dataset.settings.metadata.__getitem__ = MagicMock(return_value=None)
         _set_production_dataset(mock_client, dataset)
 
-        report, tag_result = report_status(base_dir=tmp_path, tag_incomplete=True)
+        report = report_status(base_dir=tmp_path, tag_incomplete=True)
         assert report.panels["u1"].panel_complete is False
-        assert tag_result is not None
-        assert tag_result.n_tagged == 1  # only r2 (unresolved)
+        assert report.tag_result is not None
+        assert report.tag_result.n_tagged == 1  # only r2 (unresolved)
 
     def test_tag_incomplete_omitted_by_default(self, tmp_path: Path, mock_client: MagicMock) -> None:
         from pragmata.api.annotation_status import report_status
 
-        _, tag_result = report_status(base_dir=tmp_path)
-        assert tag_result is None
+        report = report_status(base_dir=tmp_path)
+        assert report.tag_result is None

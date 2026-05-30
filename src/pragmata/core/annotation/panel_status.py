@@ -82,8 +82,20 @@ class HeadlineTotals:
 
 
 @dataclass(frozen=True)
+class TagResult:
+    """Counts from one ``--tag-incomplete`` pass."""
+
+    n_tagged: int  # chunks newly stamped with needs_completion
+    n_cleared: int  # chunks where the stale tag was removed
+    n_already_tagged: int  # already had the tag and still need it (no-op)
+
+
+@dataclass(frozen=True)
 class StatusReport:
-    """Live per-panel status + headline aggregates."""
+    """Live per-panel status + headline aggregates.
+
+    ``tag_result`` is None unless ``--tag-incomplete`` ran in the same pass.
+    """
 
     panels: dict[str, PanelStatus]
     headline: HeadlineTotals
@@ -92,6 +104,20 @@ class StatusReport:
     n_distribution_satisfied: int
     n_integrity_warnings: int
     n_orphans_skipped: int
+    tag_result: TagResult | None = None
+
+    def with_tag_result(self, tag_result: TagResult) -> "StatusReport":
+        """Return a copy with ``tag_result`` set (the dataclass is frozen)."""
+        return StatusReport(
+            panels=self.panels,
+            headline=self.headline,
+            n_panels=self.n_panels,
+            n_complete=self.n_complete,
+            n_distribution_satisfied=self.n_distribution_satisfied,
+            n_integrity_warnings=self.n_integrity_warnings,
+            n_orphans_skipped=self.n_orphans_skipped,
+            tag_result=tag_result,
+        )
 
 
 @dataclass
@@ -313,15 +339,6 @@ def compute_panel_status(client: rg.Argilla, settings: AnnotationSettings) -> St
     Pure read; safe to invoke against live datasets without side effects.
     """
     return _build_report(_collect_records(client, settings), settings)
-
-
-@dataclass(frozen=True)
-class TagResult:
-    """Counts from one ``tag_incomplete_chunks`` pass."""
-
-    n_tagged: int  # chunks newly stamped with needs_completion
-    n_cleared: int  # chunks where the stale tag was removed
-    n_already_tagged: int  # already had the tag and still need it (no-op)
 
 
 def _apply_tags(collected: _CollectedRecords) -> TagResult:

@@ -16,7 +16,7 @@ import pytest
 from pragmata.core.annotation.record_builder import derive_record_uuid
 from pragmata.core.schemas.annotation_import import QueryResponsePair
 
-_SCRIPTS_DIR = Path(__file__).parents[3] / "scripts"
+_SCRIPTS_DIR = Path(__file__).parents[4] / "scripts"
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 backfill = importlib.import_module("backfill_n_retrieved_chunks")

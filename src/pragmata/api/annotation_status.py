@@ -14,7 +14,6 @@ from pragmata.api._error_log import error_log
 from pragmata.core.annotation.client import resolve_argilla_client
 from pragmata.core.annotation.panel_status import (
     StatusReport,
-    TagResult,
     _apply_tags,
     _build_report,
     _collect_records,
@@ -34,7 +33,7 @@ def report_status(
     dataset_id: str | Unset = UNSET,
     config_path: str | Path | Unset = UNSET,
     tag_incomplete: bool = False,
-) -> tuple[StatusReport, TagResult | None]:
+) -> StatusReport:
     """Fetch live retrieval panel status from Argilla.
 
     Credential resolution mirrors ``export_annotations``:
@@ -52,8 +51,8 @@ def report_status(
             tags). Opt-in live write.
 
     Returns:
-        ``(StatusReport, TagResult | None)``. The TagResult is None when
-        ``tag_incomplete`` is False.
+        ``StatusReport`` with per-panel facts, headline totals, and the
+        optional ``tag_result`` populated when ``tag_incomplete=True``.
     """
     settings = AnnotationSettings.resolve(
         config=load_config_file(config_path) if isinstance(config_path, (str, Path)) else None,
@@ -67,14 +66,19 @@ def report_status(
     api_key = api_key if isinstance(api_key, str) else resolve_api_key("argilla")
     client = resolve_argilla_client(settings.argilla.api_url, api_key)
     workspace = WorkspacePaths.from_base_dir(settings.base_dir)
+    # error_log appends to a file under tool_root; ensure the dir exists so
+    # the FileHandler doesn't itself crash on first error-write.
+    tool_root = workspace.tool_root("annotation")
+    tool_root.mkdir(parents=True, exist_ok=True)
 
-    with error_log(workspace.tool_root("annotation")):
+    with error_log(tool_root):
         # Single walk of prod + cal retrieval shared between the read pass
         # (report) and the optional write pass (tag), so --tag-incomplete
         # adds no extra dataset scrolls.
         collected = _collect_records(client, settings)
         report = _build_report(collected, settings)
-        tag_result = _apply_tags(collected) if tag_incomplete else None
+        if tag_incomplete:
+            report = report.with_tag_result(_apply_tags(collected))
 
     logger.info(
         "Status: %d panels, %d complete (%.0f%%), %d distribution-satisfied, %d integrity warnings",
@@ -84,4 +88,4 @@ def report_status(
         report.n_distribution_satisfied,
         report.n_integrity_warnings,
     )
-    return report, tag_result
+    return report

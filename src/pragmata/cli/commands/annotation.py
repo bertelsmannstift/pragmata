@@ -246,7 +246,7 @@ def status_command(
     """Report live retrieval panel-completeness across prod + cal datasets."""
     from pragmata import annotation
 
-    report, tag_result = annotation.report_status(
+    report = annotation.report_status(
         api_url=UNSET if api_url is None else api_url,
         api_key=UNSET if api_key is None else api_key,
         base_dir=UNSET if base_dir is None else base_dir,
@@ -265,11 +265,9 @@ def status_command(
         typer.echo(f"integrity warnings: {report.n_integrity_warnings} panel(s) (records != n_retrieved_chunks)")
     if report.n_orphans_skipped:
         typer.echo(f"orphans skipped: {report.n_orphans_skipped} record(s) with empty record_uuid")
-    if tag_result is not None:
-        typer.echo(
-            f"tag-incomplete: tagged={tag_result.n_tagged} cleared={tag_result.n_cleared} "
-            f"already_tagged={tag_result.n_already_tagged}"
-        )
+    if report.tag_result is not None:
+        tr = report.tag_result
+        typer.echo(f"tag-incomplete: tagged={tr.n_tagged} cleared={tr.n_cleared} already_tagged={tr.n_already_tagged}")
 
 
 @annotation_app.command("iaa")

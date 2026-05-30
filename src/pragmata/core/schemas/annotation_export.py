@@ -102,6 +102,11 @@ class RetrievalExportRow(RetrievalAnnotation):
     constraint_details: str = ""
     panel_complete: bool = False
     n_annotated_chunks: int = 0
+    # n_annotated_chunks = n_submitted + n_discarded (terminal-response count).
+    # Surfaced separately so downstream consumers can distinguish "missing CSV
+    # row = discarded (judged unanswerable)" from "missing CSV row = never
+    # judged" when the export is run with include_discarded=False.
+    n_discarded_chunks: int = 0
 
 
 class GroundingExportRow(GroundingAnnotation):
@@ -137,7 +142,8 @@ class CompletenessSummary(BaseModel):
     ``n_panels`` counts distinct non-orphan ``record_uuid``s; ``n_complete``
     counts those whose all K chunks have a terminal (submitted-or-discarded)
     response. ``by_k_bucket`` cross-tabs the same counts by K bucket
-    (``k_lt_5`` / ``k_eq_5`` / ``k_gt_5``).
+    (``k_lt_5`` / ``k_eq_5`` / ``k_gt_5``) for at-a-glance reporting;
+    ``by_k`` is the full per-K histogram for MNAR / per-K marginal analysis.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -146,6 +152,7 @@ class CompletenessSummary(BaseModel):
     n_complete: NonNegativeInt
     fraction_complete: float = Field(ge=0.0, le=1.0)
     by_k_bucket: dict[str, KBucketStat]
+    by_k: dict[int, KBucketStat]
     n_integrity_warnings: NonNegativeInt
     n_orphans_skipped: NonNegativeInt
 

@@ -242,7 +242,13 @@ def test_export_row_requires_constraint_violated(valid_retrieval):
         (
             RetrievalExportRow,
             RetrievalAnnotation,
-            ["constraint_violated", "constraint_details", "panel_complete", "n_annotated_chunks"],
+            [
+                "constraint_violated",
+                "constraint_details",
+                "panel_complete",
+                "n_annotated_chunks",
+                "n_discarded_chunks",
+            ],
         ),
         (GroundingExportRow, GroundingAnnotation, ["constraint_violated", "constraint_details"]),
         (GenerationExportRow, GenerationAnnotation, ["constraint_violated", "constraint_details"]),

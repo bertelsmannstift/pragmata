@@ -62,7 +62,7 @@ from pragmata.core.schemas.annotation_task import Task
 from pragmata.core.settings.annotation_settings import AnnotationSettings
 from pragmata.core.settings.settings_base import UNSET, load_config_file, resolve_api_key
 
-logger = logging.getLogger("backfill_n_retrieved_chunks")
+logger = logging.getLogger(__name__)
 
 # Fields the import path uses to build a QueryResponsePair. Other top-level
 # keys in the source jsonl (query_id, domain, topic, etc.) are dropped here
@@ -244,6 +244,15 @@ def main(argv: list[str] | None = None) -> int:
         totals.n_skipped_no_join,
         totals.n_skipped_orphan,
     )
+    if totals.n_skipped_no_join:
+        logger.warning(
+            "%d record(s) had no source line in the supplied jsonl(s) and were SKIPPED. "
+            "If this is unexpected, the source jsonl may have been edited after import "
+            "(derive_record_uuid hashes query+answer+context_set+sorted_chunk_ids, so any "
+            "edit to those fields breaks the join). Re-run with the original import jsonl(s) "
+            "or accept the gap.",
+            totals.n_skipped_no_join,
+        )
     return 0
 
 

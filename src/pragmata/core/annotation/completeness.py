@@ -32,7 +32,8 @@ class PanelCompleteness:
 
     record_uuid: str
     k: int
-    n_annotated_chunks: int
+    n_annotated_chunks: int  # distinct chunk_ids with >=1 terminal response (submitted OR discarded)
+    n_discarded_chunks: int  # distinct chunk_ids with >=1 discarded response (subset of n_annotated_chunks)
     panel_complete: bool
     n_records_seen: int
 
@@ -85,6 +86,7 @@ def compute_completeness(client: rg.Argilla, settings: AnnotationSettings) -> Co
                 record_uuid,
                 {
                     "chunk_ids_terminal": set(),
+                    "chunk_ids_discarded": set(),
                     "chunk_ids_seen": set(),
                     "k_max": 0,
                     "k_min": 0,
@@ -94,14 +96,25 @@ def compute_completeness(client: rg.Argilla, settings: AnnotationSettings) -> Co
             if k_meta > 0:
                 group["k_max"] = max(group["k_max"], k_meta)
                 group["k_min"] = k_meta if group["k_min"] == 0 else min(group["k_min"], k_meta)
-            if any(r.status in TERMINAL_STATUSES for r in (record.responses or [])):
+            responses = record.responses or []
+            has_terminal = False
+            has_discarded = False
+            for r in responses:
+                if r.status in TERMINAL_STATUSES:
+                    has_terminal = True
+                if r.status == "discarded":
+                    has_discarded = True
+            if has_terminal:
                 group["chunk_ids_terminal"].add(chunk_id)
+            if has_discarded:
+                group["chunk_ids_discarded"].add(chunk_id)
 
     by_uuid: dict[str, PanelCompleteness] = {}
     n_integrity_warnings = 0
-    # Fuse the per-uuid aggregation and the bucket cross-tab into one pass
-    # so we don't walk by_uuid twice.
+    # Fuse the per-uuid aggregation with both the bucket cross-tab AND the
+    # per-K histogram in one pass.
     buckets: dict[str, dict[str, int]] = {key: {"n_panels": 0, "n_complete": 0} for key in _BUCKET_KEYS}
+    by_k: dict[int, dict[str, int]] = {}
     n_complete = 0
     for uuid, group in groups.items():
         k_max = group["k_max"]
@@ -115,6 +128,7 @@ def compute_completeness(client: rg.Argilla, settings: AnnotationSettings) -> Co
             )
         k = k_max
         n_annotated = len(group["chunk_ids_terminal"])
+        n_discarded = len(group["chunk_ids_discarded"])
         n_seen = len(group["chunk_ids_seen"])
         panel_complete = k > 0 and n_annotated == k
         if k > 0 and n_seen != k:
@@ -129,13 +143,17 @@ def compute_completeness(client: rg.Argilla, settings: AnnotationSettings) -> Co
             record_uuid=uuid,
             k=k,
             n_annotated_chunks=n_annotated,
+            n_discarded_chunks=n_discarded,
             panel_complete=panel_complete,
             n_records_seen=n_seen,
         )
         bucket = buckets[k_bucket(k)]
         bucket["n_panels"] += 1
+        k_stat = by_k.setdefault(k, {"n_panels": 0, "n_complete": 0})
+        k_stat["n_panels"] += 1
         if panel_complete:
             bucket["n_complete"] += 1
+            k_stat["n_complete"] += 1
             n_complete += 1
 
     if n_orphans_skipped:
@@ -151,6 +169,7 @@ def compute_completeness(client: rg.Argilla, settings: AnnotationSettings) -> Co
         n_complete=n_complete,
         fraction_complete=fraction,
         by_k_bucket={key: KBucketStat(**value) for key, value in buckets.items()},
+        by_k={k: KBucketStat(**value) for k, value in sorted(by_k.items())},
         n_integrity_warnings=n_integrity_warnings,
         n_orphans_skipped=n_orphans_skipped,
     )

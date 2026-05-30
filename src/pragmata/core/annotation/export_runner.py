@@ -117,6 +117,7 @@ def write_export_csv(
                     if pc is not None:
                         extras["panel_complete"] = pc.panel_complete
                         extras["n_annotated_chunks"] = pc.n_annotated_chunks
+                        extras["n_discarded_chunks"] = pc.n_discarded_chunks
                 export_row = row_cls(
                     **annotation.model_dump(),
                     constraint_violated=bool(violations),

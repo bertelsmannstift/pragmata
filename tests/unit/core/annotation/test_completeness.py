@@ -91,7 +91,12 @@ class TestComputeCompleteness:
         report = compute_completeness(_client({"retrieval_production": records}), _settings())
         panel = report.by_uuid["uuid-a"]
         assert panel == PanelCompleteness(
-            record_uuid="uuid-a", k=5, n_annotated_chunks=5, panel_complete=True, n_records_seen=5
+            record_uuid="uuid-a",
+            k=5,
+            n_annotated_chunks=5,
+            n_discarded_chunks=0,
+            panel_complete=True,
+            n_records_seen=5,
         )
         assert report.summary.n_panels == 1
         assert report.summary.n_complete == 1

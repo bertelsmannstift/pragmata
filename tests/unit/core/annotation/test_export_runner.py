@@ -251,6 +251,7 @@ class TestWriteExportCsv:
                 record_uuid=row.record_uuid,
                 k=5,
                 n_annotated_chunks=3,
+                n_discarded_chunks=1,
                 panel_complete=False,
                 n_records_seen=5,
             )
@@ -268,7 +269,7 @@ class TestWriteExportCsv:
 
         row = _grounding()
         completeness = {
-            row.record_uuid: PanelCompleteness(row.record_uuid, 5, 5, True, 5),
+            row.record_uuid: PanelCompleteness(row.record_uuid, 5, 5, 0, True, 5),
         }
         out = tmp_path / "out.csv"
         # Should not raise even though grounding has no panel_complete column.
