@@ -18,17 +18,12 @@ from dataclasses import dataclass
 import argilla as rg
 
 from pragmata.core.annotation.argilla_task_definitions import dataset_name
-from pragmata.core.annotation.export_fetcher import resolve_task_purposes
+from pragmata.core.annotation.export_fetcher import TERMINAL_STATUSES, resolve_task_purposes
 from pragmata.core.schemas.annotation_export import CompletenessSummary, KBucketStat
 from pragmata.core.schemas.annotation_task import Task
 from pragmata.core.settings.annotation_settings import AnnotationSettings
 
 logger = logging.getLogger(__name__)
-
-# A chunk-record's annotation is "terminal" (no longer pending) when at least
-# one of its responses has one of these statuses. Discarded counts as covered
-# for metrics purposes - it's an explicit decision, not a hole.
-_TERMINAL_STATUSES = frozenset({"submitted", "discarded"})
 
 
 @dataclass(frozen=True)
@@ -97,7 +92,7 @@ def compute_completeness(client: rg.Argilla, settings: AnnotationSettings) -> Co
             group["chunk_ids_seen"].add(chunk_id)
             if k_meta > 0:
                 group["k_values"].add(k_meta)
-            if any(r.status in _TERMINAL_STATUSES for r in (record.responses or [])):
+            if any(r.status in TERMINAL_STATUSES for r in (record.responses or [])):
                 group["chunk_ids_terminal"].add(chunk_id)
 
     by_uuid: dict[str, PanelCompleteness] = {}

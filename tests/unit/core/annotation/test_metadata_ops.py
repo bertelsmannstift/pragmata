@@ -52,6 +52,51 @@ class TestEnsureMetadataProperty:
         dataset.settings.update.assert_not_called()
 
 
+def _logged_record(dataset: MagicMock) -> "object":
+    """Pull the (single) record out of dataset.records.log([rg.Record])."""
+    dataset.records.log.assert_called_once()
+    payload = dataset.records.log.call_args[0][0]
+    assert len(payload) == 1
+    return payload[0]
+
+
+class TestBuildMetadataUpsert:
+    def test_returns_record_with_full_merged_metadata(self) -> None:
+        from pragmata.core.annotation.metadata_ops import build_metadata_upsert
+
+        record = _mock_record(
+            {"record_uuid": "u1", "chunk_id": "c1", "chunk_rank": 3, "doc_id": "d1"},
+            record_id="rec-1",
+        )
+
+        upsert = build_metadata_upsert(record, {"n_retrieved_chunks": 5})
+
+        assert upsert is not None
+        assert upsert.id == "rec-1"
+        assert dict(upsert.metadata) == {
+            "record_uuid": "u1",
+            "chunk_id": "c1",
+            "chunk_rank": 3,
+            "doc_id": "d1",
+            "n_retrieved_chunks": 5,
+        }
+
+    def test_returns_none_when_unchanged(self) -> None:
+        from pragmata.core.annotation.metadata_ops import build_metadata_upsert
+
+        record = _mock_record({"chunk_id": "c1", "flag": "yes"})
+        assert build_metadata_upsert(record, {"flag": "yes"}) is None
+
+    def test_remove_keys_drops_existing(self) -> None:
+        from pragmata.core.annotation.metadata_ops import build_metadata_upsert
+
+        record = _mock_record({"chunk_id": "c1", "needs_completion": "true"})
+        upsert = build_metadata_upsert(record, {}, remove_keys=["needs_completion"])
+        assert upsert is not None
+        assert "needs_completion" not in dict(upsert.metadata)
+        assert dict(upsert.metadata)["chunk_id"] == "c1"
+
+
 class TestUpsertRecordMetadata:
     def test_full_dict_merge_preserves_existing_keys(self) -> None:
         """Argilla metadata is REPLACE-not-merge; helper must send the FULL merged dict."""
@@ -63,20 +108,20 @@ class TestUpsertRecordMetadata:
 
         upsert_record_metadata(dataset, record, {"n_retrieved_chunks": 5})
 
-        dataset.records.log.assert_called_once()
-        payload = dataset.records.log.call_args[0][0]
-        assert payload == [
-            {
-                "id": "rec-1",
-                "metadata": {
-                    "record_uuid": "u1",
-                    "chunk_id": "c1",
-                    "chunk_rank": 3,
-                    "doc_id": "d1",
-                    "n_retrieved_chunks": 5,
-                },
-            }
-        ]
+        logged = _logged_record(dataset)
+        # Must be an rg.Record, not a dict - dict payloads get their non-flat
+        # keys silently dropped by Argilla's IngestedRecordMapper, wiping metadata.
+        import argilla as rg
+
+        assert isinstance(logged, rg.Record)
+        assert logged.id == "rec-1"
+        assert dict(logged.metadata) == {
+            "record_uuid": "u1",
+            "chunk_id": "c1",
+            "chunk_rank": 3,
+            "doc_id": "d1",
+            "n_retrieved_chunks": 5,
+        }
 
     def test_update_overrides_existing_key(self) -> None:
         dataset = _mock_dataset()
@@ -84,9 +129,9 @@ class TestUpsertRecordMetadata:
 
         upsert_record_metadata(dataset, record, {"flag": "new"})
 
-        payload = dataset.records.log.call_args[0][0]
-        assert payload[0]["metadata"]["flag"] == "new"
-        assert payload[0]["metadata"]["other"] == 1
+        logged = _logged_record(dataset)
+        assert dict(logged.metadata)["flag"] == "new"
+        assert dict(logged.metadata)["other"] == 1
 
     def test_remove_keys_clears_existing_tag(self) -> None:
         dataset = _mock_dataset()
@@ -94,9 +139,9 @@ class TestUpsertRecordMetadata:
 
         upsert_record_metadata(dataset, record, {}, remove_keys=["needs_completion"])
 
-        payload = dataset.records.log.call_args[0][0]
-        assert "needs_completion" not in payload[0]["metadata"]
-        assert payload[0]["metadata"]["chunk_id"] == "c1"
+        logged = _logged_record(dataset)
+        assert "needs_completion" not in dict(logged.metadata)
+        assert dict(logged.metadata)["chunk_id"] == "c1"
 
     def test_noop_when_metadata_unchanged(self) -> None:
         """No write when updates leave metadata identical (idempotent)."""

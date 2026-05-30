@@ -23,6 +23,13 @@ from pragmata.core.settings.annotation_settings import AnnotationSettings
 
 logger = logging.getLogger(__name__)
 
+# A chunk-record's annotation is "terminal" (no longer pending) when at least
+# one of its responses has one of these statuses. Discarded counts as covered
+# for metrics purposes — it's an explicit decision, not a hole. Shared by
+# fetch_task's status-filter callers, completeness, and panel_status so the
+# three never drift on the metric definition.
+TERMINAL_STATUSES = frozenset({"submitted", "discarded"})
+
 AnnotationModel = RetrievalAnnotation | GroundingAnnotation | GenerationAnnotation
 
 

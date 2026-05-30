@@ -171,12 +171,16 @@ class TestBackfillDataset:
         # Property declared once.
         dataset.settings.add.assert_called_once()
         dataset.settings.update.assert_called_once()
-        # Record upserted with full metadata.
+        # Record upserted with full metadata (as an rg.Record, not a dict — dicts
+        # get their non-flat keys silently dropped by IngestedRecordMapper).
         dataset.records.log.assert_called_once()
-        payload = dataset.records.log.call_args[0][0][0]
-        assert payload["id"] == "r1"
-        assert payload["metadata"]["n_retrieved_chunks"] == 5
-        assert payload["metadata"]["record_uuid"] == "u1"
+        logged = dataset.records.log.call_args[0][0][0]
+        import argilla as rg
+
+        assert isinstance(logged, rg.Record)
+        assert logged.id == "r1"
+        assert dict(logged.metadata)["n_retrieved_chunks"] == 5
+        assert dict(logged.metadata)["record_uuid"] == "u1"
 
     def test_already_correct_skipped(self) -> None:
         records = [self._record(record_id="r1", record_uuid="u1", n_retrieved_chunks=5)]

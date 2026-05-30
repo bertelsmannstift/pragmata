@@ -240,3 +240,55 @@ class TestTagIncompleteChunks:
         assert result.n_already_tagged == 1
         # r2: needs tagging.
         assert result.n_tagged == 1
+
+    def test_idempotent_against_list_shaped_tag_value(self) -> None:
+        """Argilla may round-trip TermsMetadataProperty as ['true'] (list shape).
+
+        The defensive equality treats list-shaped values as already-tagged so
+        we don't re-write the same tag every run.
+        """
+        rec = MagicMock()
+        rec.id = "r1"
+        rec.metadata = {
+            "record_uuid": "u1",
+            "chunk_id": "c1",
+            "needs_completion": ["true"],
+        }
+        r1 = MagicMock()
+        r1.status = "submitted"
+        rec.responses = []  # unresolved, so the tag should still be wanted
+        client = _client({"retrieval_production": [rec, _record(record_id="r2", chunk_id="c2", response_statuses=[])]})
+
+        result = tag_incomplete_chunks(client, _settings())
+
+        assert result.n_already_tagged == 1  # rec was tagged (list-shape), still needs it
+        assert result.n_tagged == 1  # r2 needs the tag
+
+    def test_distribution_aggregates_submissions_across_duplicate_chunk_records(self) -> None:
+        """If a single chunk_id has two records (rare anomaly), submissions sum across them.
+
+        Without this, two records-for-one-chunk would each get checked
+        independently against min_submitted, producing a spurious False.
+        """
+        # Two records under the same panel uuid AND same chunk_id, each with
+        # 2 submitted responses. Cal threshold is 3. Total submissions on
+        # chunk c1 = 4 >= 3, so distribution must be satisfied.
+        rec_a = _record(record_uuid="u-cal", chunk_id="c1", response_statuses=["submitted", "submitted"])
+        rec_b = _record(record_uuid="u-cal", chunk_id="c1", response_statuses=["submitted", "submitted"])
+        report = compute_panel_status(
+            _client({"retrieval_production": [], "retrieval_calibration": [rec_a, rec_b]}),
+            _settings(with_calibration=True, calibration_min_submitted=3),
+        )
+        panel = report.panels["u-cal"]
+        assert panel.distribution_satisfied is True
+
+    def test_warns_when_all_panels_have_unknown_k(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Pre-backfill: all records missing n_retrieved_chunks → distinct warning,
+        so operators don't read 0% complete as 'annotators haven't started'."""
+        records = [
+            _record(record_uuid="u1", chunk_id="c1", n_retrieved_chunks=None, response_statuses=["submitted"]),
+            _record(record_uuid="u2", chunk_id="c1", n_retrieved_chunks=None, response_statuses=["submitted"]),
+        ]
+        with caplog.at_level(logging.WARNING, logger="pragmata.core.annotation.panel_status"):
+            compute_panel_status(_client({"retrieval_production": records}), _settings())
+        assert any("unknown K" in r.message for r in caplog.records)

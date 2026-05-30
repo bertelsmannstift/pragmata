@@ -236,7 +236,14 @@ def run_export(
 
     completeness_report: CompletenessReport | None = None
     if Task.RETRIEVAL in tasks:
-        completeness_report = compute_completeness(client, settings)
+        try:
+            completeness_report = compute_completeness(client, settings)
+        except Exception:
+            # Completeness is derived (a sidecar summary + extra CSV columns);
+            # a transient error in the second retrieval walk must not lose an
+            # already-fetched export. Continue with completeness=None, the
+            # same shape the "retrieval not requested" code path produces.
+            logger.exception("compute_completeness failed; continuing without panel-completeness sidecar")
 
     task_paths = {task: getattr(paths, TASK_CSV_ATTR[task]) for task in tasks}
 

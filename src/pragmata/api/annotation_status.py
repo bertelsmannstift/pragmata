@@ -15,8 +15,9 @@ from pragmata.core.annotation.client import resolve_argilla_client
 from pragmata.core.annotation.panel_status import (
     StatusReport,
     TagResult,
-    compute_panel_status,
-    tag_incomplete_chunks,
+    _apply_tags,
+    _build_report,
+    _collect_records,
 )
 from pragmata.core.paths.paths import WorkspacePaths
 from pragmata.core.settings.annotation_settings import AnnotationSettings
@@ -68,8 +69,12 @@ def report_status(
     workspace = WorkspacePaths.from_base_dir(settings.base_dir)
 
     with error_log(workspace.tool_root("annotation")):
-        report = compute_panel_status(client, settings)
-        tag_result = tag_incomplete_chunks(client, settings) if tag_incomplete else None
+        # Single walk of prod + cal retrieval shared between the read pass
+        # (report) and the optional write pass (tag), so --tag-incomplete
+        # adds no extra dataset scrolls.
+        collected = _collect_records(client, settings)
+        report = _build_report(collected, settings)
+        tag_result = _apply_tags(collected) if tag_incomplete else None
 
     logger.info(
         "Status: %d panels, %d complete (%.0f%%), %d distribution-satisfied, %d integrity warnings",
