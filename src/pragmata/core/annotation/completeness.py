@@ -86,26 +86,34 @@ def compute_completeness(client: rg.Argilla, settings: AnnotationSettings) -> Co
                 {
                     "chunk_ids_terminal": set(),
                     "chunk_ids_seen": set(),
-                    "k_values": set(),
+                    "k_max": 0,
+                    "k_min": 0,
                 },
             )
             group["chunk_ids_seen"].add(chunk_id)
             if k_meta > 0:
-                group["k_values"].add(k_meta)
+                group["k_max"] = max(group["k_max"], k_meta)
+                group["k_min"] = k_meta if group["k_min"] == 0 else min(group["k_min"], k_meta)
             if any(r.status in TERMINAL_STATUSES for r in (record.responses or [])):
                 group["chunk_ids_terminal"].add(chunk_id)
 
     by_uuid: dict[str, PanelCompleteness] = {}
     n_integrity_warnings = 0
+    # Fuse the per-uuid aggregation and the bucket cross-tab into one pass
+    # so we don't walk by_uuid twice.
+    buckets: dict[str, dict[str, int]] = {key: {"n_panels": 0, "n_complete": 0} for key in _BUCKET_KEYS}
+    n_complete = 0
     for uuid, group in groups.items():
-        k_values = group["k_values"]
-        if len(k_values) > 1:
+        k_max = group["k_max"]
+        k_min = group["k_min"]
+        if k_min and k_max != k_min:
             logger.warning(
-                "record_uuid=%s: inconsistent n_retrieved_chunks across records: %s - using max",
+                "record_uuid=%s: inconsistent n_retrieved_chunks across records (min=%d max=%d) - using max",
                 uuid,
-                sorted(k_values),
+                k_min,
+                k_max,
             )
-        k = max(k_values, default=0)
+        k = k_max
         n_annotated = len(group["chunk_ids_terminal"])
         n_seen = len(group["chunk_ids_seen"])
         panel_complete = k > 0 and n_annotated == k
@@ -124,6 +132,11 @@ def compute_completeness(client: rg.Argilla, settings: AnnotationSettings) -> Co
             panel_complete=panel_complete,
             n_records_seen=n_seen,
         )
+        bucket = buckets[k_bucket(k)]
+        bucket["n_panels"] += 1
+        if panel_complete:
+            bucket["n_complete"] += 1
+            n_complete += 1
 
     if n_orphans_skipped:
         logger.warning(
@@ -131,15 +144,7 @@ def compute_completeness(client: rg.Argilla, settings: AnnotationSettings) -> Co
             n_orphans_skipped,
         )
 
-    buckets: dict[str, dict[str, int]] = {key: {"n_panels": 0, "n_complete": 0} for key in _BUCKET_KEYS}
     n_panels = len(by_uuid)
-    n_complete = 0
-    for pc in by_uuid.values():
-        bucket = buckets[k_bucket(pc.k)]
-        bucket["n_panels"] += 1
-        if pc.panel_complete:
-            bucket["n_complete"] += 1
-            n_complete += 1
     fraction = (n_complete / n_panels) if n_panels else 0.0
     summary = CompletenessSummary(
         n_panels=n_panels,

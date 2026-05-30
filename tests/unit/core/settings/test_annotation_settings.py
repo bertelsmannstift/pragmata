@@ -535,9 +535,7 @@ class TestConstraintSeverityDefaults:
         assert s.constraint_severity["fabricated_requires_cited"] == "block"
 
     def test_unknown_constraint_id_rejected(self):
-        with pytest.raises(
-            ValidationError, match=r"deployment constraint_severity references unknown constraint_id"
-        ):
+        with pytest.raises(ValidationError, match=r"deployment constraint_severity references unknown constraint_id"):
             AnnotationSettings(constraint_severity={"nonexistent_constraint": "warn"})
 
     def test_yaml_subset_override(self):

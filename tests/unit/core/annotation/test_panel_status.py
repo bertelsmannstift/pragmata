@@ -283,8 +283,11 @@ class TestTagIncompleteChunks:
         assert panel.distribution_satisfied is True
 
     def test_warns_when_all_panels_have_unknown_k(self, caplog: pytest.LogCaptureFixture) -> None:
-        """Pre-backfill: all records missing n_retrieved_chunks → distinct warning,
-        so operators don't read 0% complete as 'annotators haven't started'."""
+        """Pre-backfill: all records missing n_retrieved_chunks → distinct warning.
+
+        Operators must not read 0% complete as "annotators haven't started"
+        when the real cause is that the backfill hasn't run yet.
+        """
         records = [
             _record(record_uuid="u1", chunk_id="c1", n_retrieved_chunks=None, response_statuses=["submitted"]),
             _record(record_uuid="u2", chunk_id="c1", n_retrieved_chunks=None, response_statuses=["submitted"]),

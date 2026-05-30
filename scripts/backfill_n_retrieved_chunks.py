@@ -55,7 +55,7 @@ import argilla as rg
 from pragmata.core.annotation.argilla_task_definitions import dataset_name
 from pragmata.core.annotation.client import resolve_argilla_client
 from pragmata.core.annotation.export_fetcher import resolve_task_purposes
-from pragmata.core.annotation.metadata_ops import ensure_metadata_property, upsert_record_metadata
+from pragmata.core.annotation.metadata_ops import build_metadata_upsert, ensure_metadata_property
 from pragmata.core.annotation.record_builder import derive_record_uuid
 from pragmata.core.schemas.annotation_import import QueryResponsePair
 from pragmata.core.schemas.annotation_task import Task
@@ -134,6 +134,9 @@ def backfill_dataset(
     n_already_correct = 0
     n_skipped_no_join = 0
     n_skipped_orphan = 0
+    # Accumulate upsert payloads and send in one dataset.records.log call to
+    # amortise the round-trip - the in-flight batches are hundreds of records.
+    pending_upserts: list[rg.Record] = []
     for record in dataset.records(with_responses=False):
         record_uuid = record.metadata.get("record_uuid", "")
         if not record_uuid:
@@ -147,11 +150,14 @@ def backfill_dataset(
         if current == k:
             n_already_correct += 1
             continue
-        if dry_run:
-            n_updated += 1
-            continue
-        upsert_record_metadata(dataset, record, {"n_retrieved_chunks": k})
         n_updated += 1
+        if dry_run:
+            continue
+        upsert = build_metadata_upsert(record, {"n_retrieved_chunks": k})
+        if upsert is not None:
+            pending_upserts.append(upsert)
+    if pending_upserts:
+        dataset.records.log(pending_upserts)
     return BackfillStats(
         n_updated=n_updated,
         n_already_correct=n_already_correct,

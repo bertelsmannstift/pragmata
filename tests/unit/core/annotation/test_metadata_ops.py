@@ -4,10 +4,7 @@ from unittest.mock import MagicMock
 
 import argilla as rg
 
-from pragmata.core.annotation.metadata_ops import (
-    ensure_metadata_property,
-    upsert_record_metadata,
-)
+from pragmata.core.annotation.metadata_ops import ensure_metadata_property
 
 
 def _mock_dataset(*, existing_metadata_props: list[str] | None = None) -> MagicMock:
@@ -52,14 +49,6 @@ class TestEnsureMetadataProperty:
         dataset.settings.update.assert_not_called()
 
 
-def _logged_record(dataset: MagicMock) -> "object":
-    """Pull the (single) record out of dataset.records.log([rg.Record])."""
-    dataset.records.log.assert_called_once()
-    payload = dataset.records.log.call_args[0][0]
-    assert len(payload) == 1
-    return payload[0]
-
-
 class TestBuildMetadataUpsert:
     def test_returns_record_with_full_merged_metadata(self) -> None:
         from pragmata.core.annotation.metadata_ops import build_metadata_upsert
@@ -96,66 +85,18 @@ class TestBuildMetadataUpsert:
         assert "needs_completion" not in dict(upsert.metadata)
         assert dict(upsert.metadata)["chunk_id"] == "c1"
 
+    def test_returns_record_as_rg_Record_not_dict(self) -> None:
+        """The upsert MUST be an rg.Record, not a dict.
 
-class TestUpsertRecordMetadata:
-    def test_full_dict_merge_preserves_existing_keys(self) -> None:
-        """Argilla metadata is REPLACE-not-merge; helper must send the FULL merged dict."""
-        dataset = _mock_dataset()
-        record = _mock_record(
-            {"record_uuid": "u1", "chunk_id": "c1", "chunk_rank": 3, "doc_id": "d1"},
-            record_id="rec-1",
-        )
+        Sending a dict to dataset.records.log runs through Argilla's
+        IngestedRecordMapper, which flattens against the dataset schema and
+        silently strips the 'metadata' key (wiping the record).
+        """
+        from pragmata.core.annotation.metadata_ops import build_metadata_upsert
 
-        upsert_record_metadata(dataset, record, {"n_retrieved_chunks": 5})
+        record = _mock_record({"chunk_id": "c1"})
+        upsert = build_metadata_upsert(record, {"flag": "yes"})
 
-        logged = _logged_record(dataset)
-        # Must be an rg.Record, not a dict - dict payloads get their non-flat
-        # keys silently dropped by Argilla's IngestedRecordMapper, wiping metadata.
         import argilla as rg
 
-        assert isinstance(logged, rg.Record)
-        assert logged.id == "rec-1"
-        assert dict(logged.metadata) == {
-            "record_uuid": "u1",
-            "chunk_id": "c1",
-            "chunk_rank": 3,
-            "doc_id": "d1",
-            "n_retrieved_chunks": 5,
-        }
-
-    def test_update_overrides_existing_key(self) -> None:
-        dataset = _mock_dataset()
-        record = _mock_record({"flag": "old", "other": 1})
-
-        upsert_record_metadata(dataset, record, {"flag": "new"})
-
-        logged = _logged_record(dataset)
-        assert dict(logged.metadata)["flag"] == "new"
-        assert dict(logged.metadata)["other"] == 1
-
-    def test_remove_keys_clears_existing_tag(self) -> None:
-        dataset = _mock_dataset()
-        record = _mock_record({"chunk_id": "c1", "needs_completion": "true"})
-
-        upsert_record_metadata(dataset, record, {}, remove_keys=["needs_completion"])
-
-        logged = _logged_record(dataset)
-        assert "needs_completion" not in dict(logged.metadata)
-        assert dict(logged.metadata)["chunk_id"] == "c1"
-
-    def test_noop_when_metadata_unchanged(self) -> None:
-        """No write when updates leave metadata identical (idempotent)."""
-        dataset = _mock_dataset()
-        record = _mock_record({"chunk_id": "c1", "flag": "yes"})
-
-        upsert_record_metadata(dataset, record, {"flag": "yes"})
-
-        dataset.records.log.assert_not_called()
-
-    def test_noop_when_remove_key_absent(self) -> None:
-        dataset = _mock_dataset()
-        record = _mock_record({"chunk_id": "c1"})
-
-        upsert_record_metadata(dataset, record, {}, remove_keys=["needs_completion"])
-
-        dataset.records.log.assert_not_called()
+        assert isinstance(upsert, rg.Record)

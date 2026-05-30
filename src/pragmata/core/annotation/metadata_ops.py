@@ -56,6 +56,9 @@ def build_metadata_upsert(
     The returned Record carries only ``id`` + the full merged metadata, so
     server-side responses/fields/suggestions are preserved (Argilla v2.8.0
     preserves attributes absent from the upsert payload).
+
+    Callers batch the returned Records into a single ``dataset.records.log``
+    call per dataset to amortise the round-trip.
     """
     current = dict(record.metadata)
     merged = dict(current)
@@ -65,22 +68,3 @@ def build_metadata_upsert(
     if merged == current:
         return None
     return rg.Record(id=record.id, metadata=merged)
-
-
-def upsert_record_metadata(
-    dataset: rg.Dataset,
-    record: rg.Record,
-    updates: Mapping[str, object],
-    *,
-    remove_keys: Iterable[str] = (),
-) -> None:
-    """Upsert one record's metadata via the shared safe-merge helper.
-
-    Convenience wrapper for single-record callers; for batches prefer
-    ``build_metadata_upsert`` per-record and a single ``dataset.records.log``
-    call to amortise the round-trip.
-    """
-    upsert = build_metadata_upsert(record, updates, remove_keys=remove_keys)
-    if upsert is None:
-        return
-    dataset.records.log([upsert])

@@ -168,14 +168,16 @@ def _collect_records(client: rg.Argilla, settings: AnnotationSettings) -> _Colle
     )
 
 
-def _min_submitted(settings: AnnotationSettings, workspace_name: str | None, calibration: bool) -> int:
-    """Per-purpose min_submitted threshold for retrieval. Defaults conservatively to 1 if unresolved."""
-    if workspace_name is None:
-        return 1
+def _resolve_min_submitted(settings: AnnotationSettings, workspace_name: str) -> dict[bool, int]:
+    """Per-purpose min_submitted thresholds for retrieval, computed once per report.
+
+    Returns ``{False: prod_min, True: cal_min}``. Cal defaults to prod when
+    the topology declares no calibration min (the workspace just doesn't run
+    calibration for retrieval).
+    """
     resolved = settings.resolved_task(workspace_name, Task.RETRIEVAL)
-    if calibration:
-        return resolved.calibration_min_submitted or 1
-    return resolved.production_min_submitted
+    prod = resolved.production_min_submitted
+    return {False: prod, True: resolved.calibration_min_submitted or prod}
 
 
 @dataclass(frozen=True)
@@ -233,23 +235,26 @@ def _build_report(collected: _CollectedRecords, settings: AnnotationSettings) ->
     n_distribution_satisfied = 0
     n_integrity_warnings = 0
     n_panels_unknown_k = 0
+    # Hoisted: settings.resolved_task() returns the same dict for every
+    # record in the report, so look it up once instead of per-record.
+    # workspace_name is None only when no records were collected, in which
+    # case the inner loop never runs - the empty dict is safe.
+    thresholds: dict[bool, int] = (
+        _resolve_min_submitted(settings, collected.workspace_name) if collected.workspace_name else {}
+    )
     for uuid, group in _group_by_uuid(collected.records).items():
         facts = _panel_facts(uuid, group)
         # Distribution: sum submitted responses PER chunk_id (so duplicate
         # chunk-records for one chunk_id don't each get checked separately
-        # against the threshold). Threshold resolves per chunk-record's
-        # purpose - prod-min vs cal-min - so a mixed-purpose panel uses the
-        # appropriate per-chunk threshold.
+        # against the threshold). If a chunk appears in both prod and cal
+        # (rare), require the higher threshold.
         submitted_by_chunk: dict[str, int] = {}
         threshold_by_chunk: dict[str, int] = {}
         for rec in group:
             submitted_by_chunk[rec.chunk_id] = submitted_by_chunk.get(rec.chunk_id, 0) + rec.n_submitted_responses
-            # If a chunk appears in both prod and cal (rare), require the
-            # higher threshold - it's only "distribution-satisfied" once both
-            # purposes' minimums are met.
-            t = _min_submitted(settings, collected.workspace_name, rec.calibration)
+            t = thresholds.get(rec.calibration, 1)
             threshold_by_chunk[rec.chunk_id] = max(threshold_by_chunk.get(rec.chunk_id, 0), t)
-        distribution_satisfied = all(submitted_by_chunk[cid] >= threshold_by_chunk[cid] for cid in facts.chunk_ids_seen)
+        distribution_satisfied = all(n >= threshold_by_chunk[cid] for cid, n in submitted_by_chunk.items())
         integrity_ok = facts.k_metadata == 0 or facts.k_metadata == facts.k_records
         if not integrity_ok:
             logger.warning(

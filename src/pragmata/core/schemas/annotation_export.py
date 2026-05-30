@@ -91,7 +91,12 @@ class GenerationAnnotation(AnnotationBase):
 
 
 class RetrievalExportRow(RetrievalAnnotation):
-    """Full on-disk CSV row for retrieval: annotation + constraint + panel-completeness metadata."""
+    """Full on-disk CSV row for retrieval: annotation + constraint + panel-completeness metadata.
+
+    Column order is **annotation fields → constraint columns → completeness columns**.
+    New derived columns APPEND at the tail (keep header diffs minimal for
+    downstream consumers; never reorder existing columns).
+    """
 
     constraint_violated: bool
     constraint_details: str = ""
