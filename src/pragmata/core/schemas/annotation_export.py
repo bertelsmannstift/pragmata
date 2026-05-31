@@ -101,11 +101,15 @@ class RetrievalExportRow(RetrievalAnnotation):
     constraint_violated: bool
     constraint_details: str = ""
     panel_complete: bool = False
+    # n_annotated_chunks = distinct chunks (by chunk_id) in this panel with >=1
+    # terminal (submitted OR discarded) response.
+    # n_discarded_chunks = distinct chunks with >=1 discarded response - a
+    # SUBSET of n_annotated_chunks, NOT a complement. A chunk with both a
+    # submitted response (annotator A) and a discarded response (annotator B)
+    # is counted in BOTH counters. Surfaced separately so downstream consumers
+    # can distinguish "missing CSV row = discarded (judged unanswerable)" from
+    # "missing CSV row = never judged" when --include-discarded=False.
     n_annotated_chunks: int = 0
-    # n_annotated_chunks = n_submitted + n_discarded (terminal-response count).
-    # Surfaced separately so downstream consumers can distinguish "missing CSV
-    # row = discarded (judged unanswerable)" from "missing CSV row = never
-    # judged" when the export is run with include_discarded=False.
     n_discarded_chunks: int = 0
 
 

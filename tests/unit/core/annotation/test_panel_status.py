@@ -254,8 +254,6 @@ class TestTagIncompleteChunks:
             "chunk_id": "c1",
             "needs_completion": ["true"],
         }
-        r1 = MagicMock()
-        r1.status = "submitted"
         rec.responses = []  # unresolved, so the tag should still be wanted
         client = _client({"retrieval_production": [rec, _record(record_id="r2", chunk_id="c2", response_statuses=[])]})
 

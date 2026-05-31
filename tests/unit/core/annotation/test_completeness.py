@@ -173,6 +173,36 @@ class TestComputeCompleteness:
         assert report.summary.n_integrity_warnings == 1
         assert any("integrity warning" in r.message for r in caplog.records)
 
+    def test_warns_on_mixed_backfill_state_within_panel(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Partial-backfill: some records carry n_retrieved_chunks, others don't.
+
+        records_seen matches k_max coincidentally, so the records-vs-K check
+        doesn't fire; the dedicated partial-backfill check should.
+        """
+        records = [
+            _make_record(chunk_id="c1", n_retrieved_chunks=3, response_statuses=["submitted"]),
+            _make_record(chunk_id="c2", n_retrieved_chunks=None, response_statuses=["submitted"]),
+            _make_record(chunk_id="c3", n_retrieved_chunks=None, response_statuses=["submitted"]),
+        ]
+        with caplog.at_level(logging.WARNING, logger="pragmata.core.annotation.completeness"):
+            report = compute_completeness(_client({"retrieval_production": records}), _settings())
+        assert report.summary.n_integrity_warnings == 1
+        assert any("partially backfilled" in r.message for r in caplog.records)
+
+    def test_warns_when_all_panels_have_unknown_k(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Pre-backfill: every record lacks n_retrieved_chunks.
+
+        Mirrors the panel_status warning; an export against a pre-backfill
+        dataset must not look like '0% complete because nobody annotated'.
+        """
+        records = [
+            _make_record(record_uuid="u1", chunk_id="c1", n_retrieved_chunks=None, response_statuses=["submitted"]),
+            _make_record(record_uuid="u2", chunk_id="c1", n_retrieved_chunks=None, response_statuses=["submitted"]),
+        ]
+        with caplog.at_level(logging.WARNING, logger="pragmata.core.annotation.completeness"):
+            compute_completeness(_client({"retrieval_production": records}), _settings())
+        assert any("ALL" in r.message and "unknown K" in r.message for r in caplog.records)
+
     def test_inconsistent_k_across_records_uses_max_and_warns(self, caplog: pytest.LogCaptureFixture) -> None:
         records = [
             _make_record(chunk_id="c1", n_retrieved_chunks=5, response_statuses=["submitted"]),

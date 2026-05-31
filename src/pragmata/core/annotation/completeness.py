@@ -90,12 +90,14 @@ def compute_completeness(client: rg.Argilla, settings: AnnotationSettings) -> Co
                     "chunk_ids_seen": set(),
                     "k_max": 0,
                     "k_min": 0,
+                    "n_records_with_k": 0,  # tracks mixed-backfill state per panel
                 },
             )
             group["chunk_ids_seen"].add(chunk_id)
             if k_meta > 0:
                 group["k_max"] = max(group["k_max"], k_meta)
                 group["k_min"] = k_meta if group["k_min"] == 0 else min(group["k_min"], k_meta)
+                group["n_records_with_k"] += 1
             responses = record.responses or []
             has_terminal = False
             has_discarded = False
@@ -111,6 +113,7 @@ def compute_completeness(client: rg.Argilla, settings: AnnotationSettings) -> Co
 
     by_uuid: dict[str, PanelCompleteness] = {}
     n_integrity_warnings = 0
+    n_panels_unknown_k = 0
     # Fuse the per-uuid aggregation with both the bucket cross-tab AND the
     # per-K histogram in one pass.
     buckets: dict[str, dict[str, int]] = {key: {"n_panels": 0, "n_complete": 0} for key in _BUCKET_KEYS}
@@ -130,6 +133,7 @@ def compute_completeness(client: rg.Argilla, settings: AnnotationSettings) -> Co
         n_annotated = len(group["chunk_ids_terminal"])
         n_discarded = len(group["chunk_ids_discarded"])
         n_seen = len(group["chunk_ids_seen"])
+        n_with_k = group["n_records_with_k"]
         panel_complete = k > 0 and n_annotated == k
         if k > 0 and n_seen != k:
             logger.warning(
@@ -139,6 +143,20 @@ def compute_completeness(client: rg.Argilla, settings: AnnotationSettings) -> Co
                 k,
             )
             n_integrity_warnings += 1
+        elif n_with_k and n_with_k < n_seen:
+            # K is sourced from only a subset of the panel's records - the
+            # rest are missing the metadata key (mixed pre/post-backfill).
+            # Surface it so operators don't trust the K reading on this panel.
+            logger.warning(
+                "record_uuid=%s: integrity warning - %d/%d records carry n_retrieved_chunks metadata "
+                "(panel partially backfilled)",
+                uuid,
+                n_with_k,
+                n_seen,
+            )
+            n_integrity_warnings += 1
+        if k == 0:
+            n_panels_unknown_k += 1
         by_uuid[uuid] = PanelCompleteness(
             record_uuid=uuid,
             k=k,
@@ -160,6 +178,17 @@ def compute_completeness(client: rg.Argilla, settings: AnnotationSettings) -> Co
         logger.warning(
             "retrieval completeness: %d record(s) skipped (empty record_uuid metadata)",
             n_orphans_skipped,
+        )
+    if by_uuid and n_panels_unknown_k == len(by_uuid):
+        # Most likely cause: the n_retrieved_chunks backfill has not been run
+        # against this dataset yet, so panel_complete is False across the
+        # board for the WRONG reason. Surface this here too (mirrors the
+        # warning in panel_status._build_report) so an export that goes
+        # through completeness sees the same operator-actionable cue.
+        logger.warning(
+            "retrieval completeness: ALL %d panel(s) have unknown K (n_retrieved_chunks metadata absent) - "
+            "run scripts/backfill_n_retrieved_chunks.py to populate it.",
+            len(by_uuid),
         )
 
     n_panels = len(by_uuid)
