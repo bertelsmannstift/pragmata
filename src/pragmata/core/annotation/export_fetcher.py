@@ -64,6 +64,7 @@ def _build_row(
             chunk_id=metadata.get("chunk_id", ""),
             doc_id=metadata.get("doc_id", ""),
             chunk_rank=metadata.get("chunk_rank", 0),
+            n_retrieved_chunks=metadata.get("n_retrieved_chunks", 0),
             topically_relevant=_to_bool(answers.get("topically_relevant")),
             evidence_sufficient=_to_bool(answers.get("evidence_sufficient")),
             misleading=_to_bool(answers.get("misleading")),
