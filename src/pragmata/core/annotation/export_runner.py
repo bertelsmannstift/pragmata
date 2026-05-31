@@ -10,8 +10,18 @@ from typing import TYPE_CHECKING, Any
 
 import argilla as rg
 
-from pragmata.core.annotation.completeness import CompletenessReport, PanelCompleteness, compute_completeness
-from pragmata.core.annotation.export_fetcher import AnnotationModel, build_user_lookup, fetch_task
+from pragmata.core.annotation.completeness import (
+    CompletenessReport,
+    PanelCompleteness,
+    compute_completeness_from_records,
+)
+from pragmata.core.annotation.export_fetcher import (
+    AnnotationModel,
+    build_user_lookup,
+    fetch_retrieval_from_records,
+    fetch_task,
+    walk_retrieval_records,
+)
 from pragmata.core.annotation.logical_constraints import LogicalConstraint
 from pragmata.core.atomic_io import atomic_write_text
 from pragmata.core.csv_io import _to_csv_value
@@ -117,7 +127,9 @@ def write_export_csv(
                     if pc is not None:
                         extras["panel_complete"] = pc.panel_complete
                         extras["n_annotated_chunks"] = pc.n_annotated_chunks
+                        extras["n_submitted_chunks"] = pc.n_submitted_chunks
                         extras["n_discarded_chunks"] = pc.n_discarded_chunks
+                        extras["n_records_seen"] = pc.n_records_seen
                 export_row = row_cls(
                     **annotation.model_dump(),
                     constraint_violated=bool(violations),
@@ -163,6 +175,7 @@ def assemble_export_meta(
     calibration_enabled: dict[Task, bool],
     constraint_summary: dict[str, int],
     completeness_summary: CompletenessSummary | None = None,
+    completeness_status: str = "not_requested",
 ) -> AnnotationExportMeta:
     """Assemble run-level provenance metadata for an annotation export.
 
@@ -177,7 +190,10 @@ def assemble_export_meta(
             dataset for each task.
         constraint_summary: Violation count keyed by ``constraint_id``.
         completeness_summary: Retrieval panel-completeness aggregates;
-            ``None`` when retrieval was not exported.
+            ``None`` unless retrieval was exported and computed successfully.
+        completeness_status: ``"ok"`` / ``"failed"`` / ``"not_requested"``.
+            Disambiguates ``completeness_summary=None`` between "retrieval
+            not in tasks" and "compute_completeness raised".
 
     Returns:
         Provenance sidecar with an internally stamped creation time.
@@ -193,6 +209,7 @@ def assemble_export_meta(
         calibration_enabled=calibration_enabled,
         constraint_summary=constraint_summary,
         completeness_summary=completeness_summary,
+        completeness_status=completeness_status,  # type: ignore[arg-type]
     )
 
 
@@ -225,26 +242,41 @@ def run_export(
             n_annotators={},
             calibration_enabled={},
             constraint_summary={},
+            completeness_status="not_requested",
         )
         write_export_meta(meta, paths.export_meta_json)
         return ExportResult(paths=paths, files={}, row_counts={}, constraint_summary={}, n_annotators={})
 
     user_lookup = build_user_lookup(client)
 
+    # Single retrieval walk shared between the row-emission fetch and the
+    # completeness aggregator. fetch_task for non-retrieval tasks walks
+    # their own datasets as before; only retrieval was doing two scrolls.
+    retrieval_snapshots = walk_retrieval_records(client, settings) if Task.RETRIEVAL in tasks else None
+
     task_rows: dict[Task, list[tuple[AnnotationModel, list[LogicalConstraint]]]] = {}
     for task in tasks:
-        task_rows[task] = fetch_task(client, settings, task, user_lookup, include_discarded=include_discarded)
+        if task == Task.RETRIEVAL and retrieval_snapshots is not None:
+            task_rows[task] = fetch_retrieval_from_records(
+                retrieval_snapshots, user_lookup, include_discarded=include_discarded
+            )
+        else:
+            task_rows[task] = fetch_task(client, settings, task, user_lookup, include_discarded=include_discarded)
 
     completeness_report: CompletenessReport | None = None
-    if Task.RETRIEVAL in tasks:
+    completeness_status = "not_requested"
+    if retrieval_snapshots is not None:
         try:
-            completeness_report = compute_completeness(client, settings)
+            completeness_report = compute_completeness_from_records(retrieval_snapshots)
+            completeness_status = "ok"
         except Exception:
             # Completeness is derived (a sidecar summary + extra CSV columns);
-            # a transient error in the second retrieval walk must not lose an
-            # already-fetched export. Continue with completeness=None, the
-            # same shape the "retrieval not requested" code path produces.
+            # an aggregation error must not lose an already-fetched export.
+            # ``completeness_status="failed"`` distinguishes this case from
+            # the "retrieval not requested" path so consumers reading the
+            # sidecar can tell them apart.
             logger.exception("compute_completeness failed; continuing without panel-completeness sidecar")
+            completeness_status = "failed"
 
     task_paths = {task: getattr(paths, TASK_CSV_ATTR[task]) for task in tasks}
 
@@ -280,6 +312,7 @@ def run_export(
         calibration_enabled=calibration_enabled,
         constraint_summary=constraint_summary,
         completeness_summary=completeness_report.summary if completeness_report else None,
+        completeness_status=completeness_status,
     )
     write_export_meta(meta, paths.export_meta_json)
 

@@ -3,8 +3,9 @@
 For each ``record_uuid`` (one query, K chunks) reports two distinct notions
 of "complete":
 
-- ``panel_complete`` (metric-facing) = all K chunks have at least one terminal
-  (submitted-or-discarded) response. This is what eval scorers care about.
+- ``panel_complete`` (metric-facing, STRICT) = all K chunks have at least
+  one SUBMITTED response. Discards are abstentions, not judgements, so they
+  don't count toward "ready for eval scoring" - see completeness.py.
 - ``distribution_satisfied`` (operational) = every chunk's submitted-response
   count is >= the per-chunk Argilla ``min_submitted`` threshold (1 for prod,
   3 for cal). A panel can be metric-complete but distribution-unsatisfied,
@@ -66,8 +67,9 @@ class PanelStatus:
     record_uuid: str
     k_records: int  # distinct chunk-records seen (live K)
     k_metadata: int  # n_retrieved_chunks metadata (0 if missing)
-    n_terminal: int  # distinct chunks with >=1 terminal response
-    panel_complete: bool  # k_records > 0 and n_terminal == k_records
+    n_terminal: int  # distinct chunks with >=1 terminal response (submitted OR discarded)
+    n_submitted: int  # distinct chunks with >=1 submitted response (used by panel_complete)
+    panel_complete: bool  # STRICT: k_records > 0 and n_submitted == k_records
     distribution_satisfied: bool  # every chunk meets its per-purpose min_submitted
     integrity_ok: bool  # k_records == k_metadata (when metadata present)
 
@@ -130,7 +132,8 @@ class _ChunkRecord:
     chunk_id: str
     calibration: bool
     n_retrieved_chunks_metadata: int
-    has_terminal: bool
+    has_terminal: bool  # >=1 response in {submitted, discarded}
+    has_submitted: bool  # >=1 response with status == submitted (subset of has_terminal)
     n_submitted_responses: int
 
 
@@ -165,12 +168,14 @@ def _collect_records(client: rg.Argilla, settings: AnnotationSettings) -> _Colle
                 continue
             chunk_id: str = record.metadata.get("chunk_id", "")
             k_meta = int(record.metadata.get("n_retrieved_chunks") or 0)
-            # Single pass over responses: terminal-presence + submitted-count.
+            # Single pass over responses: terminal-presence + submitted-count + has-submitted.
             has_terminal = False
+            has_submitted = False
             n_submitted = 0
             for r in record.responses or []:
                 if r.status == "submitted":
                     n_submitted += 1
+                    has_submitted = True
                     has_terminal = True
                 elif r.status in TERMINAL_STATUSES:
                     has_terminal = True
@@ -183,6 +188,7 @@ def _collect_records(client: rg.Argilla, settings: AnnotationSettings) -> _Colle
                     calibration=calibration,
                     n_retrieved_chunks_metadata=k_meta,
                     has_terminal=has_terminal,
+                    has_submitted=has_submitted,
                     n_submitted_responses=n_submitted,
                 )
             )
@@ -217,10 +223,11 @@ class _PanelFacts:
     record_uuid: str
     group: list[_ChunkRecord]
     chunk_ids_terminal: set[str]
+    chunk_ids_submitted: set[str]
     chunk_ids_seen: set[str]
     k_records: int  # distinct chunk_ids in this panel (live K)
     k_metadata: int  # n_retrieved_chunks metadata (max if records disagree; 0 if absent)
-    panel_complete: bool  # k_records > 0 AND every chunk has a terminal response
+    panel_complete: bool  # STRICT: k_records > 0 AND every chunk has a SUBMITTED response
 
 
 def _group_by_uuid(records: list[_ChunkRecord]) -> dict[str, list[_ChunkRecord]]:
@@ -234,6 +241,7 @@ def _panel_facts(uuid: str, group: list[_ChunkRecord]) -> _PanelFacts:
     """Aggregate one panel's facts. Logs inconsistent-K-across-records as a warning."""
     chunk_ids_seen = {r.chunk_id for r in group}
     chunk_ids_terminal = {r.chunk_id for r in group if r.has_terminal}
+    chunk_ids_submitted = {r.chunk_id for r in group if r.has_submitted}
     k_values = {r.n_retrieved_chunks_metadata for r in group if r.n_retrieved_chunks_metadata > 0}
     if len(k_values) > 1:
         logger.warning(
@@ -247,10 +255,12 @@ def _panel_facts(uuid: str, group: list[_ChunkRecord]) -> _PanelFacts:
         record_uuid=uuid,
         group=group,
         chunk_ids_terminal=chunk_ids_terminal,
+        chunk_ids_submitted=chunk_ids_submitted,
         chunk_ids_seen=chunk_ids_seen,
         k_records=k_records,
         k_metadata=k_metadata,
-        panel_complete=k_records > 0 and len(chunk_ids_terminal) == k_records,
+        # STRICT default - see module docstring.
+        panel_complete=k_records > 0 and len(chunk_ids_submitted) == k_records,
     )
 
 
@@ -301,6 +311,7 @@ def _build_report(collected: _CollectedRecords, settings: AnnotationSettings) ->
             k_records=facts.k_records,
             k_metadata=facts.k_metadata,
             n_terminal=len(facts.chunk_ids_terminal),
+            n_submitted=len(facts.chunk_ids_submitted),
             panel_complete=facts.panel_complete,
             distribution_satisfied=distribution_satisfied,
             integrity_ok=integrity_ok,

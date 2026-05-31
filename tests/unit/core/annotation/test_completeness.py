@@ -94,6 +94,7 @@ class TestComputeCompleteness:
             record_uuid="uuid-a",
             k=5,
             n_annotated_chunks=5,
+            n_submitted_chunks=5,
             n_discarded_chunks=0,
             panel_complete=True,
             n_records_seen=5,
@@ -102,11 +103,12 @@ class TestComputeCompleteness:
         assert report.summary.n_complete == 1
         assert report.summary.fraction_complete == 1.0
 
-    def test_discarded_counts_as_covered(self) -> None:
-        """A chunk with only a discarded response is metric-covered, not a hole.
+    def test_discarded_does_not_count_toward_panel_complete(self) -> None:
+        """STRICT default: a discarded-only chunk is NOT metric-covered.
 
-        Computed independent of include_discarded: the export may omit the
-        discarded row entirely, but the panel is still complete.
+        DiscardReason is refusal-only (INVALID_OR_UNREALISTIC / UNCLEAR /
+        OUTSIDE_REVIEWER_EXPERTISE) — abstentions, not judgements. The
+        permissive view is still recoverable via n_annotated_chunks.
         """
         records = [
             _make_record(chunk_id="c1", response_statuses=["submitted"]),
@@ -116,8 +118,14 @@ class TestComputeCompleteness:
             _make_record(chunk_id="c5", response_statuses=["discarded"]),
         ]
         report = compute_completeness(_client({"retrieval_production": records}), _settings())
-        assert report.by_uuid["uuid-a"].panel_complete is True
-        assert report.by_uuid["uuid-a"].n_annotated_chunks == 5
+        panel = report.by_uuid["uuid-a"]
+        # STRICT: only 3 of 5 chunks are submitted → panel_complete False.
+        assert panel.panel_complete is False
+        assert panel.n_submitted_chunks == 3
+        assert panel.n_discarded_chunks == 2
+        # Permissive view stays recoverable: every chunk has SOME terminal response.
+        assert panel.n_annotated_chunks == 5
+        assert panel.n_annotated_chunks == panel.k  # consumer's permissive predicate
 
     def test_partial_panel_not_complete(self) -> None:
         records = [

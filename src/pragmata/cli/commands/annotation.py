@@ -263,6 +263,10 @@ def status_command(
     )
     if report.n_integrity_warnings:
         typer.echo(f"integrity warnings: {report.n_integrity_warnings} panel(s) (records != n_retrieved_chunks)")
+        typer.echo(
+            "  note: panel_complete here uses live record-count K; the export sidecar uses the metadata K, "
+            "so flagged panels may read panel_complete=False in retrieval.csv even if shown complete above."
+        )
     if report.n_orphans_skipped:
         typer.echo(f"orphans skipped: {report.n_orphans_skipped} record(s) with empty record_uuid")
     if report.tag_result is not None:

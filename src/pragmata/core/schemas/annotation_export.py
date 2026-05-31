@@ -100,17 +100,26 @@ class RetrievalExportRow(RetrievalAnnotation):
 
     constraint_violated: bool
     constraint_details: str = ""
+    # panel_complete is the STRICT default: True iff every K chunk in the
+    # panel has at least one SUBMITTED response. Discarded responses are
+    # abstentions (pragmata's DiscardReason enum is refusal-only), not
+    # judgements, so they don't count toward "ready for metric scoring".
+    # Permissive derivation in 1 line: `n_annotated_chunks == n_retrieved_chunks`.
     panel_complete: bool = False
-    # n_annotated_chunks = distinct chunks (by chunk_id) in this panel with >=1
-    # terminal (submitted OR discarded) response.
-    # n_discarded_chunks = distinct chunks with >=1 discarded response - a
-    # SUBSET of n_annotated_chunks, NOT a complement. A chunk with both a
-    # submitted response (annotator A) and a discarded response (annotator B)
-    # is counted in BOTH counters. Surfaced separately so downstream consumers
-    # can distinguish "missing CSV row = discarded (judged unanswerable)" from
-    # "missing CSV row = never judged" when --include-discarded=False.
-    n_annotated_chunks: int = 0
-    n_discarded_chunks: int = 0
+    # All three counts are DISTINCT chunk_ids in this panel. The sets aren't
+    # disjoint: a chunk with both submitted and discarded responses (from
+    # different annotators) is counted in n_annotated_chunks AND
+    # n_submitted_chunks AND n_discarded_chunks. So
+    # n_submitted + n_discarded >= n_annotated (equality when no mixed chunks).
+    # n_mixed_chunks = n_submitted + n_discarded - n_annotated.
+    n_annotated_chunks: int = 0  # union: chunks with any terminal response
+    n_submitted_chunks: int = 0  # chunks with any submitted response (used by panel_complete)
+    n_discarded_chunks: int = 0  # chunks with any discarded response
+    # n_records_seen = distinct chunk-records observed for this panel. Used
+    # for the integrity check (records_seen != n_retrieved_chunks → records
+    # lost or duplicated upstream). Surfaced per-row so consumers can spot
+    # corrupted panels in dataframe pipelines without re-joining the sidecar.
+    n_records_seen: int = 0
 
 
 class GroundingExportRow(GroundingAnnotation):
@@ -175,7 +184,11 @@ class AnnotationExportMeta(BaseModel):
     n_annotators: dict[Task, NonNegativeInt]
     calibration_enabled: dict[Task, bool] = Field(default_factory=dict)
     constraint_summary: dict[str, NonNegativeInt]
+    # completeness_status disambiguates completeness_summary=None between
+    # "retrieval not in tasks" (not_requested) and "compute_completeness
+    # raised" (failed). When ok, completeness_summary is populated.
     completeness_summary: CompletenessSummary | None = None
+    completeness_status: Literal["ok", "failed", "not_requested"] = "not_requested"
 
     @model_validator(mode="after")
     def validate_keys_match_tasks(self) -> "AnnotationExportMeta":

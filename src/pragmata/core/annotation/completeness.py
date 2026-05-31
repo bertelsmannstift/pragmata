@@ -1,15 +1,35 @@
-"""Per-panel retrieval completeness: how many chunks per query have a terminal response.
+"""Per-panel retrieval completeness: how many chunks per query have a submitted response.
 
 A "panel" is the set of retrieval chunk-records sharing one ``record_uuid``
-(one query). A chunk counts as resolved if it has at least one terminal
-response (submitted OR discarded) - a deliberately-discarded chunk is
-metric-covered, not a hole.
+(one query, K chunks).
+
+The exported ``panel_complete`` flag uses the STRICT (submitted-only)
+definition: a panel is complete iff every one of its K chunks has at least
+one SUBMITTED response. This matches what downstream eval scorers actually
+need: pragmata's ``DiscardReason`` enum is refusal-only
+(``INVALID_OR_UNREALISTIC`` / ``UNCLEAR`` / ``OUTSIDE_REVIEWER_EXPERTISE``),
+so a discarded chunk is an abstention — not a judgement — and treating it
+as covered would feed unjudged chunks into NDCG@K / precision@K denominators
+as if they carried a 0-relevance label.
+
+Three count columns let consumers derive any policy they need:
+
+- ``n_annotated_chunks`` = distinct chunks with >=1 terminal response (submitted OR discarded)
+- ``n_submitted_chunks`` = distinct chunks with >=1 submitted response
+- ``n_discarded_chunks`` = distinct chunks with >=1 discarded response
+
+Sets aren't disjoint — a chunk where annotator A submitted and annotator B
+discarded is in all three. So ``n_submitted + n_discarded >= n_annotated``
+(equality when no mixed chunks). A consumer wanting the PERMISSIVE
+("terminal counts as covered") policy derives it in one line::
+
+    panel_complete_permissive = (n_annotated_chunks == n_retrieved_chunks)
 
 Computation is INDEPENDENT of the export's ``include_discarded`` flag (which
-gates only row emission to the CSV). This module issues its own retrieval
-fetch and always treats both terminal statuses as covered, so the resulting
-``panel_complete`` / ``n_annotated_chunks`` are stable regardless of the
-export caller's discard policy.
+gates only row emission to the CSV). When invoked from ``run_export`` the
+underlying walk is shared with the export's row-emission fetch so we don't
+scroll the retrieval datasets twice; standalone callers use the
+``compute_completeness(client, settings)`` convenience that does its own walk.
 """
 
 import logging
@@ -17,10 +37,8 @@ from dataclasses import dataclass
 
 import argilla as rg
 
-from pragmata.core.annotation.argilla_task_definitions import dataset_name
-from pragmata.core.annotation.export_fetcher import TERMINAL_STATUSES, resolve_task_purposes
+from pragmata.core.annotation.export_fetcher import RetrievalRecordSnapshot, walk_retrieval_records
 from pragmata.core.schemas.annotation_export import CompletenessSummary, KBucketStat
-from pragmata.core.schemas.annotation_task import Task
 from pragmata.core.settings.annotation_settings import AnnotationSettings
 
 logger = logging.getLogger(__name__)
@@ -28,14 +46,20 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class PanelCompleteness:
-    """Completeness facts for one retrieval panel (one ``record_uuid``)."""
+    """Completeness facts for one retrieval panel (one ``record_uuid``).
+
+    ``n_*_chunks`` count DISTINCT chunk_ids. The three sets overlap when a
+    chunk has both submitted and discarded responses from different
+    annotators; see module docstring for the derivation formulas.
+    """
 
     record_uuid: str
-    k: int
-    n_annotated_chunks: int  # distinct chunk_ids with >=1 terminal response (submitted OR discarded)
-    n_discarded_chunks: int  # distinct chunk_ids with >=1 discarded response (subset of n_annotated_chunks)
-    panel_complete: bool
-    n_records_seen: int
+    k: int  # n_retrieved_chunks metadata (max if records disagree; 0 if absent)
+    n_annotated_chunks: int  # chunks with >=1 terminal response (union of submitted + discarded)
+    n_submitted_chunks: int  # chunks with >=1 submitted response (used by panel_complete)
+    n_discarded_chunks: int  # chunks with >=1 discarded response
+    panel_complete: bool  # STRICT: k > 0 and n_submitted_chunks == k
+    n_records_seen: int  # distinct chunk-records seen (for integrity check)
 
 
 @dataclass(frozen=True)
@@ -58,64 +82,48 @@ def k_bucket(k: int) -> str:
 _BUCKET_KEYS = ("k_lt_5", "k_eq_5", "k_gt_5")
 
 
-def compute_completeness(client: rg.Argilla, settings: AnnotationSettings) -> CompletenessReport:
-    """Compute per-record_uuid retrieval panel completeness across prod + cal.
+def compute_completeness_from_records(snapshots: list[RetrievalRecordSnapshot]) -> CompletenessReport:
+    """Pure aggregator over pre-walked retrieval snapshots.
 
-    Iterates retrieval records UNFILTERED (no response.status query filter) so
-    the integrity check sees the full record set, then evaluates each
-    record's terminal status in Python. Discarded responses count as covered.
+    Shared by ``compute_completeness`` (standalone) and ``run_export`` (which
+    walks once and feeds both the row-emission and the completeness passes).
     """
-    workspace_name, purposes = resolve_task_purposes(settings, Task.RETRIEVAL)
-
     groups: dict[str, dict] = {}
     n_orphans_skipped = 0
 
-    for calibration in purposes:
-        ds_name = dataset_name(Task.RETRIEVAL, calibration=calibration, dataset_id=settings.dataset_id)
-        dataset = client.datasets(ds_name, workspace=workspace_name)
-        if dataset is None:
+    for snap in snapshots:
+        record_uuid = snap.record_uuid
+        if not record_uuid:
+            n_orphans_skipped += 1
             continue
-        for record in dataset.records(with_responses=True):
-            record_uuid: str = record.metadata.get("record_uuid", "")
-            if not record_uuid:
-                n_orphans_skipped += 1
-                continue
-            chunk_id: str = record.metadata.get("chunk_id", "")
-            k_meta = int(record.metadata.get("n_retrieved_chunks") or 0)
-            group = groups.setdefault(
-                record_uuid,
-                {
-                    "chunk_ids_terminal": set(),
-                    "chunk_ids_discarded": set(),
-                    "chunk_ids_seen": set(),
-                    "k_max": 0,
-                    "k_min": 0,
-                    "n_records_with_k": 0,  # tracks mixed-backfill state per panel
-                },
-            )
-            group["chunk_ids_seen"].add(chunk_id)
-            if k_meta > 0:
-                group["k_max"] = max(group["k_max"], k_meta)
-                group["k_min"] = k_meta if group["k_min"] == 0 else min(group["k_min"], k_meta)
-                group["n_records_with_k"] += 1
-            responses = record.responses or []
-            has_terminal = False
-            has_discarded = False
-            for r in responses:
-                if r.status in TERMINAL_STATUSES:
-                    has_terminal = True
-                if r.status == "discarded":
-                    has_discarded = True
-            if has_terminal:
-                group["chunk_ids_terminal"].add(chunk_id)
-            if has_discarded:
-                group["chunk_ids_discarded"].add(chunk_id)
+        group = groups.setdefault(
+            record_uuid,
+            {
+                "chunk_ids_seen": set(),
+                "chunk_ids_terminal": set(),
+                "chunk_ids_submitted": set(),
+                "chunk_ids_discarded": set(),
+                "k_max": 0,
+                "k_min": 0,
+                "n_records_with_k": 0,  # mixed-backfill detector
+            },
+        )
+        group["chunk_ids_seen"].add(snap.chunk_id)
+        if snap.n_retrieved_chunks_metadata > 0:
+            k_meta = snap.n_retrieved_chunks_metadata
+            group["k_max"] = max(group["k_max"], k_meta)
+            group["k_min"] = k_meta if group["k_min"] == 0 else min(group["k_min"], k_meta)
+            group["n_records_with_k"] += 1
+        if snap.has_submitted:
+            group["chunk_ids_submitted"].add(snap.chunk_id)
+        if snap.has_discarded:
+            group["chunk_ids_discarded"].add(snap.chunk_id)
+        if snap.has_submitted or snap.has_discarded:
+            group["chunk_ids_terminal"].add(snap.chunk_id)
 
     by_uuid: dict[str, PanelCompleteness] = {}
     n_integrity_warnings = 0
     n_panels_unknown_k = 0
-    # Fuse the per-uuid aggregation with both the bucket cross-tab AND the
-    # per-K histogram in one pass.
     buckets: dict[str, dict[str, int]] = {key: {"n_panels": 0, "n_complete": 0} for key in _BUCKET_KEYS}
     by_k: dict[int, dict[str, int]] = {}
     n_complete = 0
@@ -131,10 +139,13 @@ def compute_completeness(client: rg.Argilla, settings: AnnotationSettings) -> Co
             )
         k = k_max
         n_annotated = len(group["chunk_ids_terminal"])
+        n_submitted = len(group["chunk_ids_submitted"])
         n_discarded = len(group["chunk_ids_discarded"])
         n_seen = len(group["chunk_ids_seen"])
         n_with_k = group["n_records_with_k"]
-        panel_complete = k > 0 and n_annotated == k
+        # STRICT default: every chunk has a submitted response. Discards are
+        # abstentions, not judgements - see module docstring.
+        panel_complete = k > 0 and n_submitted == k
         if k > 0 and n_seen != k:
             logger.warning(
                 "record_uuid=%s: integrity warning - saw %d distinct chunk-records but n_retrieved_chunks=%d",
@@ -144,9 +155,6 @@ def compute_completeness(client: rg.Argilla, settings: AnnotationSettings) -> Co
             )
             n_integrity_warnings += 1
         elif n_with_k and n_with_k < n_seen:
-            # K is sourced from only a subset of the panel's records - the
-            # rest are missing the metadata key (mixed pre/post-backfill).
-            # Surface it so operators don't trust the K reading on this panel.
             logger.warning(
                 "record_uuid=%s: integrity warning - %d/%d records carry n_retrieved_chunks metadata "
                 "(panel partially backfilled)",
@@ -161,6 +169,7 @@ def compute_completeness(client: rg.Argilla, settings: AnnotationSettings) -> Co
             record_uuid=uuid,
             k=k,
             n_annotated_chunks=n_annotated,
+            n_submitted_chunks=n_submitted,
             n_discarded_chunks=n_discarded,
             panel_complete=panel_complete,
             n_records_seen=n_seen,
@@ -180,11 +189,6 @@ def compute_completeness(client: rg.Argilla, settings: AnnotationSettings) -> Co
             n_orphans_skipped,
         )
     if by_uuid and n_panels_unknown_k == len(by_uuid):
-        # Most likely cause: the n_retrieved_chunks backfill has not been run
-        # against this dataset yet, so panel_complete is False across the
-        # board for the WRONG reason. Surface this here too (mirrors the
-        # warning in panel_status._build_report) so an export that goes
-        # through completeness sees the same operator-actionable cue.
         logger.warning(
             "retrieval completeness: ALL %d panel(s) have unknown K (n_retrieved_chunks metadata absent) - "
             "run scripts/backfill_n_retrieved_chunks.py to populate it.",
@@ -203,3 +207,13 @@ def compute_completeness(client: rg.Argilla, settings: AnnotationSettings) -> Co
         n_orphans_skipped=n_orphans_skipped,
     )
     return CompletenessReport(by_uuid=by_uuid, summary=summary)
+
+
+def compute_completeness(client: rg.Argilla, settings: AnnotationSettings) -> CompletenessReport:
+    """Walk retrieval datasets once and compute panel completeness.
+
+    Standalone-caller convenience; ``run_export`` calls ``walk_retrieval_records``
+    once itself and feeds the result to both this aggregator and the export's
+    row builder.
+    """
+    return compute_completeness_from_records(walk_retrieval_records(client, settings))
