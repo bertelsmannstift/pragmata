@@ -250,6 +250,7 @@ def build_task_settings(settings: AnnotationSettings) -> dict[Task, rg.Settings]
                 rg.TermsMetadataProperty("chunk_id", visible_for_annotators=False),
                 rg.TermsMetadataProperty("doc_id", visible_for_annotators=False),
                 rg.IntegerMetadataProperty("chunk_rank", min=1, visible_for_annotators=False),
+                rg.IntegerMetadataProperty("n_retrieved_chunks", min=1, visible_for_annotators=False),
             ],
             guidelines="Retrieval. TODO: Revisit after first annotation iteration.",
         ),

@@ -55,6 +55,7 @@ class RetrievalAnnotation(AnnotationBase):
     chunk_id: str
     doc_id: str
     chunk_rank: int
+    n_retrieved_chunks: int
     topically_relevant: bool | None = None
     evidence_sufficient: bool | None = None
     misleading: bool | None = None
