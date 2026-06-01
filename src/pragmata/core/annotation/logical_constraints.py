@@ -127,6 +127,4 @@ LOGICAL_CONSTRAINTS: dict[Task, list[LogicalConstraint]] = {
 
 # By-id lookup over the flattened catalogue, used by the settings layer to
 # validate that override maps reference known constraint_ids.
-CONSTRAINT_BY_ID: dict[str, LogicalConstraint] = {
-    c.constraint_id: c for cs in LOGICAL_CONSTRAINTS.values() for c in cs
-}
+CONSTRAINT_BY_ID: dict[str, LogicalConstraint] = {c.constraint_id: c for cs in LOGICAL_CONSTRAINTS.values() for c in cs}

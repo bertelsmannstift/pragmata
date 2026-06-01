@@ -653,8 +653,8 @@ class TestExportMetaSidecar:
         Disambiguates the failure case from 'retrieval not requested' so
         downstream consumers reading the sidecar can tell them apart.
         """
-        from pragmata.api.annotation_export import export_annotations
         import pragmata.core.annotation.export_runner as runner_mod
+        from pragmata.api.annotation_export import export_annotations
 
         # Force compute_completeness_from_records to raise; export should still succeed.
         def _boom(_snapshots):

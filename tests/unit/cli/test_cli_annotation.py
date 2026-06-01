@@ -49,6 +49,56 @@ def _make_report(*, alpha: float | None = 0.6, ci_lower: float | None = 0.3, ci_
     )
 
 
+class TestStatusCommand:
+    def _stub_report(
+        self,
+        *,
+        n_panels: int = 2,
+        n_complete: int = 1,
+        n_distribution_satisfied: int = 1,
+        n_integrity_warnings: int = 0,
+        n_orphans_skipped: int = 0,
+    ):
+        from pragmata.core.annotation.panel_status import HeadlineTotals, StatusReport
+
+        return StatusReport(
+            panels={},
+            headline=HeadlineTotals(total=10, completed=5, pending=5),
+            n_panels=n_panels,
+            n_complete=n_complete,
+            n_distribution_satisfied=n_distribution_satisfied,
+            n_integrity_warnings=n_integrity_warnings,
+            n_orphans_skipped=n_orphans_skipped,
+        )
+
+    @patch("pragmata.annotation.report_status")
+    def test_status_displays_headline_and_panels(self, mock_status):
+        mock_status.return_value = self._stub_report()
+        result = runner.invoke(app, ["annotation", "status"])
+        assert result.exit_code == 0
+        assert "total=10" in result.output
+        assert "completed=5" in result.output
+        assert "panels: 2" in result.output
+        assert "1 complete = 50.0%" in result.output
+        assert "1 distribution-satisfied" in result.output
+
+    @patch("pragmata.annotation.report_status")
+    def test_status_reports_integrity_warnings_when_present(self, mock_status):
+        mock_status.return_value = self._stub_report(n_integrity_warnings=3)
+        result = runner.invoke(app, ["annotation", "status"])
+        assert result.exit_code == 0
+        assert "integrity warnings: 3" in result.output
+
+    @patch("pragmata.annotation.report_status")
+    def test_status_threads_unset_for_default_options(self, mock_status):
+        mock_status.return_value = self._stub_report()
+        runner.invoke(app, ["annotation", "status"])
+        kwargs = mock_status.call_args.kwargs
+        assert kwargs["api_url"] is UNSET
+        assert kwargs["dataset_id"] is UNSET
+        assert kwargs["base_dir"] is UNSET
+
+
 class TestIaaCommand:
     @patch("pragmata.annotation.compute_iaa")
     def test_displays_alpha_with_ci(self, mock_iaa):
