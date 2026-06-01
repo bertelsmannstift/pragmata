@@ -199,7 +199,7 @@ class TestDiscardContract:
 class TestMetadataProperties:
     def test_retrieval_metadata(self):
         meta = [m.name for m in _RETRIEVAL.metadata]
-        assert meta == ["record_uuid", "language", "chunk_id", "doc_id", "chunk_rank"]
+        assert meta == ["record_uuid", "language", "chunk_id", "doc_id", "chunk_rank", "n_retrieved_chunks"]
 
     def test_grounding_metadata(self):
         meta = [m.name for m in _GROUNDING.metadata]

@@ -47,6 +47,7 @@ def _retrieval(**kwargs) -> RetrievalAnnotation:
         "chunk_id": "cid",
         "doc_id": "did",
         "chunk_rank": 1,
+        "n_retrieved_chunks": 5,
         "topically_relevant": True,
         "evidence_sufficient": False,
         "misleading": False,
@@ -103,6 +104,7 @@ BASE_METADATA = {
     "chunk_id": "chunk-1",
     "doc_id": "doc-1",
     "chunk_rank": 1,
+    "n_retrieved_chunks": 5,
 }
 
 
@@ -199,6 +201,7 @@ class TestWriteExportCsv:
                 "chunk_id": "cid",
                 "doc_id": "did",
                 "chunk_rank": 1,
+                "n_retrieved_chunks": 5,
                 "topically_relevant": True,
                 "evidence_sufficient": False,
                 "misleading": False,
