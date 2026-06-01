@@ -21,8 +21,11 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
+import argilla as rg
+
+from pragmata.core.annotation.argilla_task_definitions import DATASET_NAMES
+from pragmata.core.annotation.export_fetcher import TERMINAL_STATUSES
 from pragmata.core.annotation.metadata_ops import build_metadata_upsert, ensure_metadata_property
 from pragmata.core.annotation.panel_status import (
     NEEDS_COMPLETION_KEY,
@@ -30,11 +33,7 @@ from pragmata.core.annotation.panel_status import (
     _has_needs_completion_tag,
 )
 
-if TYPE_CHECKING:
-    import argilla as rg
-
-_TERMINAL_STATUSES = frozenset({"submitted", "discarded"})
-_TASK_SUFFIXES = ("retrieval", "grounding", "generation")
+_TASK_SUFFIXES = tuple(DATASET_NAMES.values())
 
 
 def workspace_domain(workspace: str) -> str:
@@ -55,7 +54,6 @@ class IncompleteBundle:
     n_records: int  # records in the bundle (live)
     n_submitted: int  # records with >=1 submitted response
     missing_record_ids: list[str]  # unresolved records that still need annotating
-    missing_chunk_ids: list[str]  # their chunk_id metadata ("" for non-retrieval tasks)
 
 
 @dataclass(frozen=True)
@@ -85,12 +83,12 @@ class IncompleteReport:
         return sorted({b.dataset.split("_", 1)[0] for b in self.bundles})
 
 
-def _n_submitted(record: rg.Record) -> int:
-    return sum(1 for r in (record.responses or []) if r.status == "submitted")
+def _is_started(record: rg.Record) -> bool:
+    return any(r.status == "submitted" for r in (record.responses or []))
 
 
 def _has_terminal(record: rg.Record) -> bool:
-    return any(r.status in _TERMINAL_STATUSES for r in (record.responses or []))
+    return any(r.status in TERMINAL_STATUSES for r in (record.responses or []))
 
 
 def _select_datasets(client: rg.Argilla, workspace: str | None, task: str | None) -> Iterator[rg.Dataset]:
@@ -114,8 +112,6 @@ def find_incomplete(
     ``workspace``/``task`` are exact name filters (``task`` matches the dataset
     name prefix, e.g. ``retrieval``); ``None`` means no filter on that axis.
     """
-    import argilla as rg  # runtime import (module keeps argilla TYPE_CHECKING-only)
-
     bundles: list[IncompleteBundle] = []
     n_tagged = n_cleared = n_already = 0
 
@@ -133,12 +129,12 @@ def find_incomplete(
 
         pending: list[rg.Record] = []
         for uuid, group in groups.items():
-            n_started = sum(1 for rec in group if _n_submitted(rec) >= 1)
+            n_started = sum(1 for rec in group if _is_started(rec))
             # PARTIAL: at least one record annotated but not the whole bundle.
             # Single-record bundles (generation/grounding) can never be partial.
             is_partial = 0 < n_started < len(group)
-            unresolved = [rec for rec in group if not _has_terminal(rec)]
-            if is_partial and unresolved:
+            unresolved = [rec for rec in group if not _has_terminal(rec)] if is_partial else []
+            if unresolved:
                 bundles.append(
                     IncompleteBundle(
                         workspace=ds.workspace.name,
@@ -147,15 +143,15 @@ def find_incomplete(
                         n_records=len(group),
                         n_submitted=n_started,
                         missing_record_ids=[str(rec.id) for rec in unresolved],
-                        missing_chunk_ids=[rec.metadata.get("chunk_id", "") for rec in unresolved],
                     )
                 )
             if not tag:
                 continue
             # Tag the unresolved records of partial bundles; idempotently clear
             # tags that no longer apply (same write path as --tag-incomplete).
+            to_tag = {rec.id for rec in unresolved}
             for rec in group:
-                should_tag = is_partial and (not _has_terminal(rec))
+                should_tag = rec.id in to_tag
                 has_tag = _has_needs_completion_tag(rec)
                 if should_tag and has_tag:
                     n_already += 1
