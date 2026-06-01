@@ -53,9 +53,11 @@ def build_metadata_upsert(
     """Merge ``updates`` into ``record.metadata`` and return an upsert Record.
 
     Returns ``None`` when the merge produces no change (idempotent no-op).
-    The returned Record carries only ``id`` + the full merged metadata, so
-    server-side responses/fields/suggestions are preserved (Argilla v2.8.0
-    preserves attributes absent from the upsert payload).
+    Mutates ``record``'s metadata in place and returns it, so its fields (and
+    suggestions) ride along in the upsert payload: Argilla v2.8.0 rejects a
+    field-less record with 422 "fields cannot be empty" because the required
+    text fields must be present, so ``id`` + metadata alone is not a valid
+    upsert.
 
     Callers batch the returned Records into a single ``dataset.records.log``
     call per dataset to amortise the round-trip.
@@ -67,4 +69,8 @@ def build_metadata_upsert(
         merged.pop(key, None)
     if merged == current:
         return None
-    return rg.Record(id=record.id, metadata=merged)
+    for key, value in updates.items():
+        record.metadata[key] = value
+    for key in remove_keys:
+        record.metadata.pop(key, None)
+    return record
