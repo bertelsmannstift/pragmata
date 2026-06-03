@@ -1,5 +1,6 @@
 """Tests CLI command for synthetic query generation."""
 
+import re
 from pathlib import Path
 
 from typer.testing import CliRunner
@@ -8,6 +9,12 @@ from pragmata.api import UNSET
 from pragmata.cli.app import app
 
 runner = CliRunner()
+
+ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def strip_ansi(text: str) -> str:
+    return ANSI_ESCAPE_RE.sub("", text)
 
 
 class _PreparedResult:
@@ -30,10 +37,24 @@ def test_querygen_command_registered() -> None:
     assert "querygen" in result.output
 
 
-def test_querygen_gen_queries_help_available() -> None:
-    result = runner.invoke(app, ["querygen", "gen-queries", "--help"])
+def test_querygen_gen_queries_help_available(monkeypatch) -> None:
+    monkeypatch.setenv("COLUMNS", "200")
+    result = runner.invoke(app, ["querygen", "gen-queries", "--help"], color=False)
+    output = strip_ansi(result.output)
 
     assert result.exit_code == 0
+    assert "Prepare a synthetic query generation run." in output
+    assert "--domains" in output
+    assert "--run-id" in output
+    assert "--planning-model-kwargs" in output
+    assert "--realization-model-kwargs" in output
+    assert "--requests-per-second" in output
+    assert "--check-every-n-seconds" in output
+    assert "--max-bucket-size" in output
+    assert "--batch-size" in output
+    assert "--near-duplicate-tolerance" in output
+    assert "--enable-planning-memory" in output
+    assert "--no-enable-planning-memory" in output
 
 
 def test_querygen_cli_delegates_to_public_api(monkeypatch) -> None:
