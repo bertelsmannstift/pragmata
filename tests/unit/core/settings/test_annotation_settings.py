@@ -109,6 +109,16 @@ class TestAnnotationSettingsResolve:
             AnnotationSettings(dataset_id=bad)
 
 
+class TestLocaleCatalogDirField:
+    def test_none_is_default(self):
+        assert AnnotationSettings().locale_catalog_dir is None
+
+    def test_path_accepted_without_existence_check(self, tmp_path):
+        # Existence is validated by the consumer (register_catalog_dir), not the field.
+        s = AnnotationSettings(locale_catalog_dir=tmp_path / "does-not-exist")
+        assert s.locale_catalog_dir == tmp_path / "does-not-exist"
+
+
 def _disabled_topology() -> dict[str, WorkspaceSettings]:
     """Workspaces where every task explicitly disables calibration."""
     return {
