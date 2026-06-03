@@ -225,12 +225,13 @@ def iaa_command(
     after: str | None = typer.Option(
         None,
         "--after",
-        help="Keep only annotations submitted on or after this ISO 8601 datetime (e.g. 2026-05-01T00:00:00).",
+        help="Keep only annotations submitted on or after this ISO 8601 date or datetime "
+        "(e.g. 2026-05-01 or 2026-05-01T00:00:00; a date is treated as midnight).",
     ),
     before: str | None = typer.Option(
         None,
         "--before",
-        help="Keep only annotations submitted before this ISO 8601 datetime.",
+        help="Keep only annotations submitted before this ISO 8601 date or datetime.",
     ),
     exclude_annotators: str | None = typer.Option(
         None,
