@@ -37,7 +37,8 @@ def test_querygen_command_registered() -> None:
     assert "querygen" in result.output
 
 
-def test_querygen_gen_queries_help_available() -> None:
+def test_querygen_gen_queries_help_available(monkeypatch) -> None:
+    monkeypatch.setenv("COLUMNS", "200")
     result = runner.invoke(app, ["querygen", "gen-queries", "--help"], color=False)
     output = strip_ansi(result.output)
 
@@ -47,6 +48,13 @@ def test_querygen_gen_queries_help_available() -> None:
     assert "--run-id" in output
     assert "--planning-model-kwargs" in output
     assert "--realization-model-kwargs" in output
+    assert "--requests-per-second" in output
+    assert "--check-every-n-seconds" in output
+    assert "--max-bucket-size" in output
+    assert "--batch-size" in output
+    assert "--near-duplicate-tolerance" in output
+    assert "--enable-planning-memory" in output
+    assert "--no-enable-planning-memory" in output
 
 
 def test_querygen_cli_delegates_to_public_api(monkeypatch) -> None:
@@ -115,6 +123,12 @@ def test_querygen_cli_maps_omitted_options_to_unset(monkeypatch) -> None:
         "base_url",
         "planning_model_kwargs",
         "realization_model_kwargs",
+        "requests_per_second",
+        "check_every_n_seconds",
+        "max_bucket_size",
+        "batch_size",
+        "near_duplicate_tolerance",
+        "enable_planning_memory",
     }
 
     assert result.exit_code == 0
@@ -122,6 +136,58 @@ def test_querygen_cli_maps_omitted_options_to_unset(monkeypatch) -> None:
 
     for key in expected_keys:
         assert captured[key] is UNSET
+
+
+def test_querygen_cli_forwards_runtime_and_throttle_options(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_gen_queries(**kwargs):
+        captured.update(kwargs)
+        return _PreparedResult()
+
+    monkeypatch.setattr("pragmata.querygen.gen_queries", fake_gen_queries)
+
+    result = runner.invoke(
+        app,
+        [
+            "querygen",
+            "gen-queries",
+            "--requests-per-second",
+            "5.5",
+            "--check-every-n-seconds",
+            "0.25",
+            "--max-bucket-size",
+            "10",
+            "--batch-size",
+            "8",
+            "--near-duplicate-tolerance",
+            "0.8",
+            "--no-enable-planning-memory",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert captured["requests_per_second"] == 5.5
+    assert captured["check_every_n_seconds"] == 0.25
+    assert captured["max_bucket_size"] == 10
+    assert captured["batch_size"] == 8
+    assert captured["near_duplicate_tolerance"] == 0.8
+    assert captured["enable_planning_memory"] is False
+
+
+def test_querygen_cli_enable_planning_memory_flag_true(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_gen_queries(**kwargs):
+        captured.update(kwargs)
+        return _PreparedResult()
+
+    monkeypatch.setattr("pragmata.querygen.gen_queries", fake_gen_queries)
+
+    result = runner.invoke(app, ["querygen", "gen-queries", "--enable-planning-memory"])
+
+    assert result.exit_code == 0
+    assert captured["enable_planning_memory"] is True
 
 
 def test_querygen_cli_prints_prepared_run_summary(monkeypatch) -> None:
