@@ -15,10 +15,13 @@
     padding: 2px 0;
   }
   #content {
-    white-space: pre-wrap;
     padding: 6px 0;
   }
+  /* Tighten markdown block spacing inside the collapsed widget. */
+  #content > *:first-child { margin-top: 0; }
+  #content > *:last-child { margin-bottom: 0; }
 </style>
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
 </head>
 <body>
 <details id="wrapper">
@@ -28,7 +31,16 @@
 <script>
   var field = record.fields["$field_name"];
   var text = (typeof field === "object" && field !== null) ? (field.text || "") : (field || "");
-  document.getElementById("content").textContent = text;
+  // Pipeline-sourced content (publikationsbot output) is markdown with embedded
+  // HTML/XML structure tags — same shape the main TextField uses via
+  // use_markdown=True. Run it through marked so the widget renders identically.
+  // Trust assumption: record content is first-party pipeline output (no XSS
+  // sanitisation needed). Falls back to passthrough if marked isn't loaded or
+  // throws on malformed input — widget still shows the text, just unrendered.
+  var rendered;
+  try { rendered = (typeof marked !== "undefined") ? marked.parse(text) : text; }
+  catch (e) { rendered = text; }
+  document.getElementById("content").innerHTML = rendered;
 
   // Size iframe to match content height. scrollHeight is clamped
   // to >= viewport (iframe) height, so shrink to 0 first then
