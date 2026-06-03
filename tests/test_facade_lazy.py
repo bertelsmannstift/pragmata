@@ -120,7 +120,6 @@ def test_dir_returns_public_surface() -> None:
         "IaaReport",
         "ImportResult",
         "Locale",
-        "SUPPORTED_LOCALES",
         "SetupResult",
         "Task",
         "UserSpec",

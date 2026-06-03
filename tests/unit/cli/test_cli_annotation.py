@@ -78,6 +78,60 @@ class TestIaaCommand:
         assert result.exit_code == 0
 
 
+class TestIaaCommandFilters:
+    """CLI wiring for --after / --before / --exclude-annotators."""
+
+    @patch("pragmata.annotation.compute_iaa")
+    def test_after_and_before_parsed_to_datetime(self, mock_iaa):
+        mock_iaa.return_value = _make_report()
+        result = runner.invoke(
+            app,
+            [
+                "annotation",
+                "iaa",
+                "test-export",
+                "--after",
+                "2026-05-01T00:00:00",
+                "--before",
+                "2026-06-01",
+            ],
+        )
+        assert result.exit_code == 0
+        kwargs = mock_iaa.call_args.kwargs
+        assert kwargs["after"] == datetime(2026, 5, 1, 0, 0, 0)
+        assert kwargs["before"] == datetime(2026, 6, 1)
+
+    @patch("pragmata.annotation.compute_iaa")
+    def test_exclude_annotators_parsed(self, mock_iaa):
+        mock_iaa.return_value = _make_report()
+        result = runner.invoke(
+            app,
+            ["annotation", "iaa", "test-export", "--exclude-annotators", "alice, bob ,carol"],
+        )
+        assert result.exit_code == 0
+        kwargs = mock_iaa.call_args.kwargs
+        assert kwargs["exclude_annotators"] == ["alice", "bob", "carol"]
+
+    @patch("pragmata.annotation.compute_iaa")
+    def test_filters_default_to_none(self, mock_iaa):
+        mock_iaa.return_value = _make_report()
+        result = runner.invoke(app, ["annotation", "iaa", "test-export"])
+        assert result.exit_code == 0
+        kwargs = mock_iaa.call_args.kwargs
+        assert kwargs["after"] is None
+        assert kwargs["before"] is None
+        assert kwargs["exclude_annotators"] is None
+
+    @patch("pragmata.annotation.compute_iaa")
+    def test_invalid_after_exits_with_usage_error(self, mock_iaa):
+        result = runner.invoke(
+            app,
+            ["annotation", "iaa", "test-export", "--after", "not-a-date"],
+        )
+        assert result.exit_code != 0
+        mock_iaa.assert_not_called()
+
+
 class TestImportCommandFlags:
     """CLI wiring for --no-calibration and --calibration-partition-seed."""
 
@@ -152,3 +206,32 @@ class TestImportCommandFlags:
         assert kwargs["calibration_partition_seed"] is UNSET
         assert kwargs["calibration_min_submitted"] is UNSET
         assert kwargs["calibration_fraction"] is UNSET
+
+    @patch("pragmata.annotation.import_records")
+    def test_locale_catalog_dir_threaded_through(self, mock_import, tmp_path):
+        mock_import.return_value = _empty_import_result()
+        records_file = tmp_path / "records.jsonl"
+        records_file.write_text("", encoding="utf-8")
+        catalog_dir = tmp_path / "locales"
+        catalog_dir.mkdir()
+
+        result = runner.invoke(
+            app,
+            ["annotation", "import", str(records_file), "--locale-catalog", str(catalog_dir)],
+        )
+
+        assert result.exit_code == 0
+        kwargs = mock_import.call_args.kwargs
+        assert kwargs["locale_catalog_dir"] == str(catalog_dir)
+
+    @patch("pragmata.annotation.import_records")
+    def test_locale_catalog_dir_default_is_unset(self, mock_import, tmp_path):
+        mock_import.return_value = _empty_import_result()
+        records_file = tmp_path / "records.jsonl"
+        records_file.write_text("", encoding="utf-8")
+
+        result = runner.invoke(app, ["annotation", "import", str(records_file)])
+
+        assert result.exit_code == 0
+        kwargs = mock_import.call_args.kwargs
+        assert kwargs["locale_catalog_dir"] is UNSET

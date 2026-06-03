@@ -1,13 +1,22 @@
 """Unit tests for CLI parsing helpers."""
 
 import json
+from datetime import datetime
 from pathlib import Path
 
 import pytest
+import typer
 
 from pragmata.annotation import Task, UserSpec
 from pragmata.api import UNSET
-from pragmata.cli.parsing import parse_cli_value, parse_locale, parse_tasks, parse_user_specs
+from pragmata.cli.parsing import (
+    parse_annotator_ids,
+    parse_cli_value,
+    parse_datetime,
+    parse_locale,
+    parse_tasks,
+    parse_user_specs,
+)
 
 
 class TestParseCliValue:
@@ -50,18 +59,14 @@ class TestParseLocale:
     def test_none_returns_none(self) -> None:
         assert parse_locale(None) is None
 
-    def test_valid_locale_en(self) -> None:
+    def test_normalises_string(self) -> None:
         assert parse_locale("en") == "en"
-
-    def test_valid_locale_de(self) -> None:
-        assert parse_locale("de") == "de"
 
     def test_whitespace_tolerant(self) -> None:
         assert parse_locale("  en  ") == "en"
 
-    def test_invalid_locale_raises(self) -> None:
-        with pytest.raises(ValueError, match="Unknown locale"):
-            parse_locale("xx")
+    def test_unknown_locale_not_rejected_here(self) -> None:
+        assert parse_locale("xx") == "xx"
 
 
 class TestParseUserSpecs:
@@ -97,3 +102,38 @@ class TestParseUserSpecs:
 
         with pytest.raises(TypeError):
             parse_user_specs(str(spec_file))
+
+
+class TestParseDatetime:
+    def test_parses_full_iso(self) -> None:
+        assert parse_datetime("2026-05-01T12:34:56") == datetime(2026, 5, 1, 12, 34, 56)
+
+    def test_parses_date_only(self) -> None:
+        assert parse_datetime("2026-05-01") == datetime(2026, 5, 1)
+
+    def test_invalid_raises_typer_bad_parameter(self) -> None:
+        with pytest.raises(typer.BadParameter):
+            parse_datetime("not-a-date")
+
+    def test_none_returns_none(self) -> None:
+        assert parse_datetime(None) is None
+
+
+class TestParseAnnotatorIds:
+    def test_single_id(self) -> None:
+        assert parse_annotator_ids("alice") == ["alice"]
+
+    def test_multiple_ids(self) -> None:
+        assert parse_annotator_ids("alice,bob,carol") == ["alice", "bob", "carol"]
+
+    def test_strips_whitespace(self) -> None:
+        assert parse_annotator_ids(" alice , bob ") == ["alice", "bob"]
+
+    def test_drops_empty_entries(self) -> None:
+        assert parse_annotator_ids("alice,,bob,") == ["alice", "bob"]
+
+    def test_empty_string_returns_empty_list(self) -> None:
+        assert parse_annotator_ids("") == []
+
+    def test_none_returns_none(self) -> None:
+        assert parse_annotator_ids(None) is None
