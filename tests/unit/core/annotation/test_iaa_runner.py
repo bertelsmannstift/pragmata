@@ -55,7 +55,9 @@ def _make_annotation(
     chunk_id: str | None = None,
 ):
     if task == Task.RETRIEVAL:
-        extra = {**_RETRIEVAL_DEFAULTS, **({"chunk_id": chunk_id} if chunk_id is not None else {})}
+        extra = dict(_RETRIEVAL_DEFAULTS)
+        if chunk_id is not None:
+            extra["chunk_id"] = chunk_id
     elif task == Task.GENERATION:
         extra = _GENERATION_DEFAULTS
     else:
