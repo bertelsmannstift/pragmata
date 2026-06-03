@@ -16,7 +16,7 @@ Both halves consume the same definitions in :mod:`logical_constraints`
 (the SSOT), so they cannot drift.
 """
 
-from typing import Callable
+from collections.abc import Callable
 
 from pragmata.core.annotation.logical_constraints import LOGICAL_CONSTRAINTS
 from pragmata.core.schemas.annotation_export import (
@@ -46,7 +46,10 @@ def check_generation(row: GenerationAnnotation) -> list[str]:
     return _evaluate(Task.GENERATION, row)
 
 
-CONSTRAINT_CHECKERS: dict[Task, Callable] = {
+type ConstraintChecker = Callable[..., list[str]]
+"""A task checker: takes an annotation row and returns violation strings."""
+
+CONSTRAINT_CHECKERS: dict[Task, ConstraintChecker] = {
     Task.RETRIEVAL: check_retrieval,
     Task.GROUNDING: check_grounding,
     Task.GENERATION: check_generation,
