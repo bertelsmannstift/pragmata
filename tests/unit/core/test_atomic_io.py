@@ -1,10 +1,11 @@
 """Tests for the shared atomic text-write helper."""
 
+import json
 from pathlib import Path
 
 import pytest
 
-from pragmata.core.atomic_io import atomic_write_text
+from pragmata.core.atomic_io import atomic_write_json, atomic_write_text
 
 
 def test_atomic_write_text_writes_and_replaces(tmp_path: Path) -> None:
@@ -43,4 +44,17 @@ def test_atomic_write_text_no_target_left_when_block_fails_for_new_path(tmp_path
             raise ValueError("nope")
 
     assert not target.exists()
+    assert list(tmp_path.glob("*.tmp")) == []
+
+
+def test_atomic_write_json_round_trips_indented_with_trailing_newline(tmp_path: Path) -> None:
+    """Data is persisted as indented JSON with a trailing newline and reads back equal."""
+    target = tmp_path / "meta.json"
+    data = {"b": 1, "a": [2, 3]}
+
+    atomic_write_json(data, target)
+
+    text = target.read_text(encoding="utf-8")
+    assert text == json.dumps(data, indent=2) + "\n"
+    assert json.loads(text) == data
     assert list(tmp_path.glob("*.tmp")) == []

@@ -1,5 +1,6 @@
 """Atomic file-write helper shared across pragmata subsystems."""
 
+import json
 import os
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -40,3 +41,18 @@ def atomic_write_text(path: Path) -> Iterator[TextIO]:
     except BaseException:
         tmp_path.unlink(missing_ok=True)
         raise
+
+
+def atomic_write_json(data: dict, path: Path) -> None:
+    """Atomically write ``data`` as indented JSON with a trailing newline to ``path``.
+
+    Indented (``indent=2``) so persisted artifacts are human-scannable when
+    inspected; round-trip reads validate semantically, so the formatting carries
+    no functional meaning. Writes via :func:`atomic_write_text`.
+
+    Args:
+        data: JSON-serialisable mapping to persist.
+        path: Final destination path; replaced atomically on clean exit.
+    """
+    with atomic_write_text(path) as handle:
+        handle.write(json.dumps(data, indent=2) + "\n")
