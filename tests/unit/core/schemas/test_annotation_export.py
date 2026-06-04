@@ -88,6 +88,20 @@ def test_retrieval_constructs(valid_retrieval):
     assert r.notes == ""
 
 
+@pytest.mark.parametrize("bad_chunk_id", ["", "   "])
+def test_retrieval_rejects_empty_chunk_id(valid_retrieval, bad_chunk_id):
+    """Empty/whitespace chunk_id is rejected so the IAA pivot never collapses chunks."""
+    valid_retrieval["chunk_id"] = bad_chunk_id
+    with pytest.raises(ValidationError):
+        RetrievalAnnotation(**valid_retrieval)
+
+
+def test_retrieval_strips_chunk_id_whitespace(valid_retrieval):
+    """chunk_id surrounding whitespace is stripped, keeping the IAA pivot key stable."""
+    valid_retrieval["chunk_id"] = "  c1  "
+    assert RetrievalAnnotation(**valid_retrieval).chunk_id == "c1"
+
+
 def test_grounding_constructs(valid_grounding):
     """Grounding annotation constructs from valid fields."""
     g = GroundingAnnotation(**valid_grounding)

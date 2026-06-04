@@ -39,9 +39,7 @@ def gen_queries_command(
         None, "--formats", help="Requested format(s) for the query. Accepts a string or JSON list."
     ),
     base_dir: str | None = typer.Option(None, "--base-dir", help="Workspace base directory. Accepts a path string."),
-    config_path: str | None = typer.Option(
-        None, "--config-path", help="Path to the config file. Accepts a path string."
-    ),
+    config_path: str | None = typer.Option(None, "--config", help="Path to the config file. Accepts a path string."),
     n_queries: int | None = typer.Option(
         None, "--n-queries", help="Number of queries to generate. Accepts an integer."
     ),
@@ -70,6 +68,36 @@ def gen_queries_command(
         "--realization-model-kwargs",
         help="Additional realization-stage model keyword arguments. Accepts a JSON object.",
     ),
+    requests_per_second: float | None = typer.Option(
+        None,
+        "--requests-per-second",
+        help="Maximum LLM requests per second for the rate limiter. Accepts a positive float.",
+    ),
+    check_every_n_seconds: float | None = typer.Option(
+        None,
+        "--check-every-n-seconds",
+        help="Interval at which the LLM rate limiter checks for capacity. Accepts a positive float.",
+    ),
+    max_bucket_size: int | None = typer.Option(
+        None,
+        "--max-bucket-size",
+        help="Maximum burst size for the LLM rate limiter. Accepts a positive integer.",
+    ),
+    batch_size: int | None = typer.Option(
+        None,
+        "--batch-size",
+        help="Number of queries to generate per LLM call. Accepts a positive integer.",
+    ),
+    near_duplicate_tolerance: float | None = typer.Option(
+        None,
+        "--near-duplicate-tolerance",
+        help="Similarity tolerance for near-duplicate blueprint removal. Accepts a float in (0, 1].",
+    ),
+    enable_planning_memory: bool | None = typer.Option(
+        None,
+        "--enable-planning-memory/--no-enable-planning-memory",
+        help="Enable or disable planning memory for the run. Accepts a boolean flag.",
+    ),
 ) -> None:
     """Prepare a synthetic query generation run."""
     result = querygen.gen_queries(
@@ -92,6 +120,12 @@ def gen_queries_command(
         base_url=UNSET if base_url is None else base_url,
         planning_model_kwargs=parse_cli_value(planning_model_kwargs),
         realization_model_kwargs=parse_cli_value(realization_model_kwargs),
+        requests_per_second=UNSET if requests_per_second is None else requests_per_second,
+        check_every_n_seconds=UNSET if check_every_n_seconds is None else check_every_n_seconds,
+        max_bucket_size=UNSET if max_bucket_size is None else max_bucket_size,
+        batch_size=UNSET if batch_size is None else batch_size,
+        near_duplicate_tolerance=UNSET if near_duplicate_tolerance is None else near_duplicate_tolerance,
+        enable_planning_memory=UNSET if enable_planning_memory is None else enable_planning_memory,
     )
 
     typer.echo("Synthetic query generation run prepared.")
