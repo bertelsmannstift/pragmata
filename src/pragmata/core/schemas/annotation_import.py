@@ -1,7 +1,7 @@
 """Boundary schemas for canonical annotation import records and partition state."""
 
 from datetime import datetime
-from typing import Self
+from typing import Annotated, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -75,15 +75,8 @@ class PartitionManifestEntry(BaseModel):
     grounding_generation_calibration: dict[Task, bool]
     retrieval_chunk_calibration: dict[str, bool] = Field(default_factory=dict)
     import_id: NonEmptyStr
-    calibration_fraction_at_import: dict[Task, float]
+    calibration_fraction_at_import: dict[Task, Annotated[float, Field(ge=0.0, le=1.0)]]
     assigned_at: datetime
-
-    @model_validator(mode="after")
-    def _check_fraction_range(self) -> Self:
-        for task, fraction in self.calibration_fraction_at_import.items():
-            if not 0.0 <= fraction <= 1.0:
-                raise ValueError(f"calibration_fraction_at_import[{task.value}]={fraction} must be in [0.0, 1.0]")
-        return self
 
 
 class PartitionManifest(BaseModel):

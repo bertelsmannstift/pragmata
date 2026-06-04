@@ -13,13 +13,15 @@ fields (``production_min_submitted``, ``calibration_min_submitted``, ``locale``,
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal, Self
+from typing import Literal, Self, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, NonNegativeInt, PositiveInt, model_validator
 
 from pragmata.core.schemas.annotation_task import Locale, Task
 from pragmata.core.settings.settings_base import INHERIT, Inherit, ResolveSettings
 from pragmata.core.types import SafePathSegment
+
+T = TypeVar("T")
 
 
 class ArgillaSettings(BaseModel):
@@ -68,7 +70,7 @@ class ResolvedTaskSettings:
     calibration_fraction: float
 
 
-def _inherit(*candidates):
+def _inherit(*candidates: T | Inherit) -> T:
     """First non-``Inherit`` candidate. Walks task → workspace → deployment in caller order."""
     return next(c for c in candidates if not isinstance(c, Inherit))
 
@@ -130,7 +132,7 @@ class AnnotationSettings(ResolveSettings):
         ws = self.workspaces[workspace_name]
         ts = ws.tasks[task]
 
-        def at(field: str):
+        def at(field: str) -> Locale | int | float | None:
             return _inherit(getattr(ts, field), getattr(ws, field), getattr(self, field))
 
         return ResolvedTaskSettings(
