@@ -17,6 +17,8 @@ _RESERVED_MODEL_KWARGS = {
     "rate_limiter",
 }
 
+_DEFAULT_REQUEST_TIMEOUT_SECONDS = 600
+
 
 class LlmInitializationError(RuntimeError):
     """Raised when the configured chat model cannot be initialized."""
@@ -72,6 +74,8 @@ def build_llm_runnable(
         max_bucket_size: Rate limiter burst size.
         base_url: Optional provider base URL.
         model_kwargs: Optional extra keyword arguments forwarded to model init.
+            A default request ``timeout`` of ``_DEFAULT_REQUEST_TIMEOUT_SECONDS``
+            is applied unless ``model_kwargs`` supplies its own ``timeout``.
 
     Returns:
         A composed LangChain runnable that accepts prompt variables and returns
@@ -89,6 +93,7 @@ def build_llm_runnable(
         "model": model,
         "model_provider": model_provider,
         "api_key": api_key,
+        "timeout": _DEFAULT_REQUEST_TIMEOUT_SECONDS,
         "rate_limiter": InMemoryRateLimiter(
             requests_per_second=requests_per_second,
             check_every_n_seconds=check_every_n_seconds,
