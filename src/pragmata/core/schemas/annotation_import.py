@@ -36,7 +36,8 @@ class QueryResponsePair(BaseModel):
     Attributes:
         query: The user query.
         answer: The system-generated response.
-        chunks: Retrieved chunks used to produce the answer (min 1).
+        chunks: Retrieved chunks used to produce the answer (min 1, unique
+            ``chunk_id``).
         context_set: Identifier grouping chunks into a retrieval context.
         language: Optional ISO language code (e.g. ``"de"``).
     """
@@ -48,6 +49,16 @@ class QueryResponsePair(BaseModel):
     chunks: list[Chunk] = Field(min_length=1)
     context_set: NonEmptyStr
     language: str | None = None
+
+    @model_validator(mode="after")
+    def _check_unique_chunk_ids(self) -> Self:
+        # Retrieval calibration is keyed per chunk_id; duplicates within a pair
+        # would collapse to one bucket and under-count emitted records.
+        chunk_ids = [chunk.chunk_id for chunk in self.chunks]
+        if len(chunk_ids) != len(set(chunk_ids)):
+            duplicates = sorted({cid for cid in chunk_ids if chunk_ids.count(cid) > 1})
+            raise ValueError(f"chunks must have unique chunk_id; duplicates: {duplicates}")
+        return self
 
 
 class PartitionManifestEntry(BaseModel):

@@ -75,6 +75,13 @@ def test_empty_chunks_rejected(valid_qrp):
         QueryResponsePair(**valid_qrp)
 
 
+def test_duplicate_chunk_ids_rejected(valid_qrp, valid_chunk):
+    """Two chunks sharing a chunk_id are rejected (retrieval calibration keys on it)."""
+    valid_qrp["chunks"] = [valid_chunk, {**valid_chunk, "chunk_rank": 2, "text": "Other text."}]
+    with pytest.raises(ValidationError):
+        QueryResponsePair(**valid_qrp)
+
+
 def test_chunk_rank_zero_rejected(valid_chunk):
     """Chunk rank of zero is rejected."""
     valid_chunk["chunk_rank"] = 0
