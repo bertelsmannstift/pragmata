@@ -10,22 +10,21 @@ from uuid import uuid4
 
 @contextmanager
 def atomic_write_text(path: Path) -> Iterator[TextIO]:
-    """Yield a text handle whose contents replace ``path`` atomically on success.
+    """Atomically replace a text file after a successful write.
 
-    Writes to a uniquified temp file in the same directory and ``Path.replace``s
-    it into place when the ``with`` block exits cleanly; on any exception the
-    temp file is removed and ``path`` is left untouched. The temp name carries
-    the PID and a random suffix so concurrent writers to the same target cannot
-    clobber each other's temp file.
+    Writes UTF-8 text to a unique temporary file in the target directory and
+    renames it into place with ``Path.replace`` when the context exits cleanly.
+    If the write fails, the temporary file is removed and the existing target is
+    left untouched. The parent directory must already exist.
 
-    No fsync (matches the repo's existing atomic-write idiom): a torn or
-    unflushed file is never the result of a successful rename, and callers that
-    validate-on-read treat a corrupt final file as drift and recompute.
+    The handle is opened with ``newline=""`` so callers writing CSV via the
+    :mod:`csv` module get correct line endings (harmless for JSON/text); the
+    temp name carries the PID and a random suffix so concurrent writers to the
+    same target cannot clobber each other.
 
-    The handle is opened in text mode with ``encoding="utf-8"`` and
-    ``newline=""`` (the latter so callers writing CSV via :mod:`csv` get correct
-    line endings; harmless for JSON/text). The parent directory must already
-    exist.
+    Atomic replacement is provided for normal readers, but the file and parent
+    directory are intentionally not fsynced: callers that validate-on-read treat
+    a corrupt final file as drift and recompute.
 
     Args:
         path: Final destination path; replaced atomically on clean exit.
