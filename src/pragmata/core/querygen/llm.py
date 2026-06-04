@@ -17,10 +17,6 @@ _RESERVED_MODEL_KWARGS = {
     "rate_limiter",
 }
 
-# Default per-request timeout (seconds) applied to every chat model so a stalled
-# response cannot hang a run indefinitely. Callers override it via
-# model_kwargs["timeout"] (not reserved). int, not float: ChatMistralAI declares
-# ``timeout: int`` and rejects floats; OpenAI/Azure accept both.
 _DEFAULT_REQUEST_TIMEOUT_SECONDS = 600
 
 
@@ -108,8 +104,6 @@ def build_llm_runnable(
     if base_url is not None:
         init_kwargs["base_url"] = base_url
 
-    # Applied after the defaults so a caller-supplied model_kwargs["timeout"]
-    # overrides _DEFAULT_REQUEST_TIMEOUT_SECONDS.
     if model_kwargs:
         init_kwargs.update(model_kwargs)
 
