@@ -1,17 +1,298 @@
 """Tests for eval score run path bundle."""
 
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
-from pragmata.core.paths.eval_paths import EvalPaths, resolve_eval_score_paths
+from pragmata.core.paths.eval_paths import (
+    EvalScorePaths,
+    EvalTrainPaths,
+    find_latest_annotation_export_id,
+    resolve_eval_score_paths,
+    resolve_eval_train_paths,
+)
 from pragmata.core.paths.paths import WorkspacePaths
+from pragmata.core.schemas.annotation_export import AnnotationExportMeta
+from pragmata.core.schemas.annotation_task import Task
 
 
 @pytest.fixture()
 def workspace(tmp_path: Path) -> WorkspacePaths:
     """Workspace path bundle rooted in a temporary directory."""
     return WorkspacePaths.from_base_dir(tmp_path)
+
+
+def _write_annotation_export(
+    *,
+    workspace: WorkspacePaths,
+    export_id: str,
+    created_at: datetime,
+    tasks: list[Task],
+    csv_tasks: list[Task] | None = None,
+) -> Path:
+    """Write a minimal annotation export directory for path-resolution tests."""
+    export_dir = workspace.base_dir / "annotation" / "exports" / export_id
+    export_dir.mkdir(parents=True)
+
+    for task in csv_tasks if csv_tasks is not None else tasks:
+        match task:
+            case Task.RETRIEVAL:
+                csv_path = export_dir / "retrieval.csv"
+            case Task.GROUNDING:
+                csv_path = export_dir / "grounding.csv"
+            case Task.GENERATION:
+                csv_path = export_dir / "generation.csv"
+
+        csv_path.write_text("example_id\nexample-1\n", encoding="utf-8")
+
+    meta = AnnotationExportMeta(
+        export_id=export_id,
+        created_at=created_at,
+        dataset_id=None,
+        tasks=tasks,
+        include_discarded=False,
+        row_counts={task: 1 for task in tasks},
+        n_annotators={task: 1 for task in tasks},
+        calibration_enabled={},
+        constraint_summary={},
+    )
+    (export_dir / "annotation_export.meta.json").write_text(
+        meta.model_dump_json(),
+        encoding="utf-8",
+    )
+
+    return export_dir
+
+
+def test_resolve_eval_train_paths_uses_direct_labeled_data_path(
+    workspace: WorkspacePaths,
+) -> None:
+    """Direct labeled CSV input is used as-is and does not set an export ID."""
+    input_csv = workspace.base_dir / "standalone" / "labeled.csv"
+    input_csv.parent.mkdir()
+    input_csv.write_text("example_id\nexample-1\n", encoding="utf-8")
+
+    paths = resolve_eval_train_paths(
+        workspace=workspace,
+        task=Task.RETRIEVAL,
+        labeled_data_path=input_csv,
+        export_id="ignored-export",
+    )
+
+    assert paths == EvalTrainPaths(
+        training_input_csv=input_csv.resolve(),
+        annotation_export_id=None,
+    )
+
+
+def test_resolve_eval_train_paths_rejects_missing_direct_labeled_data_path(
+    workspace: WorkspacePaths,
+) -> None:
+    """Direct labeled CSV input must point to an existing file."""
+    missing_csv = workspace.base_dir / "missing.csv"
+
+    with pytest.raises(FileNotFoundError, match="Labeled eval training input CSV does not exist"):
+        resolve_eval_train_paths(
+            workspace=workspace,
+            task=Task.RETRIEVAL,
+            labeled_data_path=missing_csv,
+        )
+
+
+def test_resolve_eval_train_paths_uses_explicit_annotation_export_id(
+    workspace: WorkspacePaths,
+) -> None:
+    """Explicit export IDs resolve to the requested task CSV."""
+    _write_annotation_export(
+        workspace=workspace,
+        export_id="export-a",
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+        tasks=[Task.RETRIEVAL],
+    )
+
+    paths = resolve_eval_train_paths(
+        workspace=workspace,
+        task=Task.RETRIEVAL,
+        export_id="export-a",
+    )
+
+    expected_csv = workspace.base_dir / "annotation" / "exports" / "export-a" / "retrieval.csv"
+    assert paths == EvalTrainPaths(
+        training_input_csv=expected_csv,
+        annotation_export_id="export-a",
+    )
+
+
+def test_resolve_eval_train_paths_rejects_missing_annotation_export_metadata(
+    workspace: WorkspacePaths,
+) -> None:
+    """Explicit annotation export selection requires export metadata."""
+    export_dir = workspace.base_dir / "annotation" / "exports" / "broken-export"
+    export_dir.mkdir(parents=True)
+    (export_dir / "retrieval.csv").write_text("example_id\nexample-1\n", encoding="utf-8")
+
+    with pytest.raises(FileNotFoundError, match="Annotation export metadata does not exist"):
+        resolve_eval_train_paths(
+            workspace=workspace,
+            task=Task.RETRIEVAL,
+            export_id="broken-export",
+        )
+
+
+def test_resolve_eval_train_paths_rejects_missing_requested_task_csv(
+    workspace: WorkspacePaths,
+) -> None:
+    """Explicit annotation export selection requires the requested task CSV."""
+    _write_annotation_export(
+        workspace=workspace,
+        export_id="missing-task-csv",
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+        tasks=[Task.RETRIEVAL],
+        csv_tasks=[],
+    )
+
+    with pytest.raises(FileNotFoundError, match="does not contain the requested"):
+        resolve_eval_train_paths(
+            workspace=workspace,
+            task=Task.RETRIEVAL,
+            export_id="missing-task-csv",
+        )
+
+
+def test_find_latest_annotation_export_id_filters_by_task(
+    workspace: WorkspacePaths,
+) -> None:
+    """Latest annotation export lookup ignores exports for other tasks."""
+    _write_annotation_export(
+        workspace=workspace,
+        export_id="newer-wrong-task",
+        created_at=datetime(2026, 1, 2, tzinfo=UTC),
+        tasks=[Task.GENERATION],
+    )
+    _write_annotation_export(
+        workspace=workspace,
+        export_id="older-right-task",
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+        tasks=[Task.RETRIEVAL],
+    )
+
+    latest_export_id = find_latest_annotation_export_id(
+        workspace=workspace,
+        task=Task.RETRIEVAL,
+    )
+
+    assert latest_export_id == "older-right-task"
+
+
+def test_find_latest_annotation_export_id_ignores_exports_missing_task_csv(
+    workspace: WorkspacePaths,
+) -> None:
+    """Latest annotation export lookup requires both metadata membership and task CSV presence."""
+    _write_annotation_export(
+        workspace=workspace,
+        export_id="newer-incomplete",
+        created_at=datetime(2026, 1, 2, tzinfo=UTC),
+        tasks=[Task.RETRIEVAL],
+        csv_tasks=[],
+    )
+    _write_annotation_export(
+        workspace=workspace,
+        export_id="older-complete",
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+        tasks=[Task.RETRIEVAL],
+    )
+
+    latest_export_id = find_latest_annotation_export_id(
+        workspace=workspace,
+        task=Task.RETRIEVAL,
+    )
+
+    assert latest_export_id == "older-complete"
+
+
+def test_find_latest_annotation_export_id_tie_breaks_by_export_id(
+    workspace: WorkspacePaths,
+) -> None:
+    """Latest annotation export lookup uses export ID as deterministic timestamp tie-breaker."""
+    created_at = datetime(2026, 1, 1, tzinfo=UTC)
+    _write_annotation_export(
+        workspace=workspace,
+        export_id="export-a",
+        created_at=created_at,
+        tasks=[Task.RETRIEVAL],
+    )
+    _write_annotation_export(
+        workspace=workspace,
+        export_id="export-b",
+        created_at=created_at,
+        tasks=[Task.RETRIEVAL],
+    )
+
+    latest_export_id = find_latest_annotation_export_id(
+        workspace=workspace,
+        task=Task.RETRIEVAL,
+    )
+
+    assert latest_export_id == "export-b"
+
+
+def test_find_latest_annotation_export_id_rejects_missing_exports_dir(
+    workspace: WorkspacePaths,
+) -> None:
+    """Latest annotation export lookup fails clearly when no exports directory exists."""
+    with pytest.raises(FileNotFoundError, match="Expected annotation exports directory"):
+        find_latest_annotation_export_id(
+            workspace=workspace,
+            task=Task.RETRIEVAL,
+        )
+
+
+def test_find_latest_annotation_export_id_rejects_no_matching_exports(
+    workspace: WorkspacePaths,
+) -> None:
+    """Latest annotation export lookup fails when no complete export exists for the task."""
+    _write_annotation_export(
+        workspace=workspace,
+        export_id="generation-only",
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+        tasks=[Task.GENERATION],
+    )
+
+    with pytest.raises(FileNotFoundError, match="Expected at least one annotation_export.meta.json"):
+        find_latest_annotation_export_id(
+            workspace=workspace,
+            task=Task.RETRIEVAL,
+        )
+
+
+def test_resolve_eval_train_paths_uses_latest_annotation_export_when_selector_is_omitted(
+    workspace: WorkspacePaths,
+) -> None:
+    """Train path resolution falls back to the latest valid annotation export."""
+    _write_annotation_export(
+        workspace=workspace,
+        export_id="older",
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+        tasks=[Task.RETRIEVAL],
+    )
+    _write_annotation_export(
+        workspace=workspace,
+        export_id="newer",
+        created_at=datetime(2026, 1, 2, tzinfo=UTC),
+        tasks=[Task.RETRIEVAL],
+    )
+
+    paths = resolve_eval_train_paths(
+        workspace=workspace,
+        task=Task.RETRIEVAL,
+    )
+
+    expected_csv = workspace.base_dir / "annotation" / "exports" / "newer" / "retrieval.csv"
+    assert paths == EvalTrainPaths(
+        training_input_csv=expected_csv,
+        annotation_export_id="newer",
+    )
 
 
 def test_resolve_eval_score_paths_returns_expected_bundle(
@@ -27,7 +308,7 @@ def test_resolve_eval_score_paths_returns_expected_bundle(
     expected_tool_root = workspace.base_dir / "eval"
     expected_score_dir = workspace.base_dir / "eval" / "scores" / score_id
 
-    assert paths == EvalPaths(
+    assert paths == EvalScorePaths(
         tool_root=expected_tool_root,
         score_dir=expected_score_dir,
         retrieval_scores_json=expected_score_dir / "retrieval_scores.json",
