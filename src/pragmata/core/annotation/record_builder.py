@@ -247,14 +247,14 @@ class PartitionResult:
         pairs_by_rid: record_uuid → QueryResponsePair for every input pair.
         calibration_fraction: Per-task resolved fraction in force this run.
             ``0.0`` for tasks absent from the workspaces topology.
-        calibration_max_records: Per-task resolved absolute cap. ``None`` =
+        calibration_max_items: Per-task resolved absolute cap. ``None`` =
             uncapped (or task absent from topology).
     """
 
     assignments: dict[str, PartitionManifestEntry]
     pairs_by_rid: dict[str, QueryResponsePair]
     calibration_fraction: dict[Task, float]
-    calibration_max_records: dict[Task, int | None]
+    calibration_max_items: dict[Task, int | None]
 
 
 def assign_partitions(
@@ -270,7 +270,7 @@ def assign_partitions(
     per ``record_uuid``; for retrieval, one item per ``(record_uuid, chunk_id)``.
     Per-task fraction and cap are resolved via ``settings.resolved_task`` so
     workspace / task overrides for ``calibration_fraction`` and
-    ``calibration_max_records`` are honoured.
+    ``calibration_max_items`` are honoured.
 
     Already-recorded units are locked for re-import stability and never
     rewritten. Every other unit is an *unassigned candidate* this run: all units
@@ -319,7 +319,7 @@ def assign_partitions(
         resolved = settings.resolved_task(ws_base, task)
         fraction = resolved.calibration_fraction
         per_task_fraction[task] = fraction
-        per_task_cap[task] = resolved.calibration_max_records
+        per_task_cap[task] = resolved.calibration_max_items
         threshold_for_task[task] = int(fraction * (2**32)) if 0.0 < fraction < 1.0 else None
 
     existing_cal_counts = count_units_per_task(manifest.assignments.values()).calibration
@@ -401,7 +401,7 @@ def assign_partitions(
         assignments=assignments,
         pairs_by_rid=pairs_by_rid,
         calibration_fraction=per_task_fraction,
-        calibration_max_records=per_task_cap,
+        calibration_max_items=per_task_cap,
     )
 
 
