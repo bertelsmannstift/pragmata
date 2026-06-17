@@ -12,15 +12,6 @@ Calibration vs production assignment is **per annotation item**, not per `record
 | Generation | `record_uuid` | 1 |
 | Retrieval | `(record_uuid, chunk_id)` | N (one per chunk) |
 
-The `PartitionManifestEntry` schema reflects this asymmetry:
-
-```python
-grounding_generation_calibration: dict[Task, bool]    # GROUNDING, GENERATION
-retrieval_chunk_calibration: dict[str, bool]          # keyed by chunk_id
-```
-
-Per-task `calibration_fraction` and `calibration_max_records` are inheritable across deployment / workspace / task scopes via the `Inherit` sentinel pattern established in PR #206. Cap unit is the annotation item: a cap of 200 on retrieval means 200 chunks; on grounding/generation, 200 records.
-
 ## Context - design alternatives
 
 Two viable partition granularities were weighed, with a genuine tension between IR convention and modern statistical practice:
@@ -59,15 +50,7 @@ This positioning makes per-item partition (Option C) the right fit because it wo
 
 ## Out of scope - future work
 
-Tracked separately so they don't get lost:
-
-- **Cluster-aware IAA** (G-theory, per-query α aggregation, cluster bootstrap, multilevel κ). Option C compensates by avoiding cluster correlation under the naive bootstrap; if pragmata later wants a per-query IAA narrative (which the academic literature supports under correct statistical machinery), this is the layer to upgrade.
-- **Voorhees-style stratified per-(query, label-class) capping**: TREC's actual convention is not pure per-topic but stratified ("max 200 relevant + 200 non-relevant per topic"). Useful for heavily label-imbalanced corpora.
-- **LLM-as-judge hybrid** (ARES-style PPI): strategic question outside this ADR.
-- **Gold-standard / honey-pot QC** (Surge/Scale style): would complement the existing IAA-overlap QC.
-- **Stratified sampling by difficulty / source / locale**: SOTA recommendation pragmata doesn't currently implement.
-- **Annotator monopolisation prevention**: Argilla-imposed gap (no per-record overlap or per-user assignment in the native distribution mechanism).
-- **Fix retrieval IAA pivot to compute per-query α aggregation** in addition to per-(query, chunk) α: the Commit 1 pivot bug fix corrects the keying; per-query rollups for operator-facing narrative are separate.
+- **Cluster-aware IAA** (G-theory, per-query α aggregation, cluster bootstrap, multilevel κ). The main alternative path that would make per-record calibration statistically defensible; if pragmata later wants a per-query IAA narrative (which the academic literature supports under correct statistical machinery), this is the layer to upgrade.
 
 ## References
 
