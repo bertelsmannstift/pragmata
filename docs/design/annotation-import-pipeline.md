@@ -159,7 +159,7 @@ Calibration vs production assignment is **per annotation item**, not per `record
 - `calibration_fraction` (deployment default 0.1): fraction of annotation items routed to the calibration dataset.
 - `calibration_max_items` (deployment default `None`): absolute cap on calibration annotation items per task. Smaller of (fraction × N_items, cap) wins.
 
-Cap unit is the annotation item: a cap of 200 on retrieval means 200 chunks; on grounding/generation, 200 records. Override via YAML config per-(workspace, task); the CLI `--calibration-fraction` and `--calibration-max-records` flags set deployment defaults only.
+Cap unit is the annotation item: a cap of 200 on retrieval means 200 chunks; on grounding/generation, 200 records. Override via YAML config per-(workspace, task); the CLI `--calibration-fraction` and `--calibration-max-items` flags set deployment defaults only.
 
 ### Deterministic bucketing
 
@@ -176,9 +176,9 @@ For each task, per import:
 
 ### Order-dependence under binding cap
 
-Because the manifest is append-only, the calibration set under a binding cap is a function of `(corpus, seed, import_order)`, not `(corpus, seed)` alone. If a corpus arrives across multiple imports and the cap binds, the specific set chosen depends on import order - but cardinality always honours the cap. This is documented in `assign_partitions` and the dedicated test in `tests/unit/core/annotation/test_partition.py::test_cap_under_split_imports_is_order_dependent_by_design`.
+Because the manifest is append-only, the calibration set under a binding cap is a function of `(corpus, seed, import_order)`, not `(corpus, seed)` alone. If a corpus arrives across multiple imports and the cap binds, the specific set chosen depends on import order - but cardinality always honours the cap. This is documented in `assign_partitions`.
 
-### Per-record manifest schema
+### Partition manifest entry schema
 
 `PartitionManifestEntry` carries:
 
