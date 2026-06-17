@@ -24,7 +24,7 @@ Calibration vs production assignment is **per annotation item**, not per `record
 **Positive**
 
 - Statistically honest α and CIs under the current naive bootstrap; no silent inflation from cluster correlation.
-- Per-task right-sizing: operators can size each task's calibration set independently via the inheritable `calibration_fraction` and `calibration_max_records`.
+- Per-task right-sizing: operators can size each task's calibration set independently via the inheritable `calibration_fraction` and `calibration_max_items`.
 - Matches Argilla's per-item record creation (each retrieval chunk is its own Argilla record).
 - Matches modern RAG eval annotation precedent (D-MERIT, TripJudge, ARES).
 
@@ -41,7 +41,7 @@ Calibration vs production assignment is **per annotation item**, not per `record
 ## References
 
 - [ADR-0010](0010-annotation-multi-dataset-architecture.md) - modified in spirit (calibration as property of annotation item rather than property of `record_uuid`); the dataset-per-task structure is preserved.
-- [PR #206 (`f1c6d9f`)](https://github.com/bertelsmannstift/pragmata/pull/206) - `Inherit` sentinel recipe for `production_min_submitted`, `calibration_min_submitted`, `locale`. The same pattern extends here to `calibration_fraction` and `calibration_max_records`.
+- [PR #206 (`f1c6d9f`)](https://github.com/bertelsmannstift/pragmata/pull/206) - `Inherit` sentinel recipe for `production_min_submitted`, `calibration_min_submitted`, `locale`. The same pattern extends here to `calibration_fraction` and `calibration_max_items`.
 - [Annotation Import Pipeline §Calibration partitioning](../design/annotation-import-pipeline.md#calibration-partitioning) - implementation-level description of the per-item bucketing algorithm, manifest schema, and order-dependence note.
 - Faggioli et al. 2025, "Variations in Relevance Judgments and the Shelf Life of Test Collections" - [arXiv:2502.20937](https://arxiv.org/abs/2502.20937).
 - Zhang et al. 2024, "D-MERIT: Evaluating D-MERIT of Partial-annotation on Information Retrieval" - [arXiv:2406.16048](https://arxiv.org/abs/2406.16048).

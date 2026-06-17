@@ -154,10 +154,10 @@ Calibration vs production assignment is **per annotation item**, not per `record
 
 ### Per-task knobs
 
-`calibration_fraction` and `calibration_max_records` are inheritable across deployment / workspace / task scopes via the `Inherit` sentinel:
+`calibration_fraction` and `calibration_max_items` are inheritable across deployment / workspace / task scopes via the `Inherit` sentinel:
 
 - `calibration_fraction` (deployment default 0.1): fraction of annotation items routed to the calibration dataset.
-- `calibration_max_records` (deployment default `None`): absolute cap on calibration annotation items per task. Smaller of (fraction × N_items, cap) wins.
+- `calibration_max_items` (deployment default `None`): absolute cap on calibration annotation items per task. Smaller of (fraction × N_items, cap) wins.
 
 Cap unit is the annotation item: a cap of 200 on retrieval means 200 chunks; on grounding/generation, 200 records. Override via YAML config per-(workspace, task); the CLI `--calibration-fraction` and `--calibration-max-records` flags set deployment defaults only.
 
@@ -184,7 +184,7 @@ Because the manifest is append-only, the calibration set under a binding cap is 
 
 - `grounding_generation_calibration: dict[Task, bool]` - keys GROUNDING and GENERATION
 - `retrieval_chunk_calibration: dict[str, bool]` - keys are `chunk_id`; entries absent at fan-out time default to production
-- `calibration_fraction_at_import: dict[Task, float]` and `calibration_max_records_at_import: dict[Task, int | None]` - per-task provenance stamped at import time
+- `calibration_fraction_at_import: dict[Task, float]` and `calibration_max_items_at_import: dict[Task, int | None]` - per-task provenance stamped at import time
 
 ## Failure Modes
 
