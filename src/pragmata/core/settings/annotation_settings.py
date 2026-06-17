@@ -132,14 +132,15 @@ class AnnotationSettings(ResolveSettings):
         ws = self.workspaces[workspace_name]
         ts = ws.tasks[task]
 
-        def at(field: str) -> Locale | int | float | None:
-            return _inherit(getattr(ts, field), getattr(ws, field), getattr(self, field))
-
         return ResolvedTaskSettings(
-            production_min_submitted=at("production_min_submitted"),
-            calibration_min_submitted=at("calibration_min_submitted"),
-            locale=at("locale"),
-            calibration_fraction=at("calibration_fraction"),
+            production_min_submitted=_inherit(
+                ts.production_min_submitted, ws.production_min_submitted, self.production_min_submitted
+            ),
+            calibration_min_submitted=_inherit(
+                ts.calibration_min_submitted, ws.calibration_min_submitted, self.calibration_min_submitted
+            ),
+            locale=_inherit(ts.locale, ws.locale, self.locale),
+            calibration_fraction=_inherit(ts.calibration_fraction, ws.calibration_fraction, self.calibration_fraction),
         )
 
     @model_validator(mode="after")
