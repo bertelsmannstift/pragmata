@@ -12,26 +12,12 @@ Calibration vs production assignment is **per annotation item**, not per `record
 | Generation | `record_uuid` | 1 |
 | Retrieval | `(record_uuid, chunk_id)` | N (one per chunk) |
 
-## Context - design alternatives
+## Rationale
 
-Two viable partition granularities were weighed, with a genuine tension between IR convention and modern statistical practice:
-
-**Option A - per-`record_uuid` partition** (the pre-existing model). Defensible on convention grounds: TREC and its descendants partition per topic; within-query chunks share annotator context; per-record bundling preserves a query-level IAA narrative. TREC's per-topic tradition assumes cluster-aware IAA analysis (G-theory, per-query α aggregation, multilevel κ) that pragmata does not currently implement.
-
-**Option C - per annotation-item partition** (this ADR). Aligned with modern retrieval-evaluation practice: TREC-DL'19 (Faggioli et al. arXiv:2502.20937), TripJudge (Hofstätter et al. arXiv:2208.06936), and D-MERIT (Zhang et al. arXiv:2406.16048) all retreat from pure per-topic to per-(query, item) for budget and ranking-bias reasons.
-
-Statistical analysis under pragmata's current naive row-bootstrap (`bootstrap_alpha` in `core/annotation/iaa.py`) settles it. Per-record partition silently inflates Krippendorff α and narrows confidence intervals via cluster correlation. Kish's design effect `N_eff = N_total / (1 + ρ(m̄ - 1))` with retrieval-plausible ρ ≈ 0.2–0.4 and m̄ = 5 chunks/query gives Option A's effective sample size ≈ 38–56 vs Option C's ≈ 100 at equal item count - Option C delivers ~1.8–2.6× the honest effective sample size. Adopting Option A would require also adopting cluster-aware IAA machinery; Option C is internally consistent with the IAA layer pragmata uses today.
-
-Practical evidence further supports Option C: Label Studio, Prodigy, Argilla, and doccano have no "parent record" concept and default to per-item overlap by structural inertia. ARES uses per-(query, passage) human anchors for prediction-powered inference. RAGAS, TruLens, DeepEval, and Phoenix avoid the IAA question entirely by relying on LLM-as-judge.
-
-## Strategic positioning
-
-Pragmata is a deliberate niche - human-only annotation + IAA-overlap-based quality control - which differs from both:
-
-- **Modern RAG eval mainstream** (LLM-as-judge dominant: RAGAS, TruLens, DeepEval, Phoenix)
-- **Modern industry annotation services** (gold-standard insertion + per-annotator trust scores: Surge AI, Scale AI)
-
-This positioning makes per-item partition (Option C) the right fit because it works with the naive Krippendorff bootstrap pragmata already uses, without requiring the cluster-aware analysis (G-theory, per-query α aggregation, multilevel κ) that the alternative would demand.
+- **Per-record calibration** preserves query-level bundling (TREC and its descendants partition per topic), but pragmata's current naive row-bootstrap (`bootstrap_alpha` in `core/annotation/iaa.py`) silently inflates Krippendorff α via cluster correlation. Adopting it would require also adopting cluster-aware IAA machinery (G-theory, per-query α aggregation, multilevel κ).
+- **Per-item calibration** matches the actual annotation units, especially retrieval chunks (each chunk is its own Argilla record), and is internally consistent with the IAA layer pragmata uses today.
+- Statistical analysis confirms the gap: Kish's design effect (ρ ≈ 0.2–0.4, m̄ = 5 chunks/query) gives per-record ≈ 38–56 effective samples vs per-item ≈ 100 at equal count — a 1.8–2.6× honest efficiency gain.
+- Choosing per-record would imply also taking on cluster-aware IAA work; per-item avoids that dependency and is consistent with modern retrieval-evaluation practice (TREC-DL'19, TripJudge, D-MERIT).
 
 ## Consequences
 
