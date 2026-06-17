@@ -20,3 +20,4 @@ Each decision document follows this structure:
 - [0009: Annotation Schema Configurability](0009-annotation-schema-configurability.md) — Accepted: hardcoded schemas for v1.0, configurability deferred
 - [0010: Multi-Dataset Architecture](0010-annotation-multi-dataset-architecture.md) — Draft: three separate Argilla datasets (one per task)
 - [0011: Annotation Import Formats](0011-annotation-import-formats.md) — Draft: import accepts JSON, JSONL, CSV, HF Dataset, DataFrame
+- [0012: Per-Item Calibration Partition](0012-annotation-per-item-calibration-partition.md) - Draft: calibration assignment is per annotation item (chunks for retrieval, records for grounding/generation); per-task inheritable fraction and absolute cap

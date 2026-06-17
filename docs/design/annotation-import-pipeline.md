@@ -148,6 +148,44 @@ Three Argilla datasets, each receiving records from every import:
 - `record_uuid`
 - `language` ← canonical `language`
 
+## Calibration partitioning
+
+Calibration vs production assignment is **per annotation item**, not per `record_uuid` (see [ADR-0012](../decisions/0012-annotation-per-item-calibration-partition.md)). The annotation item differs by task: `record_uuid` for grounding and generation (one item per record), `(record_uuid, chunk_id)` for retrieval (one item per chunk).
+
+### Per-task knobs
+
+`calibration_fraction` and `calibration_max_items` are inheritable across deployment / workspace / task scopes via the `Inherit` sentinel:
+
+- `calibration_fraction` (deployment default 0.1): fraction of annotation items routed to the calibration dataset.
+- `calibration_max_items` (deployment default `None`): absolute cap on calibration annotation items per task. Smaller of (fraction × N_items, cap) wins.
+
+Cap unit is the annotation item: a cap of 200 on retrieval means 200 chunks; on grounding/generation, 200 records. Override via YAML config per-(workspace, task); the CLI `--calibration-fraction` and `--calibration-max-items` flags set deployment defaults only.
+
+### Deterministic bucketing
+
+Per-(task, unit) digest: `int(sha256(seed‖task.value‖unit_id)[:8], 16)`. Unit is calibration iff `digest < fraction × 2^32`. Mixing the task name into the hash makes per-task draws statistically independent - a chunk that lands in retrieval-calibration is not constrained to also land in grounding-calibration (cleaner under the naive Krippendorff bootstrap pragmata uses).
+
+### Slot accounting under cap
+
+For each task, per import:
+
+1. Count existing calibration units in the manifest (for retrieval, sum across chunks; for grounding/generation, count records).
+2. Compute `remaining = None if cap is None else max(0, cap - existing)`.
+3. If existing already exceeds cap (config tightened post-hoc), log a warning and treat `remaining = 0` - never demote existing entries (manifest-lock invariant).
+4. Bucket new units by fraction; sort eligible candidates by digest ascending; promote the first `remaining` (or all if uncapped). The rest demote to production.
+
+### Order-dependence under binding cap
+
+Because the manifest is append-only, the calibration set under a binding cap is a function of `(corpus, seed, import_order)`, not `(corpus, seed)` alone. If a corpus arrives across multiple imports and the cap binds, the specific set chosen depends on import order - but cardinality always honours the cap. This is documented in `assign_partitions`.
+
+### Partition manifest entry schema
+
+`PartitionManifestEntry` carries:
+
+- `grounding_generation_calibration: dict[Task, bool]` - keys GROUNDING and GENERATION
+- `retrieval_chunk_calibration: dict[str, bool]` - keys are `chunk_id`; entries absent at fan-out time default to production
+- `calibration_fraction_at_import: dict[Task, float]` and `calibration_max_items_at_import: dict[Task, int | None]` - per-task provenance stamped at import time
+
 ## Failure Modes
 
 **Invalid/incomplete canonical record:**
@@ -171,3 +209,4 @@ Three Argilla datasets, each receiving records from every import:
 - [Export Pipeline](annotation-export-pipeline.md) — export schema and cross-dataset linking via `record_uuid`
 - [Annotation Protocol](../methodology/annotation-protocol.md) — label definitions and annotation units
 - [Annotation Interface](annotation-interface.md) — visibility contract and question wording
+- [ADR-0012: Per-Item Calibration Partition](../decisions/0012-annotation-per-item-calibration-partition.md) - design review, statistical rationale, and consequences for the calibration partitioning section above
