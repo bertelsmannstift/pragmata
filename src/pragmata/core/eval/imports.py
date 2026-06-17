@@ -5,7 +5,7 @@ from pathlib import Path
 import pandas as pd
 
 from pragmata.core.schemas.annotation_task import Task
-from pragmata.core.schemas.eval_input import validate_eval_train_frame
+from pragmata.core.schemas.eval_input import validate_eval_predict_frame, validate_eval_train_frame
 
 
 def import_eval_train_frame(
@@ -24,3 +24,21 @@ def import_eval_train_frame(
     """
     frame = pd.read_csv(path, encoding="utf-8")
     return validate_eval_train_frame(frame, task=task)
+
+
+def import_eval_predict_frame(
+    *,
+    path: Path,
+    task: Task,
+) -> pd.DataFrame:
+    """Read and validate an unlabeled eval prediction dataframe.
+
+    Args:
+        path: CSV path to read.
+        task: Annotation task that determines the dataframe contract.
+
+    Returns:
+        Validated dataframe with original columns preserved.
+    """
+    frame = pd.read_csv(path, encoding="utf-8")
+    return validate_eval_predict_frame(frame, task=task)
