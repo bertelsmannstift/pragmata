@@ -151,6 +151,54 @@ def test_build_llm_runnable_inserts_optional_init_kwargs_conditionally(
     assert expected_absent.isdisjoint(init_kwargs.keys())
 
 
+def test_build_llm_runnable_applies_int_default_timeout(
+    mock_llm_setup: dict[str, Any],
+) -> None:
+    """A default int request timeout is forwarded when the caller supplies none.
+
+    The int type matters: ChatMistralAI declares ``timeout: int`` and rejects floats.
+    """
+    build_llm_runnable(
+        system_text="s",
+        user_text="u",
+        model_provider="mistralai",
+        model="magistral-medium-latest",
+        api_key="k",
+        output_schema=_DummyOutputSchema,
+        requests_per_second=1.0,
+        check_every_n_seconds=1.0,
+        max_bucket_size=1,
+        base_url=None,
+        model_kwargs={},
+    )
+
+    init_kwargs = mock_llm_setup["init"].call_args.kwargs
+    assert init_kwargs["timeout"] == 600
+    assert type(init_kwargs["timeout"]) is int
+
+
+def test_build_llm_runnable_caller_timeout_overrides_default(
+    mock_llm_setup: dict[str, Any],
+) -> None:
+    """A caller-supplied model_kwargs['timeout'] overrides the default."""
+    build_llm_runnable(
+        system_text="s",
+        user_text="u",
+        model_provider="openai",
+        model="gpt-4o",
+        api_key="k",
+        output_schema=_DummyOutputSchema,
+        requests_per_second=1.0,
+        check_every_n_seconds=1.0,
+        max_bucket_size=1,
+        base_url=None,
+        model_kwargs={"timeout": 120},
+    )
+
+    init_kwargs = mock_llm_setup["init"].call_args.kwargs
+    assert init_kwargs["timeout"] == 120
+
+
 def test_build_llm_runnable_wraps_init_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

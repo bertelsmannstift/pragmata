@@ -6,7 +6,6 @@ on:
       - opened
       - reopened
       - synchronize
-      - edited
 
 permissions:
   contents: read
@@ -23,12 +22,10 @@ jobs:
 
     steps:
       - name: Apply type labels
+        if: github.event.action == 'opened' || github.event.action == 'reopened'
         uses: actions/labeler@v6
-        with:
-          sync-labels: false
 
       - name: Apply size label
-        if: github.event.action != 'edited'
         uses: codelytv/pr-size-labeler@v1
         with:
           xs_label: 'size: XS'

@@ -1,10 +1,14 @@
 """Export assembled synthetic query artifacts to disk."""
 
-import json
 from pathlib import Path
 
+from pragmata.core.atomic_io import atomic_write_json
 from pragmata.core.csv_io import write_csv
-from pragmata.core.schemas.querygen_output import PlanningSummaryArtifact, SyntheticQueriesMeta, SyntheticQueryRow
+from pragmata.core.schemas.querygen_output import (
+    PlanningSummaryArtifact,
+    SyntheticQueriesMeta,
+    SyntheticQueryRow,
+)
 
 
 def export_queries(
@@ -22,10 +26,7 @@ def export_queries(
         meta_path: Output path for the synthetic query metadata JSON file.
     """
     write_csv(rows, queries_path)
-    meta_path.write_text(
-        json.dumps(meta.model_dump(mode="json")),
-        encoding="utf-8",
-    )
+    atomic_write_json(meta.model_dump(mode="json"), meta_path)
 
 
 def export_planning_summary(
@@ -38,7 +39,4 @@ def export_planning_summary(
         artifact: Validated planning-summary artifact to persist.
         artifact_path: Destination path for the JSON artifact.
     """
-    artifact_path.write_text(
-        json.dumps(artifact.model_dump(mode="json")),
-        encoding="utf-8",
-    )
+    atomic_write_json(artifact.model_dump(mode="json"), artifact_path)
