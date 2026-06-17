@@ -53,7 +53,7 @@ class ImportResult:
         realised_calibration_fraction: Per-task actual share of items routed
             to calibration this run (calibration / (calibration + production)).
             Zero when no items were assigned for that task.
-        calibration_max_records: Per-task configured absolute cap. ``None`` =
+        calibration_max_items: Per-task configured absolute cap. ``None`` =
             uncapped for that task.
         errors: Per-record validation failures (index + detail).
     """
@@ -64,7 +64,7 @@ class ImportResult:
     production_count: dict[Task, int] = field(default_factory=dict)
     calibration_fraction: dict[Task, float] = field(default_factory=dict)
     realised_calibration_fraction: dict[Task, float] = field(default_factory=dict)
-    calibration_max_records: dict[Task, int | None] = field(default_factory=dict)
+    calibration_max_items: dict[Task, int | None] = field(default_factory=dict)
     errors: list[RecordError] = field(default_factory=list)
 
 
@@ -78,7 +78,7 @@ def import_records(
     base_dir: str | Path | Unset = UNSET,
     config_path: str | Path | Unset = UNSET,
     calibration_fraction: float | Unset = UNSET,
-    calibration_max_records: int | None | Unset = UNSET,
+    calibration_max_items: int | None | Unset = UNSET,
     calibration_min_submitted: int | None | Unset = UNSET,
     calibration_partition_seed: int | Unset = UNSET,
     locale: Locale | Unset = UNSET,
@@ -128,7 +128,7 @@ def import_records(
             unless overridden in YAML config). Falls through to YAML config
             and the built-in default (0.1) when omitted. Set to 0.0 for
             production-only batches.
-        calibration_max_records: Deployment-level absolute cap on calibration
+        calibration_max_items: Deployment-level absolute cap on calibration
             annotation items per task. ``None`` is uncapped (just the
             fractional knob). Inherited by workspaces/tasks unless overridden
             in YAML config. Cap unit is the annotation item: chunks for
@@ -162,7 +162,7 @@ def import_records(
             "dataset_id": dataset_id,
             "base_dir": base_dir,
             "calibration_fraction": calibration_fraction,
-            "calibration_max_records": calibration_max_records,
+            "calibration_max_items": calibration_max_items,
             "calibration_min_submitted": calibration_min_submitted,
             "calibration_partition_seed": calibration_partition_seed,
             "locale": locale,
@@ -218,7 +218,7 @@ def import_records(
         write_partition_manifest(import_paths.partition_manifest, manifest)
 
     def _per_task_summary(task: Task) -> str:
-        cap = partition.calibration_max_records[task]
+        cap = partition.calibration_max_items[task]
         cap_suffix = f", cap={cap}" if cap is not None else ""
         return (
             f"{task.value}={counts.calibration[task]} "
@@ -239,6 +239,6 @@ def import_records(
         production_count=production_count,
         calibration_fraction=partition.calibration_fraction,
         realised_calibration_fraction=realised_fraction,
-        calibration_max_records=partition.calibration_max_records,
+        calibration_max_items=partition.calibration_max_items,
         errors=validation.errors,
     )

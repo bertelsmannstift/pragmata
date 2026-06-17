@@ -138,7 +138,7 @@ class TestAssignPartitions:
             calibration_fraction=1.0,
             workspaces={
                 "g": WorkspaceSettings(
-                    tasks={Task.GROUNDING: TaskSettings(calibration_max_records=5)},
+                    tasks={Task.GROUNDING: TaskSettings(calibration_max_items=5)},
                 ),
                 "x": WorkspaceSettings(tasks={Task.GENERATION: TaskSettings()}),
                 "r": WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings()}),
@@ -160,13 +160,13 @@ class TestAssignPartitions:
                 retrieval_chunk_calibration={},
                 import_id="prior",
                 calibration_fraction_at_import={t: 1.0 for t in Task},
-                calibration_max_records_at_import={t: None for t in Task},
+                calibration_max_items_at_import={t: None for t in Task},
                 assigned_at=now,
             )
         # New cap is 5 - below the existing 10.
         settings = AnnotationSettings(
             calibration_fraction=1.0,
-            calibration_max_records=5,
+            calibration_max_items=5,
             workspaces={
                 "g": WorkspaceSettings(tasks={Task.GROUNDING: TaskSettings()}),
                 "x": WorkspaceSettings(tasks={Task.GENERATION: TaskSettings()}),
@@ -202,7 +202,7 @@ class TestAssignPartitions:
         """
         settings = AnnotationSettings(
             calibration_fraction=1.0,
-            calibration_max_records=3,
+            calibration_max_items=3,
             workspaces={
                 "g": WorkspaceSettings(tasks={Task.GROUNDING: TaskSettings()}),
                 "x": WorkspaceSettings(tasks={Task.GENERATION: TaskSettings()}),
@@ -245,7 +245,7 @@ class TestAssignPartitions:
             retrieval_chunk_calibration={},
             import_id="prior",
             calibration_fraction_at_import={t: 0.0 for t in Task},
-            calibration_max_records_at_import={t: None for t in Task},
+            calibration_max_items_at_import={t: None for t in Task},
             assigned_at=datetime.now(timezone.utc),
         )
 
@@ -259,11 +259,11 @@ class TestAssignPartitions:
         """Per-task fractions and caps are stamped on each new entry."""
         settings = AnnotationSettings(
             calibration_fraction=0.5,
-            calibration_max_records=100,
+            calibration_max_items=100,
             workspaces={
                 "r": WorkspaceSettings(
                     calibration_fraction=0.1,
-                    calibration_max_records=20,
+                    calibration_max_items=20,
                     tasks={Task.RETRIEVAL: TaskSettings()},
                 ),
                 "g": WorkspaceSettings(tasks={Task.GROUNDING: TaskSettings()}),
@@ -277,12 +277,12 @@ class TestAssignPartitions:
 
         assert entry.calibration_fraction_at_import[Task.RETRIEVAL] == 0.1
         assert entry.calibration_fraction_at_import[Task.GROUNDING] == 0.5
-        assert entry.calibration_max_records_at_import[Task.RETRIEVAL] == 20
-        assert entry.calibration_max_records_at_import[Task.GROUNDING] == 100
+        assert entry.calibration_max_items_at_import[Task.RETRIEVAL] == 20
+        assert entry.calibration_max_items_at_import[Task.GROUNDING] == 100
 
         # PartitionResult exposes the per-task resolution directly so api/ doesn't redo the walk.
         assert partition.calibration_fraction[Task.RETRIEVAL] == 0.1
-        assert partition.calibration_max_records[Task.RETRIEVAL] == 20
+        assert partition.calibration_max_items[Task.RETRIEVAL] == 20
 
 
 class TestManifestIO:
@@ -302,7 +302,7 @@ class TestManifestIO:
             retrieval_chunk_calibration={"chunk-a": True, "chunk-b": False},
             import_id="imp1",
             calibration_fraction_at_import={t: 0.1 for t in Task},
-            calibration_max_records_at_import={t: None for t in Task},
+            calibration_max_items_at_import={t: None for t in Task},
             assigned_at=datetime(2026, 4, 22, tzinfo=timezone.utc),
         )
 

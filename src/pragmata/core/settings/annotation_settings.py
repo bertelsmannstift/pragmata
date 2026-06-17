@@ -3,7 +3,7 @@
 Settings are organised into three scopes — deployment (``AnnotationSettings``),
 workspace (``WorkspaceSettings``), task (``TaskSettings``). The inheritable
 fields (``production_min_submitted``, ``calibration_min_submitted``, ``locale``,
-``calibration_fraction``, ``calibration_max_records``) may be set at any scope;
+``calibration_fraction``, ``calibration_max_items``) may be set at any scope;
 child scopes default to ``INHERIT``. Models hold the **specified** values
 exactly as given (``INHERIT`` survives validation, raw inputs round-trip
 losslessly through ``model_dump()``). ``resolved_task(workspace_name, task)``
@@ -41,7 +41,7 @@ class TaskSettings(BaseModel):
     calibration_min_submitted: PositiveInt | None | Inherit = INHERIT
     locale: Locale | Inherit = INHERIT
     calibration_fraction: float | Inherit = INHERIT
-    calibration_max_records: PositiveInt | None | Inherit = INHERIT
+    calibration_max_items: PositiveInt | None | Inherit = INHERIT
 
 
 class WorkspaceSettings(BaseModel):
@@ -58,7 +58,7 @@ class WorkspaceSettings(BaseModel):
     calibration_min_submitted: PositiveInt | None | Inherit = INHERIT
     locale: Locale | Inherit = INHERIT
     calibration_fraction: float | Inherit = INHERIT
-    calibration_max_records: PositiveInt | None | Inherit = INHERIT
+    calibration_max_items: PositiveInt | None | Inherit = INHERIT
     tasks: dict[Task, TaskSettings]
 
 
@@ -70,7 +70,7 @@ class ResolvedTaskSettings:
     calibration_min_submitted: int | None
     locale: Locale
     calibration_fraction: float
-    calibration_max_records: int | None
+    calibration_max_items: int | None
 
 
 def _inherit(*candidates: T | Inherit) -> T:
@@ -105,7 +105,7 @@ class AnnotationSettings(ResolveSettings):
             calibration dataset for IAA (0.0 disables for that scope).
             Inherited by workspaces/tasks. The annotation item is a chunk
             for retrieval and a record_uuid for grounding / generation.
-        calibration_max_records: Optional absolute cap on calibration
+        calibration_max_items: Optional absolute cap on calibration
             annotation items per task. ``None`` is uncapped (just the
             fractional knob). Smaller of (fraction × N_items, cap) wins.
             Inherited by workspaces/tasks.
@@ -119,7 +119,7 @@ class AnnotationSettings(ResolveSettings):
     locale: Locale = "en"
     locale_catalog_dir: Path | None = None
     calibration_fraction: float = Field(0.1, ge=0.0, le=1.0)
-    calibration_max_records: PositiveInt | None = None
+    calibration_max_items: PositiveInt | None = None
     calibration_partition_seed: NonNegativeInt = 0
     include_discarded: bool = False
     workspaces: dict[str, WorkspaceSettings] = Field(
@@ -148,7 +148,7 @@ class AnnotationSettings(ResolveSettings):
             calibration_min_submitted=at("calibration_min_submitted"),
             locale=at("locale"),
             calibration_fraction=at("calibration_fraction"),
-            calibration_max_records=at("calibration_max_records"),
+            calibration_max_items=at("calibration_max_items"),
         )
 
     @model_validator(mode="after")
