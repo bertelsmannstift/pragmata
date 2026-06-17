@@ -150,7 +150,7 @@ Three Argilla datasets, each receiving records from every import:
 
 ## Calibration partitioning
 
-Calibration vs production assignment is **per annotation item**, not per `record_uuid` (see [ADR-0012](../decisions/0012-per-item-calibration-partition.md)). The annotation item differs by task: `record_uuid` for grounding and generation (one item per record), `(record_uuid, chunk_id)` for retrieval (one item per chunk).
+Calibration vs production assignment is **per annotation item**, not per `record_uuid` (see [ADR-0012](../decisions/0012-annotation-per-item-calibration-partition.md)). The annotation item differs by task: `record_uuid` for grounding and generation (one item per record), `(record_uuid, chunk_id)` for retrieval (one item per chunk).
 
 ### Per-task knobs
 
@@ -209,4 +209,4 @@ Because the manifest is append-only, the calibration set under a binding cap is 
 - [Export Pipeline](annotation-export-pipeline.md) — export schema and cross-dataset linking via `record_uuid`
 - [Annotation Protocol](../methodology/annotation-protocol.md) — label definitions and annotation units
 - [Annotation Interface](annotation-interface.md) — visibility contract and question wording
-- [ADR-0012: Per-Item Calibration Partition](../decisions/0012-per-item-calibration-partition.md) - design review, statistical rationale, and consequences for the calibration partitioning section above
+- [ADR-0012: Per-Item Calibration Partition](../decisions/0012-annotation-per-item-calibration-partition.md) - design review, statistical rationale, and consequences for the calibration partitioning section above
