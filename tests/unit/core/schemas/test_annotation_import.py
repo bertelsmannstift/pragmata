@@ -152,7 +152,7 @@ def valid_entry_kwargs():
             Task.GENERATION: 0.1,
             Task.RETRIEVAL: 0.1,
         },
-        "calibration_max_records_at_import": {
+        "calibration_max_items_at_import": {
             Task.GROUNDING: None,
             Task.GENERATION: None,
             Task.RETRIEVAL: None,
@@ -189,7 +189,7 @@ class TestPartitionManifestEntry:
             PartitionManifestEntry(**valid_entry_kwargs)
 
     def test_cap_zero_rejected(self, valid_entry_kwargs):
-        valid_entry_kwargs["calibration_max_records_at_import"][Task.GROUNDING] = 0
+        valid_entry_kwargs["calibration_max_items_at_import"][Task.GROUNDING] = 0
         with pytest.raises(ValidationError):
             PartitionManifestEntry(**valid_entry_kwargs)
 

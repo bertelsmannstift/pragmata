@@ -242,7 +242,7 @@ def test_records_carry_calibration_metadata_to_argilla(client: rg.Argilla, base_
         teardown_resources(client, auto_settings)
 
 
-def test_calibration_max_records_caps_grounding(client: rg.Argilla, base_dir: Path) -> None:
+def test_calibration_max_items_caps_grounding(client: rg.Argilla, base_dir: Path) -> None:
     """Per-task cap binds: realised calibration count never exceeds the absolute cap."""
     auto_id = "testcap"
     auto_settings = AnnotationSettings(dataset_id=auto_id)
@@ -256,13 +256,13 @@ def test_calibration_max_records_caps_grounding(client: rg.Argilla, base_dir: Pa
             dataset_id=auto_id,
             base_dir=base_dir,
             calibration_fraction=1.0,
-            calibration_max_records=3,
+            calibration_max_items=3,
             **_CREDS,
         )
 
         assert result.calibration_count[Task.GROUNDING] == 3
         assert result.production_count[Task.GROUNDING] == 27
-        assert result.calibration_max_records[Task.GROUNDING] == 3
+        assert result.calibration_max_items[Task.GROUNDING] == 3
 
         cal_ds = client.datasets(
             dataset_name(Task.GROUNDING, calibration=True, dataset_id=auto_id),
