@@ -233,6 +233,17 @@ class TestFanOutRecords:
         ret_purposes = {ds_name.split("_")[-2] for (ws, ds_name) in created if ws == "retrieval"}
         assert ret_purposes == {"calibration", "production"}
 
+        # Assert the actual routing: inspect chunk_ids logged to each retrieval
+        # dataset. ca and cc are calibration; cb is production. This fails if
+        # _build_batches puts the wrong chunk in the wrong bucket.
+        def _logged_chunk_ids(purpose: str) -> set[str]:
+            ds = next(ds for (ws, ds_name), ds in created.items() if ws == "retrieval" and f"_{purpose}_" in ds_name)
+            (logged_records,), _ = ds.records.log.call_args
+            return {r.metadata["chunk_id"] for r in logged_records}
+
+        assert _logged_chunk_ids("calibration") == {"ca", "cc"}
+        assert _logged_chunk_ids("production") == {"cb"}
+
 
 class TestImportLocaleConflict:
     """Re-importing into an existing dataset with a different locale logs a warning and proceeds.
