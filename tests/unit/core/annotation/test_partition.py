@@ -10,6 +10,7 @@ from pragmata.core.annotation.record_builder import (
     assign_partitions,
     derive_record_uuid,
     load_partition_manifest,
+    summarize_partitions,
     write_partition_manifest,
 )
 from pragmata.core.schemas.annotation_import import (
@@ -213,3 +214,82 @@ class TestManifestIO:
 
         with pytest.raises(ValueError, match="scope-a"):
             load_partition_manifest(path, dataset_id="scope-b", partition_seed=0)
+
+
+class TestSummarizePartitions:
+    """Per-task partition reporting derived in core (formerly inline in api/)."""
+
+    def test_counts_chunks_for_retrieval_records_for_others(self) -> None:
+        settings = _default_settings(calibration_fraction=0.5)
+        now = datetime.now(timezone.utc)
+        # One record: grounding cal, generation prod; 3 retrieval chunks, 2 cal.
+        entry = PartitionManifestEntry(
+            grounding_generation_calibration={Task.GROUNDING: True, Task.GENERATION: False},
+            retrieval_chunk_calibration={"a": True, "b": False, "c": True},
+            import_id="imp1",
+            calibration_fraction_at_import={t: 0.5 for t in Task},
+            assigned_at=now,
+        )
+
+        summary = summarize_partitions([entry], settings)
+
+        assert summary.calibration_count[Task.RETRIEVAL] == 2
+        assert summary.total_count[Task.RETRIEVAL] == 3
+        assert summary.production_count[Task.RETRIEVAL] == 1
+        assert summary.calibration_count[Task.GROUNDING] == 1
+        assert summary.total_count[Task.GROUNDING] == 1
+        assert summary.calibration_count[Task.GENERATION] == 0
+        assert summary.total_count[Task.GENERATION] == 1
+
+    def test_realised_fraction_zero_when_no_units(self) -> None:
+        settings = _default_settings(calibration_fraction=0.3)
+        summary = summarize_partitions([], settings)
+
+        assert all(summary.realised_fraction[t] == 0.0 for t in Task)
+        assert all(summary.total_count[t] == 0 for t in Task)
+
+    def test_realised_fraction_reflects_actual_split(self) -> None:
+        settings = _default_settings(calibration_fraction=0.5)
+        now = datetime.now(timezone.utc)
+        entries = [
+            PartitionManifestEntry(
+                grounding_generation_calibration={Task.GROUNDING: i < 1, Task.GENERATION: False},
+                retrieval_chunk_calibration={f"chunk-{i}": i < 1},
+                import_id="imp1",
+                calibration_fraction_at_import={t: 0.5 for t in Task},
+                assigned_at=now,
+            )
+            for i in range(4)
+        ]
+
+        summary = summarize_partitions(entries, settings)
+
+        # 1 of 4 grounding records calibration.
+        assert summary.realised_fraction[Task.GROUNDING] == pytest.approx(0.25)
+
+    def test_configured_fraction_resolves_per_task(self) -> None:
+        settings = AnnotationSettings(
+            calibration_fraction=0.1,
+            workspaces={
+                "retrieval": WorkspaceSettings(
+                    tasks={Task.RETRIEVAL: TaskSettings(calibration_fraction=0.4)},
+                ),
+                "grounding": WorkspaceSettings(tasks={Task.GROUNDING: TaskSettings()}),
+                "generation": WorkspaceSettings(tasks={Task.GENERATION: TaskSettings()}),
+            },
+        )
+
+        summary = summarize_partitions([], settings)
+
+        assert summary.configured_fraction[Task.RETRIEVAL] == 0.4  # task override
+        assert summary.configured_fraction[Task.GROUNDING] == 0.1  # deployment default
+        assert summary.configured_fraction[Task.GENERATION] == 0.1
+
+    def test_configured_fraction_zero_for_absent_task(self) -> None:
+        settings = AnnotationSettings(
+            workspaces={"retrieval": WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings()})},
+        )
+        summary = summarize_partitions([], settings)
+
+        assert summary.configured_fraction[Task.GROUNDING] == 0.0
+        assert summary.configured_fraction[Task.GENERATION] == 0.0

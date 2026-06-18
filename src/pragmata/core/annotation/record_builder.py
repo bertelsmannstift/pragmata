@@ -336,6 +336,91 @@ def count_calibration_per_task(entries: Iterable[PartitionManifestEntry]) -> dic
     return counts
 
 
+def _total_units_per_task(entries: Iterable[PartitionManifestEntry]) -> dict[Task, int]:
+    """Per-task total annotation-unit count across entries.
+
+    For retrieval, sums chunks; for grounding/generation, counts records that
+    carry a flag for that task.
+    """
+    totals: dict[Task, int] = {task: 0 for task in Task}
+    for entry in entries:
+        for task in (Task.GROUNDING, Task.GENERATION):
+            if task in entry.grounding_generation_calibration:
+                totals[task] += 1
+        totals[Task.RETRIEVAL] += len(entry.retrieval_chunk_calibration)
+    return totals
+
+
+def _configured_fraction_per_task(settings: AnnotationSettings) -> dict[Task, float]:
+    """Resolve per-task ``calibration_fraction`` for reporting.
+
+    Picks the first workspace that owns each task. Returns ``0.0`` for any task
+    missing from the workspaces topology, matching the assignment behaviour for
+    absent tasks.
+    """
+    fraction: dict[Task, float] = {}
+    for ws_name, ws in settings.workspaces.items():
+        for task in ws.tasks:
+            if task in fraction:
+                continue
+            fraction[task] = settings.resolved_task(ws_name, task).calibration_fraction
+    for task in Task:
+        fraction.setdefault(task, 0.0)
+    return fraction
+
+
+@dataclass(frozen=True)
+class PartitionSummary:
+    """Per-task partition reporting derived from a set of manifest entries.
+
+    Each dict is keyed by ``Task``. Retrieval counts chunks; grounding and
+    generation count records.
+
+    Attributes:
+        calibration_count: Annotation items routed to calibration.
+        total_count: Total annotation items (calibration + production).
+        production_count: Annotation items routed to production.
+        realised_fraction: Actual share routed to calibration this run
+            (calibration / total). Zero when no items were assigned.
+        configured_fraction: Configured ``calibration_fraction`` resolved per
+            task. May differ from ``realised_fraction`` on re-imports because
+            prior assignments are locked by the manifest.
+    """
+
+    calibration_count: dict[Task, int]
+    total_count: dict[Task, int]
+    production_count: dict[Task, int]
+    realised_fraction: dict[Task, float]
+    configured_fraction: dict[Task, float]
+
+
+def summarize_partitions(
+    entries: Iterable[PartitionManifestEntry],
+    settings: AnnotationSettings,
+) -> PartitionSummary:
+    """Compute per-task partition reporting from manifest entries + settings.
+
+    Counts calibration vs total annotation items per task (retrieval counts
+    chunks; grounding/generation count records), derives the realised
+    calibration fraction, and resolves the configured fraction per task.
+    """
+    entries = list(entries)
+    calibration_count = count_calibration_per_task(entries)
+    total_count = _total_units_per_task(entries)
+    production_count = {task: total_count[task] - calibration_count[task] for task in Task}
+    realised_fraction = {
+        task: (calibration_count[task] / total_count[task]) if total_count[task] else 0.0 for task in Task
+    }
+    configured_fraction = _configured_fraction_per_task(settings)
+    return PartitionSummary(
+        calibration_count=calibration_count,
+        total_count=total_count,
+        production_count=production_count,
+        realised_fraction=realised_fraction,
+        configured_fraction=configured_fraction,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Fan-out
 # ---------------------------------------------------------------------------
