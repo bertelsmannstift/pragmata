@@ -68,6 +68,18 @@ class TestTaskSettingsDefaults:
         with pytest.raises(ValidationError):
             TaskSettings(production_min_submitted=0)
 
+    def test_calibration_fraction_default_inherit(self):
+        assert TaskSettings().calibration_fraction is INHERIT
+
+    @pytest.mark.parametrize("frac", [0.0, 0.5, 1.0])
+    def test_calibration_fraction_in_range_accepted(self, frac):
+        assert TaskSettings(calibration_fraction=frac).calibration_fraction == frac
+
+    @pytest.mark.parametrize("frac", [-0.1, 1.5])
+    def test_calibration_fraction_out_of_range_rejected(self, frac):
+        with pytest.raises(ValidationError):
+            TaskSettings(calibration_fraction=frac)
+
 
 class TestWorkspaceSettingsDefaults:
     """``WorkspaceSettings`` is default-free for inherited fields (INHERIT)."""
@@ -87,6 +99,18 @@ class TestWorkspaceSettingsDefaults:
     def test_calibration_can_be_disabled(self):
         w = WorkspaceSettings(tasks={}, calibration_min_submitted=None)
         assert w.calibration_min_submitted is None
+
+    def test_calibration_fraction_default_inherit(self):
+        assert WorkspaceSettings(tasks={}).calibration_fraction is INHERIT
+
+    @pytest.mark.parametrize("frac", [0.0, 0.5, 1.0])
+    def test_calibration_fraction_in_range_accepted(self, frac):
+        assert WorkspaceSettings(tasks={}, calibration_fraction=frac).calibration_fraction == frac
+
+    @pytest.mark.parametrize("frac", [-0.1, 1.5])
+    def test_calibration_fraction_out_of_range_rejected(self, frac):
+        with pytest.raises(ValidationError):
+            WorkspaceSettings(tasks={}, calibration_fraction=frac)
 
 
 class TestAnnotationSettingsResolve:

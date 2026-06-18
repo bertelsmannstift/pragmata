@@ -13,7 +13,7 @@ fields (``production_min_submitted``, ``calibration_min_submitted``, ``locale``,
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal, Self, TypeVar
+from typing import Annotated, Literal, Self, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, NonNegativeInt, PositiveInt, model_validator
 
@@ -22,6 +22,9 @@ from pragmata.core.settings.settings_base import INHERIT, Inherit, ResolveSettin
 from pragmata.core.types import SafePathSegment
 
 T = TypeVar("T")
+
+# Inheritable calibration_fraction override: bounded [0, 1] or the INHERIT sentinel.
+CalibrationFractionOverride = Annotated[float, Field(ge=0.0, le=1.0)] | Inherit
 
 
 class ArgillaSettings(BaseModel):
@@ -40,7 +43,7 @@ class TaskSettings(BaseModel):
     production_min_submitted: PositiveInt | Inherit = INHERIT
     calibration_min_submitted: PositiveInt | None | Inherit = INHERIT
     locale: Locale | Inherit = INHERIT
-    calibration_fraction: float | Inherit = INHERIT
+    calibration_fraction: CalibrationFractionOverride = INHERIT
 
 
 class WorkspaceSettings(BaseModel):
@@ -56,7 +59,7 @@ class WorkspaceSettings(BaseModel):
     production_min_submitted: PositiveInt | Inherit = INHERIT
     calibration_min_submitted: PositiveInt | None | Inherit = INHERIT
     locale: Locale | Inherit = INHERIT
-    calibration_fraction: float | Inherit = INHERIT
+    calibration_fraction: CalibrationFractionOverride = INHERIT
     tasks: dict[Task, TaskSettings]
 
 
