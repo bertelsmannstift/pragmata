@@ -173,6 +173,59 @@ class TestAssignPartitions:
         assert entry.calibration_fraction_at_import[Task.RETRIEVAL] == 0.1
         assert entry.calibration_fraction_at_import[Task.GROUNDING] == 0.5
 
+    def test_reimport_same_topology_leaves_entry_untouched(self, empty_manifest: PartitionManifest) -> None:
+        """No backfill when the topology is unchanged - existing entry is reused as-is."""
+        settings = _default_settings(calibration_fraction=0.5)
+        pair = _make_pair("q0", n_chunks=2)
+        rid = derive_record_uuid(pair)
+
+        assign_partitions([pair], manifest=empty_manifest, settings=settings, import_id="imp1")
+        before = empty_manifest.assignments[rid]
+        again = assign_partitions([pair], manifest=empty_manifest, settings=settings, import_id="imp2")
+
+        assert again[rid] is before  # same object - no rebuild, provenance intact
+
+    def test_backfills_task_added_to_topology(self, empty_manifest: PartitionManifest) -> None:
+        """A task gained by the topology backfills existing records via the same digest."""
+        pair = _make_pair("q0", n_chunks=3)
+        rid = derive_record_uuid(pair)
+
+        retrieval_only = AnnotationSettings(
+            calibration_fraction=0.5,
+            workspaces={"r": WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings()})},
+        )
+        first = assign_partitions([pair], manifest=empty_manifest, settings=retrieval_only, import_id="imp1")
+        assert first[rid].grounding_generation_calibration == {}  # tasks not yet in topology
+        retrieval_flags = dict(first[rid].retrieval_chunk_calibration)
+
+        expanded = AnnotationSettings(
+            calibration_fraction=0.5,
+            workspaces={
+                "r": WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings()}),
+                "g": WorkspaceSettings(tasks={Task.GROUNDING: TaskSettings()}),
+                "x": WorkspaceSettings(tasks={Task.GENERATION: TaskSettings()}),
+            },
+        )
+        backfilled = assign_partitions([pair], manifest=empty_manifest, settings=expanded, import_id="imp2")[rid]
+
+        # Retrieval untouched (manifest lock); provenance preserved; new tasks now assigned.
+        assert backfilled.retrieval_chunk_calibration == retrieval_flags
+        assert backfilled.import_id == "imp1"
+        assert Task.GROUNDING in backfilled.grounding_generation_calibration
+        assert Task.GENERATION in backfilled.grounding_generation_calibration
+        assert backfilled.calibration_fraction_at_import[Task.GROUNDING] == 0.5
+
+        # Backfill is deterministic: matches a fresh import under the expanded topology (same seed).
+        fresh_manifest = PartitionManifest(
+            dataset_id="test",
+            created_at=empty_manifest.created_at,
+            updated_at=empty_manifest.created_at,
+            partition_seed=empty_manifest.partition_seed,
+            assignments={},
+        )
+        fresh = assign_partitions([pair], manifest=fresh_manifest, settings=expanded, import_id="imp3")[rid]
+        assert backfilled.grounding_generation_calibration == fresh.grounding_generation_calibration
+
 
 class TestManifestIO:
     def test_load_empty_when_missing(self, tmp_path: Path) -> None:
