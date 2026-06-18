@@ -369,6 +369,32 @@ class TestAssignPartitions:
         fresh = assign_partitions([pair], manifest=fresh_manifest, settings=expanded, import_id="imp3").assignments[rid]
         assert backfilled.grounding_generation_calibration == fresh.grounding_generation_calibration
 
+    def test_cap_binds_on_backfilled_units(self, empty_manifest: PartitionManifest) -> None:
+        """Backfilled calibration units compete for the cap budget like new ones."""
+        pairs = [_make_pair(f"q{i}") for i in range(10)]
+
+        # First import: retrieval-only, so grounding is unassigned on all 10 records.
+        retrieval_only = AnnotationSettings(
+            workspaces={"r": WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings()})},
+        )
+        assign_partitions(pairs, manifest=empty_manifest, settings=retrieval_only, import_id="imp1")
+
+        # Reimport with grounding added at fraction 1.0 but capped at 3.
+        expanded = AnnotationSettings(
+            calibration_fraction=1.0,
+            workspaces={
+                "r": WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings()}),
+                "g": WorkspaceSettings(tasks={Task.GROUNDING: TaskSettings(calibration_max_items=3)}),
+            },
+        )
+        result = assign_partitions(pairs, manifest=empty_manifest, settings=expanded, import_id="imp2")
+
+        # Only 3 of the 10 backfilled grounding units win calibration; the cap binds.
+        cal = sum(1 for e in result.assignments.values() if e.grounding_generation_calibration[Task.GROUNDING])
+        assert cal == 3
+        # All 10 now carry a grounding flag (backfilled), so none re-backfill next run.
+        assert all(Task.GROUNDING in e.grounding_generation_calibration for e in result.assignments.values())
+
 
 class TestManifestIO:
     def test_load_empty_when_missing(self, tmp_path: Path) -> None:
