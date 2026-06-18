@@ -6,6 +6,7 @@ No Argilla server required. Tests exercise pure Python logic only.
 import argilla as rg
 
 from pragmata.core.annotation.record_builder import (
+    _chunk_id_digest,
     build_generation_record,
     build_grounding_record,
     build_retrieval_record_for_chunk,
@@ -16,7 +17,7 @@ from pragmata.core.schemas.annotation_import import QueryResponsePair
 
 def _build_retrieval_records(pair: QueryResponsePair, record_uuid: str) -> list:
     """Mirror the production fan-out loop (record_builder._build_batches)."""
-    return [build_retrieval_record_for_chunk(pair, record_uuid, chunk, i) for i, chunk in enumerate(pair.chunks)]
+    return [build_retrieval_record_for_chunk(pair, record_uuid, chunk) for chunk in pair.chunks]
 
 
 # ---------------------------------------------------------------------------
@@ -84,11 +85,19 @@ class TestBuildRetrievalRecords:
         records = _build_retrieval_records(pair, _UUID)
         assert len(records) == len(pair.chunks)
 
-    def test_record_ids_use_enumerate_index(self) -> None:
+    def test_record_ids_use_chunk_digest(self) -> None:
         pair = _make_pair()
         records = _build_retrieval_records(pair, _UUID)
-        assert records[0].id == f"ret-{_UUID}-0"
-        assert records[1].id == f"ret-{_UUID}-1"
+        assert records[0].id == f"ret-{_UUID}-{_chunk_id_digest('c1')}"
+        assert records[1].id == f"ret-{_UUID}-{_chunk_id_digest('c2')}"
+
+    def test_record_ids_stable_under_chunk_reorder(self) -> None:
+        raw = _valid_raw()
+        pair = QueryResponsePair.model_validate(raw)
+        pair_reordered = QueryResponsePair.model_validate({**raw, "chunks": list(reversed(raw["chunks"]))})
+        ids = {r.metadata["chunk_id"]: r.id for r in _build_retrieval_records(pair, _UUID)}
+        ids_reordered = {r.metadata["chunk_id"]: r.id for r in _build_retrieval_records(pair_reordered, _UUID)}
+        assert ids == ids_reordered
 
     def test_fields_query_chunk_generated_answer(self) -> None:
         pair = _make_pair()

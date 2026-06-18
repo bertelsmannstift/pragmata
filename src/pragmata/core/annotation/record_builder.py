@@ -9,7 +9,7 @@ datasets. The api/ layer resolves settings and delegates here.
 import hashlib
 import json
 import logging
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -92,13 +92,27 @@ def derive_record_uuid(pair: QueryResponsePair) -> str:
     return hashlib.sha256(canonical.encode()).hexdigest()
 
 
+def _chunk_id_digest(chunk_id: str) -> str:
+    """Short stable digest of ``chunk_id`` for Argilla record ids.
+
+    Hashing keeps the id charset-safe regardless of how chunk_ids are formatted,
+    while staying stable under chunk reordering (unlike a positional index).
+    """
+    return hashlib.sha256(chunk_id.encode()).hexdigest()[:16]
+
+
 def build_retrieval_record_for_chunk(
     pair: QueryResponsePair,
     record_uuid: str,
     chunk: Chunk,
-    index: int,
 ) -> rg.Record:
-    """One Argilla record for a single (pair, chunk) annotation item."""
+    """One Argilla record for a single (pair, chunk) annotation item.
+
+    The Argilla record id is derived from ``(record_uuid, chunk_id)`` so it
+    matches the partition identity: reimporting a pair with chunks in a
+    different order keeps each chunk's record id stable and prevents stale
+    records being stranded in the wrong calibration/production dataset.
+    """
     metadata: dict = {
         "record_uuid": record_uuid,
         "chunk_id": chunk.chunk_id,
@@ -108,7 +122,7 @@ def build_retrieval_record_for_chunk(
     if pair.language is not None:
         metadata["language"] = pair.language
     return rg.Record(
-        id=f"ret-{record_uuid}-{index}",
+        id=f"ret-{record_uuid}-{_chunk_id_digest(chunk.chunk_id)}",
         fields={
             "query": pair.query,
             "chunk": chunk.text,
@@ -233,13 +247,17 @@ def assign_partitions(
     Per-task fraction is resolved via ``settings.resolved_task`` so workspace /
     task overrides for ``calibration_fraction`` are honoured.
 
-    Existing manifest entries are reused untouched (manifest lock for re-import
-    stability). New units are bucketed by per-(task, unit) digest
-    ``hash(seed || task || unit_id)`` against ``fraction * 2^32``.
+    Existing assignments are locked for re-import stability and never rewritten.
+    A new record is bucketed across all active tasks by per-(task, unit) digest
+    ``hash(seed || task || unit_id)`` against ``fraction * 2^32``. An existing
+    record is *backfilled* for any task the topology has since gained (e.g.
+    retrieval-only at first import, grounding added later) using the same
+    deterministic digest, so late-activated tasks partition pre-existing records
+    identically to fresh ones rather than silently defaulting to production.
 
     Args:
         pairs: Validated pairs to partition.
-        manifest: Mutated in place to record new assignments.
+        manifest: Mutated in place to record new and backfilled assignments.
         settings: Resolves per-task fraction via ``resolved_task``.
         import_id: Stamped on new entries for provenance.
 
@@ -251,48 +269,99 @@ def assign_partitions(
     seed = manifest.partition_seed
     workspace_for_task = _invert_workspace_map(settings)
 
-    new_pairs: dict[str, QueryResponsePair] = {}
-    result: dict[str, PartitionManifestEntry] = {}
-    for pair in pairs:
-        rid = derive_record_uuid(pair)
-        existing = manifest.assignments.get(rid)
-        if existing is not None:
-            result[rid] = existing
-        else:
-            new_pairs[rid] = pair
-
-    per_record_grnd_gen: dict[str, dict[Task, bool]] = {rid: {} for rid in new_pairs}
-    per_record_retrieval: dict[str, dict[str, bool]] = {rid: {} for rid in new_pairs}
     per_task_fraction: dict[Task, float] = {}
-
+    threshold_for_task: dict[Task, int | None] = {}
     for task in Task:
         ws_base = workspace_for_task.get(task)
         if ws_base is None:
             per_task_fraction[task] = 0.0
+            threshold_for_task[task] = None
             continue
         fraction = settings.resolved_task(ws_base, task).calibration_fraction
         per_task_fraction[task] = fraction
+        threshold_for_task[task] = int(fraction * (2**32)) if 0.0 < fraction < 1.0 else None
 
-        threshold = int(fraction * (2**32)) if 0.0 < fraction < 1.0 else None
-        for rid, pair in new_pairs.items():
-            for unit_id, chunk_id in _enumerate_units(rid, pair, task):
-                digest = _calibration_digest(unit_id, task, seed)
-                is_cal = fraction >= 1.0 or (threshold is not None and digest < threshold)
-                _write_unit(per_record_grnd_gen, per_record_retrieval, rid, chunk_id, task, is_cal=is_cal)
+    def is_cal(task: Task, unit_id: str) -> bool:
+        fraction = per_task_fraction[task]
+        threshold = threshold_for_task[task]
+        return fraction >= 1.0 or (threshold is not None and _calibration_digest(unit_id, task, seed) < threshold)
 
-    for rid in new_pairs:
-        entry = PartitionManifestEntry(
-            grounding_generation_calibration=per_record_grnd_gen[rid],
-            retrieval_chunk_calibration=per_record_retrieval[rid],
-            import_id=import_id,
-            calibration_fraction_at_import=per_task_fraction,
-            assigned_at=now,
-        )
-        manifest.assignments[rid] = entry
+    active_tasks = {task for task in Task if workspace_for_task.get(task) is not None}
+    result: dict[str, PartitionManifestEntry] = {}
+    changed = False
+    for pair in pairs:
+        rid = derive_record_uuid(pair)
+        existing = manifest.assignments.get(rid)
+        if existing is None:
+            grnd_gen: dict[Task, bool] = {}
+            retrieval: dict[str, bool] = {}
+            for task in active_tasks:
+                for unit_id, chunk_id in _enumerate_units(rid, pair, task):
+                    _write_unit(grnd_gen, retrieval, chunk_id, task, is_cal=is_cal(task, unit_id))
+            entry = PartitionManifestEntry(
+                grounding_generation_calibration=grnd_gen,
+                retrieval_chunk_calibration=retrieval,
+                import_id=import_id,
+                calibration_fraction_at_import=dict(per_task_fraction),
+                assigned_at=now,
+            )
+            manifest.assignments[rid] = entry
+            result[rid] = entry
+            changed = True
+            continue
+
+        entry = _backfill_entry(existing, rid, pair, active_tasks, per_task_fraction, is_cal)
+        if entry is not existing:
+            manifest.assignments[rid] = entry
+            changed = True
         result[rid] = entry
 
-    manifest.updated_at = now
+    if changed:
+        manifest.updated_at = now
     return result
+
+
+def _backfill_entry(
+    entry: PartitionManifestEntry,
+    rid: str,
+    pair: QueryResponsePair,
+    active_tasks: set[Task],
+    per_task_fraction: dict[Task, float],
+    is_cal: Callable[[Task, str], bool],
+) -> PartitionManifestEntry:
+    """Assign active tasks/chunks absent from an existing entry; never rewrite.
+
+    Returns ``entry`` unchanged when nothing is missing, else a new entry with
+    the newly-active units assigned via the same deterministic digest a fresh
+    import uses. Provenance (``import_id``, ``assigned_at``) is preserved from the
+    original assignment; ``calibration_fraction_at_import`` records the resolved
+    fraction for each backfilled task.
+    """
+    grnd_gen = dict(entry.grounding_generation_calibration)
+    retrieval = dict(entry.retrieval_chunk_calibration)
+    fraction_at_import = dict(entry.calibration_fraction_at_import)
+    added = False
+    for task in active_tasks:
+        for unit_id, chunk_id in _enumerate_units(rid, pair, task):
+            if task == Task.RETRIEVAL:
+                if chunk_id in retrieval:
+                    continue
+                retrieval[chunk_id] = is_cal(task, unit_id)
+            elif task not in grnd_gen:
+                grnd_gen[task] = is_cal(task, unit_id)
+            else:
+                continue
+            fraction_at_import[task] = per_task_fraction[task]
+            added = True
+    if not added:
+        return entry
+    return entry.model_copy(
+        update={
+            "grounding_generation_calibration": grnd_gen,
+            "retrieval_chunk_calibration": retrieval,
+            "calibration_fraction_at_import": fraction_at_import,
+        }
+    )
 
 
 def _enumerate_units(rid: str, pair: QueryResponsePair, task: Task) -> list[tuple[str, str | None]]:
@@ -303,9 +372,8 @@ def _enumerate_units(rid: str, pair: QueryResponsePair, task: Task) -> list[tupl
 
 
 def _write_unit(
-    per_record_grnd_gen: dict[str, dict[Task, bool]],
-    per_record_retrieval: dict[str, dict[str, bool]],
-    rid: str,
+    grnd_gen: dict[Task, bool],
+    retrieval: dict[str, bool],
     chunk_id: str | None,
     task: Task,
     *,
@@ -314,9 +382,9 @@ def _write_unit(
     """Route a per-task assignment into the right per-record bucket."""
     if task == Task.RETRIEVAL:
         assert chunk_id is not None  # retrieval always has chunk_id
-        per_record_retrieval[rid][chunk_id] = is_cal
+        retrieval[chunk_id] = is_cal
     else:
-        per_record_grnd_gen[rid][task] = is_cal
+        grnd_gen[task] = is_cal
 
 
 def count_calibration_per_task(entries: Iterable[PartitionManifestEntry]) -> dict[Task, int]:
@@ -447,9 +515,9 @@ def _build_batches(
         gen_cal = entry.grounding_generation_calibration.get(Task.GENERATION, False)
         batches[(Task.GROUNDING, grnd_cal)].append(build_grounding_record(pair, record_uuid))
         batches[(Task.GENERATION, gen_cal)].append(build_generation_record(pair, record_uuid))
-        for i, chunk in enumerate(pair.chunks):
+        for chunk in pair.chunks:
             chunk_cal = entry.retrieval_chunk_calibration.get(chunk.chunk_id, False)
-            batches[(Task.RETRIEVAL, chunk_cal)].append(build_retrieval_record_for_chunk(pair, record_uuid, chunk, i))
+            batches[(Task.RETRIEVAL, chunk_cal)].append(build_retrieval_record_for_chunk(pair, record_uuid, chunk))
     return batches
 
 
