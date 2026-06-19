@@ -33,6 +33,7 @@ def _partition(
         assignments=assignments,
         pairs_by_rid={derive_record_uuid(p): p for p in records},
         calibration_fraction={t: 0.5 for t in Task},
+        calibration_max_items={t: None for t in Task},
     )
 
 
