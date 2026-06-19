@@ -344,6 +344,7 @@ def _backfill_entry(
     for task in active_tasks:
         for unit_id, chunk_id in _enumerate_units(rid, pair, task):
             if task == Task.RETRIEVAL:
+                assert chunk_id is not None  # retrieval always has chunk_id
                 if chunk_id in retrieval:
                     continue
                 retrieval[chunk_id] = is_cal(task, unit_id)
