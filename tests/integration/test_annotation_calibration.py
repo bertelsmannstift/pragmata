@@ -28,11 +28,14 @@ _CREDS: dict[str, str] = {"api_url": _API_URL, "api_key": _API_KEY}
 _SETTINGS = AnnotationSettings(dataset_id=_DATASET_ID)
 
 
-def _make_raw(i: int) -> dict:
+def _make_raw(i: int, *, n_chunks: int = 1) -> dict:
     return {
         "query": f"Question {i}?",
         "answer": f"Answer {i}.",
-        "chunks": [{"chunk_id": f"c{i}", "doc_id": "d1", "chunk_rank": 1, "text": f"Chunk {i}."}],
+        "chunks": [
+            {"chunk_id": f"c{i}-{j}", "doc_id": "d1", "chunk_rank": j + 1, "text": f"Chunk {i}-{j}."}
+            for j in range(n_chunks)
+        ],
         "context_set": "ctx-001",
         "language": "en",
     }
@@ -73,7 +76,13 @@ def test_explicit_fraction_creates_both_datasets(client: rg.Argilla, base_dir: P
     teardown_resources(client, _SETTINGS)
     setup_workspaces(client, _SETTINGS)
 
-    records = [_make_raw(i) for i in range(50)]
+    # Mix single- and multi-chunk records so retrieval (counts chunks) is
+    # distinguishable from grounding/generation (count records). With all
+    # single-chunk records the two would be indistinguishable.
+    records = [_make_raw(i, n_chunks=(3 if i % 5 == 0 else 1)) for i in range(50)]
+    total_chunks = sum(len(r["chunks"]) for r in records)
+    assert total_chunks > len(records)  # guard: the corpus must actually be multi-chunk
+
     result = import_records(records, dataset_id=_DATASET_ID, base_dir=base_dir, calibration_fraction=0.5, **_CREDS)
 
     prod_name = dataset_name(Task.RETRIEVAL, calibration=False, dataset_id=_DATASET_ID)
@@ -81,10 +90,14 @@ def test_explicit_fraction_creates_both_datasets(client: rg.Argilla, base_dir: P
     assert client.datasets(prod_name, workspace="retrieval") is not None
     assert client.datasets(cal_name, workspace="retrieval") is not None
 
-    assert result.calibration_count > 0
-    assert result.production_count > 0
-    assert result.calibration_count + result.production_count == len(records)
-    assert result.calibration_fraction == 0.5
+    assert all(result.calibration_count[t] > 0 for t in Task)
+    assert all(result.production_count[t] > 0 for t in Task)
+    # Retrieval totals count chunks; grounding/generation count records. If
+    # retrieval were mistakenly counted per-record this would fail.
+    assert result.calibration_count[Task.RETRIEVAL] + result.production_count[Task.RETRIEVAL] == total_chunks
+    for t in (Task.GROUNDING, Task.GENERATION):
+        assert result.calibration_count[t] + result.production_count[t] == len(records)
+    assert all(result.calibration_fraction[t] == 0.5 for t in Task)
 
 
 def test_default_fraction_resolves_from_settings(client: rg.Argilla, base_dir: Path) -> None:
@@ -97,8 +110,8 @@ def test_default_fraction_resolves_from_settings(client: rg.Argilla, base_dir: P
     try:
         # No calibration_fraction kwarg - settings default (0.1) wins.
         result = import_records([_make_raw(i) for i in range(50)], dataset_id=auto_id, base_dir=base_dir, **_CREDS)
-        assert result.calibration_fraction == 0.1
-        assert result.calibration_count >= 1  # 0.1 of 50 records ~ 5 expected
+        assert all(result.calibration_fraction[t] == 0.1 for t in Task)
+        assert all(result.calibration_count[t] >= 1 for t in Task)  # 0.1 of 50 records ~ 5 expected
     finally:
         teardown_resources(client, auto_settings)
 
@@ -123,8 +136,8 @@ def test_calibration_fraction_zero_skips_calibration_dataset(client: rg.Argilla,
         cal_name = dataset_name(Task.RETRIEVAL, calibration=True, dataset_id=auto_id)
         assert client.datasets(prod_name, workspace="retrieval") is not None
         assert client.datasets(cal_name, workspace="retrieval") is None
-        assert result.calibration_count == 0
-        assert result.production_count == 5
+        assert all(c == 0 for c in result.calibration_count.values())
+        assert all(result.production_count[t] == 5 for t in Task)
     finally:
         teardown_resources(client, auto_settings)
 
@@ -178,7 +191,7 @@ def test_growing_batch_partitions_new_records_only(client: rg.Argilla, base_dir:
 
         # second.calibration_count must equal first.calibration_count (no new cal records)
         assert second.calibration_count == first.calibration_count
-        assert second.production_count == 20 - first.calibration_count
+        assert all(second.production_count[t] == 20 - first.calibration_count[t] for t in Task)
     finally:
         teardown_resources(client, auto_settings)
 
@@ -197,8 +210,16 @@ def test_records_carry_calibration_metadata_to_argilla(client: rg.Argilla, base_
         manifest_path = _manifest_path(base_dir, auto_id)
         manifest = PartitionManifest.model_validate_json(manifest_path.read_text())
 
-        cal_uuids = {rid for rid, entry in manifest.assignments.items() if entry.calibration}
-        prod_uuids = {rid for rid, entry in manifest.assignments.items() if not entry.calibration}
+        cal_uuids = {
+            rid
+            for rid, entry in manifest.assignments.items()
+            if entry.grounding_generation_calibration.get(Task.GROUNDING, False)
+        }
+        prod_uuids = {
+            rid
+            for rid, entry in manifest.assignments.items()
+            if not entry.grounding_generation_calibration.get(Task.GROUNDING, False)
+        }
 
         prod_ds = client.datasets(
             dataset_name(Task.GROUNDING, calibration=False, dataset_id=auto_id),

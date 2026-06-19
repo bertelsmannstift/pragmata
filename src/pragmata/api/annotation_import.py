@@ -15,6 +15,7 @@ from pragmata.core.annotation.record_builder import (
     assign_partitions,
     fan_out_records,
     load_partition_manifest,
+    summarize_partitions,
     validate_records,
     write_partition_manifest,
 )
@@ -23,7 +24,7 @@ from pragmata.core.paths.annotation_paths import (
     resolve_import_paths,
 )
 from pragmata.core.paths.paths import WorkspacePaths
-from pragmata.core.schemas.annotation_task import Locale
+from pragmata.core.schemas.annotation_task import Locale, Task
 from pragmata.core.settings.annotation_settings import AnnotationSettings
 from pragmata.core.settings.settings_base import UNSET, Unset, load_config_file, resolve_api_key
 
@@ -32,28 +33,35 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class ImportResult:
-    """Outcome of import_records(): counts per dataset and validation errors.
+    """Outcome of import_records(): per-task counts, dataset counts, and validation errors.
+
+    Per-task dicts are keyed by ``Task`` because partition is per-(task,
+    annotation-item): retrieval counts chunks; grounding and generation
+    count records. Values fall through to the resolved per-(workspace, task)
+    settings when present.
 
     Attributes:
         total_records: Number of raw dicts received as input.
         dataset_counts: Records submitted per dataset name.
-        calibration_count: Records routed to the calibration dataset.
-        production_count: Records routed to the production dataset.
-        calibration_fraction: Configured fraction used to assign new records
-            this run. May differ from ``realised_calibration_fraction`` on
-            re-imports because prior assignments are locked by the manifest.
-        realised_calibration_fraction: Actual share of records routed to
-            calibration this run, ``calibration_count / (calibration_count +
-            production_count)``. Zero when no records were assigned.
+        calibration_count: Per-task count of annotation items routed to the
+            calibration dataset.
+        production_count: Per-task count of annotation items routed to the
+            production dataset.
+        calibration_fraction: Per-task configured fraction. May differ from
+            ``realised_calibration_fraction`` on re-imports because prior
+            assignments are locked by the manifest.
+        realised_calibration_fraction: Per-task actual share of items routed
+            to calibration this run (calibration / (calibration + production)).
+            Zero when no items were assigned for that task.
         errors: Per-record validation failures (index + detail).
     """
 
     total_records: int
     dataset_counts: dict[str, int]
-    calibration_count: int = 0
-    production_count: int = 0
-    calibration_fraction: float = 0.0
-    realised_calibration_fraction: float = 0.0
+    calibration_count: dict[Task, int] = field(default_factory=dict)
+    production_count: dict[Task, int] = field(default_factory=dict)
+    calibration_fraction: dict[Task, float] = field(default_factory=dict)
+    realised_calibration_fraction: dict[Task, float] = field(default_factory=dict)
     errors: list[RecordError] = field(default_factory=list)
 
 
@@ -79,12 +87,12 @@ def import_records(
     via the format kwarg. All inputs are resolved to list[dict] before
     validation against the canonical import schema.
 
-    Valid records are partitioned into calibration vs production buckets via
-    a deterministic record_uuid hash. Calibration records go to
-    ``task_<task>_calibration`` (overlap = ``calibration_min_submitted``),
-    production records go to ``task_<task>_production`` (overlap =
-    ``production_min_submitted``). The partition is locked across re-imports
-    via a manifest sidecar at
+    Valid records are partitioned into calibration vs production buckets per
+    annotation item via a deterministic ``hash(seed || task || unit_id)``
+    digest. Calibration items go to ``task_<task>_calibration``
+    (overlap = ``calibration_min_submitted``), production items go to
+    ``task_<task>_production`` (overlap = ``production_min_submitted``). The
+    partition is locked across re-imports via a manifest sidecar at
     ``annotation/imports/{dataset_id}/partition.meta.json``.
 
     Validation failures are collected in ImportResult.errors - invalid
@@ -102,18 +110,19 @@ def import_records(
       config.
 
     Args:
-        records: Input data — list[dict], file path (str/Path), HF Dataset,
+        records: Input data - list[dict], file path (str/Path), HF Dataset,
             or pandas DataFrame.
         api_url: Argilla server URL.
         api_key: Argilla API key.
-        format: File format override — 'auto' (default), 'json', 'jsonl',
+        format: File format override - 'auto' (default), 'json', 'jsonl',
             or 'csv'. Only used for str/Path inputs.
         dataset_id: Suffix appended to dataset names for run scoping.
         base_dir: Workspace base directory. Defaults to cwd.
         config_path: Path to YAML config file for settings resolution.
-        calibration_fraction: Fraction of records routed to the calibration
-            dataset for this import. Falls through to YAML config and the
-            built-in default (0.1) when omitted. Set to 0.0 for
+        calibration_fraction: Deployment-level fraction of annotation items
+            routed to the calibration dataset (inherited by workspaces/tasks
+            unless overridden in YAML config). Falls through to YAML config
+            and the built-in default (0.1) when omitted. Set to 0.0 for
             production-only batches.
         calibration_min_submitted: Deployment-level overlap requirement for
             the calibration dataset. ``None`` disables calibration entirely
@@ -182,37 +191,34 @@ def import_records(
         assignments = assign_partitions(
             validation.valid,
             manifest=manifest,
-            fraction=settings.calibration_fraction,
+            settings=settings,
             import_id=import_id,
         )
 
-        calibration_count = sum(1 for is_cal in assignments.values() if is_cal)
-        production_count = len(assignments) - calibration_count
-        assigned_total = calibration_count + production_count
-        realised = calibration_count / assigned_total if assigned_total else 0.0
+        summary = summarize_partitions(assignments.values(), settings)
 
         # Manifest is written only after fan-out succeeds. On failure, the
-        # in-memory assignments are dropped; deterministic hashing ensures the
-        # next attempt re-derives the same buckets without persisting state for
-        # records that were never logged.
+        # in-memory assignments are dropped; a retry with the same corpus + seed
+        # re-derives identical buckets (deterministic per-unit hashing).
         dataset_counts = fan_out_records(client, validation.valid, settings, assignments=assignments)
         write_partition_manifest(import_paths.partition_manifest, manifest)
+
     logger.info(
-        "Import complete: %d records across %d datasets "
-        "(calibration=%d, production=%d, configured=%.3f, realised=%.3f)",
+        "Import complete: %d records across %d datasets. Per-task calibration: %s",
         len(raw),
         len(dataset_counts),
-        calibration_count,
-        production_count,
-        settings.calibration_fraction,
-        realised,
+        ", ".join(
+            f"{task.value}={summary.calibration_count[task]} "
+            f"(realised={summary.realised_fraction[task]:.3f}, configured={summary.configured_fraction[task]:.3f})"
+            for task in Task
+        ),
     )
     return ImportResult(
         total_records=len(raw),
         dataset_counts=dataset_counts,
-        calibration_count=calibration_count,
-        production_count=production_count,
-        calibration_fraction=settings.calibration_fraction,
-        realised_calibration_fraction=realised,
+        calibration_count=summary.calibration_count,
+        production_count=summary.production_count,
+        calibration_fraction=summary.configured_fraction,
+        realised_calibration_fraction=summary.realised_fraction,
         errors=validation.errors,
     )

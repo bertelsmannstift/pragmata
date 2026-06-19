@@ -1,10 +1,11 @@
 """Boundary schemas for canonical annotation import records and partition state."""
 
 from datetime import datetime
-from typing import Self
+from typing import Annotated, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from pragmata.core.schemas.annotation_task import Task
 from pragmata.core.types import NonEmptyStr, SafePathSegment
 
 
@@ -35,7 +36,8 @@ class QueryResponsePair(BaseModel):
     Attributes:
         query: The user query.
         answer: The system-generated response.
-        chunks: Retrieved chunks used to produce the answer (min 1).
+        chunks: Retrieved chunks used to produce the answer (min 1, unique
+            ``chunk_id``).
         context_set: Identifier grouping chunks into a retrieval context.
         language: Optional ISO language code (e.g. ``"de"``).
     """
@@ -48,22 +50,43 @@ class QueryResponsePair(BaseModel):
     context_set: NonEmptyStr
     language: str | None = None
 
+    @model_validator(mode="after")
+    def _check_unique_chunk_ids(self) -> Self:
+        # Retrieval calibration is keyed per chunk_id; duplicates within a pair
+        # would collapse to one bucket and under-count emitted records.
+        chunk_ids = [chunk.chunk_id for chunk in self.chunks]
+        if len(chunk_ids) != len(set(chunk_ids)):
+            duplicates = sorted({cid for cid in chunk_ids if chunk_ids.count(cid) > 1})
+            raise ValueError(f"chunks must have unique chunk_id; duplicates: {duplicates}")
+        return self
+
 
 class PartitionManifestEntry(BaseModel):
-    """One record's calibration vs production assignment with import provenance.
+    """One record's per-task / per-chunk calibration assignment with import provenance.
+
+    Calibration is partitioned at the annotation-item granularity, which differs by
+    task. Grounding and generation produce one annotation item per ``record_uuid``
+    (``grounding_generation_calibration`` is keyed by task). Retrieval produces one
+    annotation item per chunk (``retrieval_chunk_calibration`` is keyed by chunk_id).
 
     Attributes:
-        calibration: True if assigned to the calibration dataset, else production.
+        grounding_generation_calibration: Per-task calibration flag for the two
+            tasks that have one annotation item per ``record_uuid``.
+        retrieval_chunk_calibration: Per-chunk calibration flag for retrieval,
+            keyed by ``chunk_id``. Chunks not present in the manifest at fan-out
+            time default to production.
         import_id: Identifier of the import call that produced this assignment.
-        calibration_fraction_at_import: The fraction in force at that import call.
+        calibration_fraction_at_import: Per-task fraction in force at that
+            import call.
         assigned_at: When the assignment was made.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    calibration: bool
+    grounding_generation_calibration: dict[Task, bool]
+    retrieval_chunk_calibration: dict[str, bool] = Field(default_factory=dict)
     import_id: NonEmptyStr
-    calibration_fraction_at_import: float = Field(ge=0.0, le=1.0)
+    calibration_fraction_at_import: dict[Task, Annotated[float, Field(ge=0.0, le=1.0)]]
     assigned_at: datetime
 
 

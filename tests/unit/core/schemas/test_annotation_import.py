@@ -11,6 +11,7 @@ from pragmata.core.schemas.annotation_import import (
     PartitionManifestEntry,
     QueryResponsePair,
 )
+from pragmata.core.schemas.annotation_task import Task
 
 
 @pytest.fixture()
@@ -70,6 +71,13 @@ def test_whitespace_only_rejected(valid_qrp, field):
 def test_empty_chunks_rejected(valid_qrp):
     """Empty chunks list is rejected."""
     valid_qrp["chunks"] = []
+    with pytest.raises(ValidationError):
+        QueryResponsePair(**valid_qrp)
+
+
+def test_duplicate_chunk_ids_rejected(valid_qrp, valid_chunk):
+    """Two chunks sharing a chunk_id are rejected (retrieval calibration keys on it)."""
+    valid_qrp["chunks"] = [valid_chunk, {**valid_chunk, "chunk_rank": 2, "text": "Other text."}]
     with pytest.raises(ValidationError):
         QueryResponsePair(**valid_qrp)
 
@@ -136,9 +144,14 @@ _ENTRY_NOW = datetime(2026, 4, 30, 12, 0, tzinfo=timezone.utc)
 @pytest.fixture()
 def valid_entry_kwargs():
     return {
-        "calibration": True,
+        "grounding_generation_calibration": {Task.GROUNDING: True, Task.GENERATION: False},
+        "retrieval_chunk_calibration": {"chunk_a": True, "chunk_b": False},
         "import_id": "imp1",
-        "calibration_fraction_at_import": 0.1,
+        "calibration_fraction_at_import": {
+            Task.GROUNDING: 0.1,
+            Task.GENERATION: 0.1,
+            Task.RETRIEVAL: 0.1,
+        },
         "assigned_at": _ENTRY_NOW,
     }
 
@@ -156,17 +169,17 @@ def valid_manifest_kwargs():
 class TestPartitionManifestEntry:
     def test_constructs(self, valid_entry_kwargs):
         entry = PartitionManifestEntry(**valid_entry_kwargs)
-        assert entry.calibration is True
-        assert entry.import_id == "imp1"
-        assert entry.calibration_fraction_at_import == 0.1
+        assert entry.grounding_generation_calibration[Task.GROUNDING] is True
+        assert entry.grounding_generation_calibration[Task.GENERATION] is False
+        assert entry.retrieval_chunk_calibration["chunk_a"] is True
 
     def test_fraction_above_one_rejected(self, valid_entry_kwargs):
-        valid_entry_kwargs["calibration_fraction_at_import"] = 1.5
+        valid_entry_kwargs["calibration_fraction_at_import"][Task.GROUNDING] = 1.5
         with pytest.raises(ValidationError):
             PartitionManifestEntry(**valid_entry_kwargs)
 
     def test_fraction_negative_rejected(self, valid_entry_kwargs):
-        valid_entry_kwargs["calibration_fraction_at_import"] = -0.1
+        valid_entry_kwargs["calibration_fraction_at_import"][Task.GROUNDING] = -0.1
         with pytest.raises(ValidationError):
             PartitionManifestEntry(**valid_entry_kwargs)
 
@@ -183,7 +196,7 @@ class TestPartitionManifestEntry:
     def test_frozen(self, valid_entry_kwargs):
         entry = PartitionManifestEntry(**valid_entry_kwargs)
         with pytest.raises(ValidationError):
-            entry.calibration = False  # type: ignore[misc]
+            entry.import_id = "new"  # type: ignore[misc]
 
 
 class TestPartitionManifest:

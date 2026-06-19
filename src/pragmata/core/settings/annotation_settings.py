@@ -2,23 +2,29 @@
 
 Settings are organised into three scopes — deployment (``AnnotationSettings``),
 workspace (``WorkspaceSettings``), task (``TaskSettings``). The inheritable
-fields (``production_min_submitted``, ``calibration_min_submitted``, ``locale``)
-may be set at any scope; child scopes default to ``INHERIT``. Models hold the **specified**
-values exactly as given (``INHERIT`` survives validation, raw inputs round-trip
-losslessly through ``model_dump()``). ``resolved_task(workspace_name, task)``
-returns the **computed** values after walking task → workspace → deployment —
-the CSS "computed value" analogy: first non-``INHERIT`` ancestor wins.
+fields (``production_min_submitted``, ``calibration_min_submitted``, ``locale``,
+``calibration_fraction``) may be set at any scope; child scopes default to
+``INHERIT``. Models hold the **specified** values exactly as given
+(``INHERIT`` survives validation, raw inputs round-trip losslessly through
+``model_dump()``). ``resolved_task(workspace_name, task)`` returns the
+**computed** values after walking task → workspace → deployment — the CSS
+"computed value" analogy: first non-``INHERIT`` ancestor wins.
 """
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal, Self
+from typing import Annotated, Literal, Self, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, NonNegativeInt, PositiveInt, model_validator
 
 from pragmata.core.schemas.annotation_task import Locale, Task
 from pragmata.core.settings.settings_base import INHERIT, Inherit, ResolveSettings
 from pragmata.core.types import SafePathSegment
+
+T = TypeVar("T")
+
+# Inheritable calibration_fraction override: bounded [0, 1] or the INHERIT sentinel.
+CalibrationFractionOverride = Annotated[float, Field(ge=0.0, le=1.0)] | Inherit
 
 
 class ArgillaSettings(BaseModel):
@@ -37,6 +43,7 @@ class TaskSettings(BaseModel):
     production_min_submitted: PositiveInt | Inherit = INHERIT
     calibration_min_submitted: PositiveInt | None | Inherit = INHERIT
     locale: Locale | Inherit = INHERIT
+    calibration_fraction: CalibrationFractionOverride = INHERIT
 
 
 class WorkspaceSettings(BaseModel):
@@ -52,6 +59,7 @@ class WorkspaceSettings(BaseModel):
     production_min_submitted: PositiveInt | Inherit = INHERIT
     calibration_min_submitted: PositiveInt | None | Inherit = INHERIT
     locale: Locale | Inherit = INHERIT
+    calibration_fraction: CalibrationFractionOverride = INHERIT
     tasks: dict[Task, TaskSettings]
 
 
@@ -62,6 +70,12 @@ class ResolvedTaskSettings:
     production_min_submitted: int
     calibration_min_submitted: int | None
     locale: Locale
+    calibration_fraction: float
+
+
+def _inherit(*candidates: T | Inherit) -> T:
+    """First non-``Inherit`` candidate. Walks task → workspace → deployment in caller order."""
+    return next(c for c in candidates if not isinstance(c, Inherit))
 
 
 class AnnotationSettings(ResolveSettings):
@@ -87,8 +101,10 @@ class AnnotationSettings(ResolveSettings):
             top of the bundled catalogs (user wins on stem collision), so a
             deployment can add or override locales without modifying the
             installed package. Must exist if set.
-        calibration_fraction: Fraction of records routed to a separate
-            calibration dataset for IAA (0.0 disables; deployment-level only).
+        calibration_fraction: Fraction of annotation items routed to the
+            calibration dataset for IAA (0.0 disables for that scope).
+            Inherited by workspaces/tasks. The annotation item is a chunk
+            for retrieval and a record_uuid for grounding / generation.
     """
 
     argilla: ArgillaSettings = Field(default_factory=ArgillaSettings)
@@ -119,28 +135,15 @@ class AnnotationSettings(ResolveSettings):
         ws = self.workspaces[workspace_name]
         ts = ws.tasks[task]
 
-        production = ts.production_min_submitted
-        if isinstance(production, Inherit):
-            production = ws.production_min_submitted
-        if isinstance(production, Inherit):
-            production = self.production_min_submitted
-
-        calibration = ts.calibration_min_submitted
-        if isinstance(calibration, Inherit):
-            calibration = ws.calibration_min_submitted
-        if isinstance(calibration, Inherit):
-            calibration = self.calibration_min_submitted
-
-        locale = ts.locale
-        if isinstance(locale, Inherit):
-            locale = ws.locale
-        if isinstance(locale, Inherit):
-            locale = self.locale
-
         return ResolvedTaskSettings(
-            production_min_submitted=production,
-            calibration_min_submitted=calibration,
-            locale=locale,
+            production_min_submitted=_inherit(
+                ts.production_min_submitted, ws.production_min_submitted, self.production_min_submitted
+            ),
+            calibration_min_submitted=_inherit(
+                ts.calibration_min_submitted, ws.calibration_min_submitted, self.calibration_min_submitted
+            ),
+            locale=_inherit(ts.locale, ws.locale, self.locale),
+            calibration_fraction=_inherit(ts.calibration_fraction, ws.calibration_fraction, self.calibration_fraction),
         )
 
     @model_validator(mode="after")
@@ -158,20 +161,26 @@ class AnnotationSettings(ResolveSettings):
 
     @model_validator(mode="after")
     def _check_calibration_topology(self) -> Self:
-        if self.calibration_fraction <= 0.0:
-            return self
-        missing = [
-            f"{ws_name}/{task.value}"
-            for ws_name, ws in self.workspaces.items()
-            for task in ws.tasks
-            if self.resolved_task(ws_name, task).calibration_min_submitted is None
-        ]
+        """Reject configs where a task wants calibration but its overlap is disabled.
+
+        Walks per-(workspace, task) using ``resolved_task`` so per-scope overrides
+        on ``calibration_fraction`` and ``calibration_min_submitted`` are honoured.
+        A task with resolved ``calibration_fraction > 0`` and resolved
+        ``calibration_min_submitted is None`` is incoherent: calibration items
+        would be routed but no overlap threshold gates them.
+        """
+        missing = []
+        for ws_name, ws in self.workspaces.items():
+            for task in ws.tasks:
+                resolved = self.resolved_task(ws_name, task)
+                if resolved.calibration_fraction > 0 and resolved.calibration_min_submitted is None:
+                    missing.append(f"{ws_name}/{task.value}")
         if missing:
             raise ValueError(
-                f"calibration_fraction={self.calibration_fraction} > 0 but these "
-                f"workspace/task pairs disable calibration: {', '.join(missing)}. "
-                f"Either set calibration_fraction=0.0 or enable calibration at "
-                f"the appropriate scope."
+                f"calibration_fraction > 0 but these workspace/task pairs disable "
+                f"calibration_min_submitted: {', '.join(missing)}. "
+                f"Either set calibration_fraction=0.0 for those scopes or enable "
+                f"calibration_min_submitted at the appropriate scope."
             )
         return self
 

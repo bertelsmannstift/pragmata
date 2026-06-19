@@ -4,12 +4,13 @@ These exercise the routing/branching contract directly (rather than via the
 API tests, which patch fan_out_records out).
 """
 
+from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from pragmata.core.annotation.record_builder import fan_out_records
-from pragmata.core.schemas.annotation_import import Chunk, QueryResponsePair
+from pragmata.core.annotation.record_builder import derive_record_uuid, fan_out_records
+from pragmata.core.schemas.annotation_import import Chunk, PartitionManifestEntry, QueryResponsePair
 from pragmata.core.schemas.annotation_task import Task
 from pragmata.core.settings.annotation_settings import AnnotationSettings, TaskSettings, WorkspaceSettings
 
@@ -21,6 +22,45 @@ def _make_pair(query: str) -> QueryResponsePair:
         chunks=[Chunk(chunk_id=f"c-{query}", doc_id="d", chunk_rank=1, text="t")],
         context_set="ctx",
     )
+
+
+def _assignments_with_uniform_calibration(
+    records: list[QueryResponsePair],
+    is_cal: bool,
+) -> dict[str, PartitionManifestEntry]:
+    """Build per-record manifest entries where every task and chunk shares the same calibration flag."""
+    now = datetime.now(timezone.utc)
+    out: dict[str, PartitionManifestEntry] = {}
+    for pair in records:
+        rid = derive_record_uuid(pair)
+        out[rid] = PartitionManifestEntry(
+            grounding_generation_calibration={Task.GROUNDING: is_cal, Task.GENERATION: is_cal},
+            retrieval_chunk_calibration={chunk.chunk_id: is_cal for chunk in pair.chunks},
+            import_id="test",
+            calibration_fraction_at_import={t: 0.5 if is_cal else 0.0 for t in Task},
+            assigned_at=now,
+        )
+    return out
+
+
+def _assignments_split_by_index(
+    records: list[QueryResponsePair],
+    cal_threshold: int,
+) -> dict[str, PartitionManifestEntry]:
+    """Calibration if index < cal_threshold; same flag across all tasks/chunks."""
+    now = datetime.now(timezone.utc)
+    out: dict[str, PartitionManifestEntry] = {}
+    for i, pair in enumerate(records):
+        is_cal = i < cal_threshold
+        rid = derive_record_uuid(pair)
+        out[rid] = PartitionManifestEntry(
+            grounding_generation_calibration={Task.GROUNDING: is_cal, Task.GENERATION: is_cal},
+            retrieval_chunk_calibration={chunk.chunk_id: is_cal for chunk in pair.chunks},
+            import_id="test",
+            calibration_fraction_at_import={t: 0.5 for t in Task},
+            assigned_at=now,
+        )
+    return out
 
 
 def _settings(*, calibration_enabled: bool = True) -> AnnotationSettings:
@@ -76,9 +116,7 @@ class TestFanOutRecords:
         client = MagicMock()
         _, created = patched_create_dataset
         records = [_make_pair(f"q{i}") for i in range(3)]
-        from pragmata.core.annotation.record_builder import derive_record_uuid
-
-        assignments = {derive_record_uuid(r): False for r in records}
+        assignments = _assignments_with_uniform_calibration(records, is_cal=False)
 
         result = fan_out_records(client, records=records, settings=_settings(), assignments=assignments)
 
@@ -92,9 +130,7 @@ class TestFanOutRecords:
         client = MagicMock()
         _, created = patched_create_dataset
         records = [_make_pair(f"q{i}") for i in range(2)]
-        from pragmata.core.annotation.record_builder import derive_record_uuid
-
-        assignments = {derive_record_uuid(r): True for r in records}
+        assignments = _assignments_with_uniform_calibration(records, is_cal=True)
 
         result = fan_out_records(client, records=records, settings=_settings(), assignments=assignments)
 
@@ -105,10 +141,8 @@ class TestFanOutRecords:
         client = MagicMock()
         _, created = patched_create_dataset
         records = [_make_pair(f"q{i}") for i in range(4)]
-        from pragmata.core.annotation.record_builder import derive_record_uuid
-
-        # First two records calibration, last two production.
-        assignments = {derive_record_uuid(r): (i < 2) for i, r in enumerate(records)}
+        # First two records calibration, last two production (uniform across tasks/chunks).
+        assignments = _assignments_split_by_index(records, cal_threshold=2)
 
         fan_out_records(client, records=records, settings=_settings(), assignments=assignments)
 
@@ -120,9 +154,7 @@ class TestFanOutRecords:
     def test_calibration_assigned_when_topology_disables_raises(self, patched_create_dataset) -> None:
         client = MagicMock()
         records = [_make_pair("q0")]
-        from pragmata.core.annotation.record_builder import derive_record_uuid
-
-        assignments = {derive_record_uuid(records[0]): True}
+        assignments = _assignments_with_uniform_calibration(records, is_cal=True)
 
         with pytest.raises(RuntimeError, match="topology disables calibration"):
             fan_out_records(
@@ -135,10 +167,8 @@ class TestFanOutRecords:
     def test_dataset_counts_reflect_per_dataset_record_counts(self, patched_create_dataset) -> None:
         client = MagicMock()
         records = [_make_pair(f"q{i}") for i in range(5)]
-        from pragmata.core.annotation.record_builder import derive_record_uuid
-
-        # Three calibration, two production - same split per task.
-        assignments = {derive_record_uuid(r): (i < 3) for i, r in enumerate(records)}
+        # Three calibration, two production - uniform per task.
+        assignments = _assignments_split_by_index(records, cal_threshold=3)
 
         result = fan_out_records(client, records=records, settings=_settings(), assignments=assignments)
 
@@ -160,9 +190,7 @@ class TestFanOutRecords:
             workspaces={"retrieval": WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings()})},
         )
         records = [_make_pair("q0")]
-        from pragmata.core.annotation.record_builder import derive_record_uuid
-
-        assignments = {derive_record_uuid(records[0]): False}
+        assignments = _assignments_with_uniform_calibration(records, is_cal=False)
 
         with caplog.at_level("WARNING"):
             result = fan_out_records(client, records=records, settings=partial_settings, assignments=assignments)
@@ -171,6 +199,50 @@ class TestFanOutRecords:
         assert len(result) == 1
         assert any(ds_name.startswith("retrieval_") for (_, ds_name) in created)
         assert "not in workspaces topology" in caplog.text
+
+    def test_per_chunk_retrieval_routing(self, patched_create_dataset) -> None:
+        """Different chunks of one record can route to different retrieval buckets."""
+        client = MagicMock()
+        _, created = patched_create_dataset
+        # One record with 3 chunks; alternate calibration / production / calibration.
+        pair = QueryResponsePair(
+            query="q",
+            answer="a",
+            chunks=[
+                Chunk(chunk_id="ca", doc_id="d", chunk_rank=1, text="t1"),
+                Chunk(chunk_id="cb", doc_id="d", chunk_rank=2, text="t2"),
+                Chunk(chunk_id="cc", doc_id="d", chunk_rank=3, text="t3"),
+            ],
+            context_set="ctx",
+        )
+        rid = derive_record_uuid(pair)
+        now = datetime.now(timezone.utc)
+        assignments = {
+            rid: PartitionManifestEntry(
+                grounding_generation_calibration={Task.GROUNDING: False, Task.GENERATION: False},
+                retrieval_chunk_calibration={"ca": True, "cb": False, "cc": True},
+                import_id="test",
+                calibration_fraction_at_import={t: 0.5 for t in Task},
+                assigned_at=now,
+            )
+        }
+
+        fan_out_records(client, records=[pair], settings=_settings(), assignments=assignments)
+
+        # Both retrieval datasets must exist (some chunks in cal, some in prod).
+        ret_purposes = {ds_name.split("_")[-2] for (ws, ds_name) in created if ws == "retrieval"}
+        assert ret_purposes == {"calibration", "production"}
+
+        # Assert the actual routing: inspect chunk_ids logged to each retrieval
+        # dataset. ca and cc are calibration; cb is production. This fails if
+        # _build_batches puts the wrong chunk in the wrong bucket.
+        def _logged_chunk_ids(purpose: str) -> set[str]:
+            ds = next(ds for (ws, ds_name), ds in created.items() if ws == "retrieval" and f"_{purpose}_" in ds_name)
+            (logged_records,), _ = ds.records.log.call_args
+            return {r.metadata["chunk_id"] for r in logged_records}
+
+        assert _logged_chunk_ids("calibration") == {"ca", "cc"}
+        assert _logged_chunk_ids("production") == {"cb"}
 
 
 class TestImportLocaleConflict:
@@ -185,7 +257,6 @@ class TestImportLocaleConflict:
         import argilla as rg
 
         from pragmata.core.annotation.argilla_task_definitions import build_task_settings, dataset_name
-        from pragmata.core.annotation.record_builder import derive_record_uuid
 
         # Build an EN-flavoured existing dataset; _detect_dataset_locale will
         # match its label displays against the EN catalog.
@@ -200,18 +271,25 @@ class TestImportLocaleConflict:
         )
 
         def _create(client, name, ws_base, task_cfg):
-            # Simulate an existing dataset: ds_created=False, returning the EN-flavoured one.
-            return fake_dataset, False
+            # Only retrieval-production simulates an existing EN-flavoured dataset;
+            # other tasks get fresh fakes so they don't share log call counts.
+            if ws_base == "retrieval" and name == ds_name:
+                return fake_dataset, False
+            return fake_dataset_factory(name), True
 
         records = [_make_pair("q0")]
-        assignments = {derive_record_uuid(records[0]): False}
+        assignments = _assignments_with_uniform_calibration(records, is_cal=False)
 
         # DE-locale settings — mismatch against the EN existing dataset.
         settings_de = AnnotationSettings(
             dataset_id="run1",
             locale="de",
             calibration_fraction=0.0,
-            workspaces={"retrieval": WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings()})},
+            workspaces={
+                "retrieval": WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings()}),
+                "grounding": WorkspaceSettings(tasks={Task.GROUNDING: TaskSettings()}),
+                "generation": WorkspaceSettings(tasks={Task.GENERATION: TaskSettings()}),
+            },
         )
 
         with patch("pragmata.core.annotation.record_builder.create_dataset", side_effect=_create):
@@ -221,7 +299,7 @@ class TestImportLocaleConflict:
         # Records were appended (no error raised), and a warning was logged.
         # Assert against locale .name rather than the %r-formatted .value so the
         # test isn't tied to the log formatter's quote style.
-        assert len(result) == 1
+        assert ds_name in result
         assert "Locale mismatch" in caplog.text
         assert "en" in caplog.text
         assert "de" in caplog.text

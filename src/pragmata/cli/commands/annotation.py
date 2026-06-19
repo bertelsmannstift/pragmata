@@ -99,9 +99,10 @@ def import_command(
     calibration_fraction: float | None = typer.Option(
         None,
         "--calibration-fraction",
-        help="Fraction of records routed to the calibration dataset for this batch. "
-        "Falls through to YAML config and built-in default (0.1) when omitted; "
-        "set to 0.0 for production-only batches.",
+        help="Deployment-level fraction of annotation items routed to the calibration "
+        "dataset for this batch (inherited by workspaces/tasks unless overridden in "
+        "YAML config). Falls through to YAML config and built-in default (0.1) when "
+        "omitted; set to 0.0 for production-only batches.",
     ),
     no_calibration: bool = typer.Option(
         False,
@@ -112,8 +113,8 @@ def import_command(
     calibration_partition_seed: int | None = typer.Option(
         None,
         "--calibration-partition-seed",
-        help="Deterministic seed for assigning new records to calibration vs production. "
-        "Existing assignments are locked by the partition manifest.",
+        help="Deterministic seed for assigning new annotation items to calibration vs "
+        "production. Existing assignments are locked by the partition manifest.",
     ),
     locale: str | None = typer.Option(
         None,
@@ -162,12 +163,14 @@ def import_command(
         locale_catalog_dir=UNSET if locale_catalog_dir is None else locale_catalog_dir,
     )
     typer.echo(f"Total records: {result.total_records}")
-    typer.echo(
-        f"Calibration: {result.calibration_count}, "
-        f"production: {result.production_count} "
-        f"(configured={result.calibration_fraction:.3f}, "
-        f"realised={result.realised_calibration_fraction:.3f})"
-    )
+    for task, cal_n in result.calibration_count.items():
+        prod_n = result.production_count.get(task, 0)
+        cfg_fraction = result.calibration_fraction.get(task, 0.0)
+        realised = result.realised_calibration_fraction.get(task, 0.0)
+        typer.echo(
+            f"  {task.value}: calibration={cal_n}, production={prod_n} "
+            f"(configured={cfg_fraction:.3f}, realised={realised:.3f})"
+        )
     for ds, count in result.dataset_counts.items():
         typer.echo(f"  {ds}: {count}")
     if result.errors:

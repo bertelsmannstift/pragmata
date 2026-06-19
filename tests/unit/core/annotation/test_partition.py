@@ -6,10 +6,11 @@ from pathlib import Path
 import pytest
 
 from pragmata.core.annotation.record_builder import (
-    _bucket_calibration,
+    _calibration_digest,
     assign_partitions,
     derive_record_uuid,
     load_partition_manifest,
+    summarize_partitions,
     write_partition_manifest,
 )
 from pragmata.core.schemas.annotation_import import (
@@ -18,42 +19,68 @@ from pragmata.core.schemas.annotation_import import (
     PartitionManifestEntry,
     QueryResponsePair,
 )
+from pragmata.core.schemas.annotation_task import Task
+from pragmata.core.settings.annotation_settings import (
+    AnnotationSettings,
+    TaskSettings,
+    WorkspaceSettings,
+)
 
 
-def _make_pair(query: str = "Q?") -> QueryResponsePair:
+def _make_pair(query: str = "Q?", *, n_chunks: int = 1) -> QueryResponsePair:
     return QueryResponsePair(
         query=query,
         answer="A.",
-        chunks=[Chunk(chunk_id=f"c-{query}", doc_id="d", chunk_rank=1, text="t")],
+        chunks=[Chunk(chunk_id=f"c-{query}-{i}", doc_id="d", chunk_rank=i + 1, text=f"t{i}") for i in range(n_chunks)],
         context_set="ctx",
     )
 
 
-class TestBucketCalibration:
-    def test_zero_fraction_always_production(self) -> None:
-        for i in range(20):
-            assert _bucket_calibration(f"uuid-{i}", 0.0, seed=0) is False
+def _default_settings(**overrides) -> AnnotationSettings:
+    """Default workspace topology with overridable fields."""
+    return AnnotationSettings(
+        workspaces={
+            "retrieval": WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings()}),
+            "grounding": WorkspaceSettings(tasks={Task.GROUNDING: TaskSettings()}),
+            "generation": WorkspaceSettings(tasks={Task.GENERATION: TaskSettings()}),
+        },
+        **overrides,
+    )
 
-    def test_full_fraction_always_calibration(self) -> None:
-        for i in range(20):
-            assert _bucket_calibration(f"uuid-{i}", 1.0, seed=0) is True
+
+class TestCalibrationDigest:
+    """Per-(task, unit) digest properties — production primitive used by ``assign_partitions``."""
 
     def test_deterministic_across_calls(self) -> None:
-        results = [_bucket_calibration("uuid-x", 0.5, seed=42) for _ in range(10)]
+        results = [_calibration_digest("uuid-x", Task.GROUNDING, seed=42) for _ in range(10)]
         assert len(set(results)) == 1
 
-    def test_different_seed_different_bucket(self) -> None:
-        # Deterministic flip: "uuid-fixed" at fraction=0.5 buckets to True with
-        # seed=0 and to False with seed=5. Pinning specific values keeps this
-        # a regression check rather than a statistical sniff test.
-        assert _bucket_calibration("uuid-fixed", 0.5, seed=0) is True
-        assert _bucket_calibration("uuid-fixed", 0.5, seed=5) is False
+    def test_digest_in_uint32_range(self) -> None:
+        for i in range(20):
+            d = _calibration_digest(f"uuid-{i}", Task.GROUNDING, seed=0)
+            assert 0 <= d < 2**32
 
-    def test_fraction_exact_count_for_fixed_uuids(self) -> None:
-        # Determined empirically for this exact (uuid set, fraction, seed); locks
-        # the hash-to-bucket mapping so any drift surfaces immediately.
-        n_cal = sum(1 for i in range(1000) if _bucket_calibration(f"uuid-{i}", 0.1, seed=7))
-        assert n_cal == 116
+    def test_different_seed_changes_digest(self) -> None:
+        """At threshold=0.5, two seeds disagree on a non-trivial fraction of uuids."""
+        threshold = int(0.5 * (2**32))
+        flips = sum(
+            1
+            for i in range(100)
+            if (_calibration_digest(f"uuid-{i}", Task.GROUNDING, seed=0) < threshold)
+            != (_calibration_digest(f"uuid-{i}", Task.GROUNDING, seed=5) < threshold)
+        )
+        assert 25 < flips < 75, f"seeds look correlated: {flips}/100 disagreements"
+
+    def test_per_task_draws_are_independent(self) -> None:
+        """Same unit-id at same threshold can land differently per task — proves task is in the hash."""
+        threshold = int(0.5 * (2**32))
+        agreements = sum(
+            1
+            for i in range(100)
+            if (_calibration_digest(f"uuid-{i}", Task.RETRIEVAL, seed=0) < threshold)
+            == (_calibration_digest(f"uuid-{i}", Task.GROUNDING, seed=0) < threshold)
+        )
+        assert 20 < agreements < 80, f"per-task draws look correlated: {agreements}/100"
 
 
 class TestAssignPartitions:
@@ -68,55 +95,136 @@ class TestAssignPartitions:
             assignments={},
         )
 
-    def test_new_records_get_assignments(self, empty_manifest: PartitionManifest) -> None:
-        pairs = [_make_pair(f"q{i}") for i in range(10)]
-        result = assign_partitions(pairs, manifest=empty_manifest, fraction=1.0, import_id="imp1")
+    def test_full_fraction_all_calibration(self, empty_manifest: PartitionManifest) -> None:
+        settings = _default_settings(calibration_fraction=1.0)
+        pairs = [_make_pair(f"q{i}") for i in range(5)]
+        result = assign_partitions(pairs, manifest=empty_manifest, settings=settings, import_id="imp1")
 
-        assert len(result) == 10
-        assert all(result.values())  # fraction=1.0 -> all calibration
-        assert len(empty_manifest.assignments) == 10
+        assert len(result) == 5
+        for entry in result.values():
+            # Every task: every unit is calibration
+            assert entry.grounding_generation_calibration[Task.GROUNDING] is True
+            assert entry.grounding_generation_calibration[Task.GENERATION] is True
+            assert all(entry.retrieval_chunk_calibration.values())
 
-    def test_existing_assignments_respected(self, empty_manifest: PartitionManifest) -> None:
-        # Pre-seed manifest with one record assigned to production
+    def test_zero_fraction_all_production(self, empty_manifest: PartitionManifest) -> None:
+        settings = _default_settings(calibration_fraction=0.0)
+        pairs = [_make_pair(f"q{i}", n_chunks=3) for i in range(5)]
+        result = assign_partitions(pairs, manifest=empty_manifest, settings=settings, import_id="imp1")
+
+        for entry in result.values():
+            assert entry.grounding_generation_calibration[Task.GROUNDING] is False
+            assert entry.grounding_generation_calibration[Task.GENERATION] is False
+            assert not any(entry.retrieval_chunk_calibration.values())
+
+    def test_retrieval_chunks_partitioned_independently(self, empty_manifest: PartitionManifest) -> None:
+        """Different chunks of the same record can land in different buckets."""
+        settings = _default_settings(calibration_fraction=0.5)
+        # 50 pairs × 4 chunks each = 200 retrieval units at fraction 0.5
+        pairs = [_make_pair(f"q{i}", n_chunks=4) for i in range(50)]
+        result = assign_partitions(pairs, manifest=empty_manifest, settings=settings, import_id="imp1")
+
+        # Some pairs should have a mixed retrieval calibration set (not all True or all False).
+        mixed = sum(
+            1
+            for entry in result.values()
+            if 0 < sum(entry.retrieval_chunk_calibration.values()) < len(entry.retrieval_chunk_calibration)
+        )
+        assert mixed > 0, "no pairs had per-chunk mixing - partition might still be per-record"
+
+    def test_existing_assignments_preserved_across_reimports(self, empty_manifest: PartitionManifest) -> None:
+        settings = _default_settings(calibration_fraction=1.0)
         pair = _make_pair("q0")
         rid = derive_record_uuid(pair)
+
+        # Pre-seed manifest with this record assigned to production for grounding only.
         empty_manifest.assignments[rid] = PartitionManifestEntry(
-            calibration=False,
+            grounding_generation_calibration={Task.GROUNDING: False, Task.GENERATION: False},
+            retrieval_chunk_calibration={},
             import_id="prior",
-            calibration_fraction_at_import=0.0,
+            calibration_fraction_at_import={t: 0.0 for t in Task},
             assigned_at=datetime.now(timezone.utc),
         )
 
-        # Re-import with fraction=1.0 should keep the existing production assignment
-        result = assign_partitions([pair], manifest=empty_manifest, fraction=1.0, import_id="imp2")
+        result = assign_partitions([pair], manifest=empty_manifest, settings=settings, import_id="imp2")
 
-        assert result[rid] is False
-        assert empty_manifest.assignments[rid].import_id == "prior"
+        # Existing assignment preserved despite fraction=1.0 in new settings.
+        assert result[rid].grounding_generation_calibration[Task.GROUNDING] is False
+        assert result[rid].import_id == "prior"
 
-    def test_new_records_use_current_fraction(self, empty_manifest: PartitionManifest) -> None:
+    def test_new_records_stamp_per_task_fraction(self, empty_manifest: PartitionManifest) -> None:
+        """Per-task fractions are stamped on each new entry."""
+        settings = AnnotationSettings(
+            calibration_fraction=0.5,
+            workspaces={
+                "r": WorkspaceSettings(
+                    calibration_fraction=0.1,
+                    tasks={Task.RETRIEVAL: TaskSettings()},
+                ),
+                "g": WorkspaceSettings(tasks={Task.GROUNDING: TaskSettings()}),
+                "x": WorkspaceSettings(tasks={Task.GENERATION: TaskSettings()}),
+            },
+        )
         pair = _make_pair("q0")
+        result = assign_partitions([pair], manifest=empty_manifest, settings=settings, import_id="imp1")
         rid = derive_record_uuid(pair)
-        assign_partitions([pair], manifest=empty_manifest, fraction=1.0, import_id="imp1")
+        entry = result[rid]
 
-        entry = empty_manifest.assignments[rid]
-        assert entry.calibration_fraction_at_import == 1.0
-        assert entry.import_id == "imp1"
+        assert entry.calibration_fraction_at_import[Task.RETRIEVAL] == 0.1
+        assert entry.calibration_fraction_at_import[Task.GROUNDING] == 0.5
 
-    def test_mixed_existing_and_new_records(self, empty_manifest: PartitionManifest) -> None:
-        existing = _make_pair("q-existing")
-        existing_rid = derive_record_uuid(existing)
-        empty_manifest.assignments[existing_rid] = PartitionManifestEntry(
-            calibration=True,
-            import_id="prior",
-            calibration_fraction_at_import=0.5,
-            assigned_at=datetime.now(timezone.utc),
+    def test_reimport_same_topology_leaves_entry_untouched(self, empty_manifest: PartitionManifest) -> None:
+        """No backfill when the topology is unchanged - existing entry is reused as-is."""
+        settings = _default_settings(calibration_fraction=0.5)
+        pair = _make_pair("q0", n_chunks=2)
+        rid = derive_record_uuid(pair)
+
+        assign_partitions([pair], manifest=empty_manifest, settings=settings, import_id="imp1")
+        before = empty_manifest.assignments[rid]
+        again = assign_partitions([pair], manifest=empty_manifest, settings=settings, import_id="imp2")
+
+        assert again[rid] is before  # same object - no rebuild, provenance intact
+
+    def test_backfills_task_added_to_topology(self, empty_manifest: PartitionManifest) -> None:
+        """A task gained by the topology backfills existing records via the same digest."""
+        pair = _make_pair("q0", n_chunks=3)
+        rid = derive_record_uuid(pair)
+
+        retrieval_only = AnnotationSettings(
+            calibration_fraction=0.5,
+            workspaces={"r": WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings()})},
         )
+        first = assign_partitions([pair], manifest=empty_manifest, settings=retrieval_only, import_id="imp1")
+        assert first[rid].grounding_generation_calibration == {}  # tasks not yet in topology
+        retrieval_flags = dict(first[rid].retrieval_chunk_calibration)
 
-        new_pair = _make_pair("q-new")
-        result = assign_partitions([existing, new_pair], manifest=empty_manifest, fraction=0.0, import_id="imp2")
+        expanded = AnnotationSettings(
+            calibration_fraction=0.5,
+            workspaces={
+                "r": WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings()}),
+                "g": WorkspaceSettings(tasks={Task.GROUNDING: TaskSettings()}),
+                "x": WorkspaceSettings(tasks={Task.GENERATION: TaskSettings()}),
+            },
+        )
+        backfilled = assign_partitions([pair], manifest=empty_manifest, settings=expanded, import_id="imp2")[rid]
 
-        assert result[existing_rid] is True  # preserved
-        assert result[derive_record_uuid(new_pair)] is False  # new, fraction=0
+        # Retrieval untouched (manifest lock); provenance preserved; new tasks now assigned.
+        assert backfilled.retrieval_chunk_calibration == retrieval_flags
+        assert backfilled.import_id == "imp1"
+        assert Task.GROUNDING in backfilled.grounding_generation_calibration
+        assert Task.GENERATION in backfilled.grounding_generation_calibration
+        assert backfilled.calibration_fraction_at_import[Task.GROUNDING] == 0.5
+
+        # Backfill is deterministic: matches a fresh import under the expanded topology (same seed).
+        fresh_manifest = PartitionManifest(
+            dataset_id="test",
+            created_at=empty_manifest.created_at,
+            updated_at=empty_manifest.created_at,
+            partition_seed=empty_manifest.partition_seed,
+            assignments={},
+        )
+        fresh = assign_partitions([pair], manifest=fresh_manifest, settings=expanded, import_id="imp3")[rid]
+        assert backfilled.grounding_generation_calibration == fresh.grounding_generation_calibration
 
 
 class TestManifestIO:
@@ -132,9 +240,10 @@ class TestManifestIO:
         path = tmp_path / "partition.meta.json"
         original = load_partition_manifest(path, dataset_id="test", partition_seed=7)
         original.assignments["uuid-1"] = PartitionManifestEntry(
-            calibration=True,
+            grounding_generation_calibration={Task.GROUNDING: True, Task.GENERATION: False},
+            retrieval_chunk_calibration={"chunk-a": True, "chunk-b": False},
             import_id="imp1",
-            calibration_fraction_at_import=0.1,
+            calibration_fraction_at_import={t: 0.1 for t in Task},
             assigned_at=datetime(2026, 4, 22, tzinfo=timezone.utc),
         )
 
@@ -146,8 +255,6 @@ class TestManifestIO:
         assert restored.assignments["uuid-1"] == original.assignments["uuid-1"]
 
     def test_write_requires_existing_parent(self, tmp_path: Path) -> None:
-        # Path resolution and directory creation belong in core/paths/, so
-        # write_partition_manifest does not mkdir its parent.
         path = tmp_path / "nested" / "subdir" / "partition.meta.json"
         manifest = load_partition_manifest(path, dataset_id="x", partition_seed=0)
         with pytest.raises(FileNotFoundError):
@@ -160,3 +267,82 @@ class TestManifestIO:
 
         with pytest.raises(ValueError, match="scope-a"):
             load_partition_manifest(path, dataset_id="scope-b", partition_seed=0)
+
+
+class TestSummarizePartitions:
+    """Per-task partition reporting derived in core (formerly inline in api/)."""
+
+    def test_counts_chunks_for_retrieval_records_for_others(self) -> None:
+        settings = _default_settings(calibration_fraction=0.5)
+        now = datetime.now(timezone.utc)
+        # One record: grounding cal, generation prod; 3 retrieval chunks, 2 cal.
+        entry = PartitionManifestEntry(
+            grounding_generation_calibration={Task.GROUNDING: True, Task.GENERATION: False},
+            retrieval_chunk_calibration={"a": True, "b": False, "c": True},
+            import_id="imp1",
+            calibration_fraction_at_import={t: 0.5 for t in Task},
+            assigned_at=now,
+        )
+
+        summary = summarize_partitions([entry], settings)
+
+        assert summary.calibration_count[Task.RETRIEVAL] == 2
+        assert summary.total_count[Task.RETRIEVAL] == 3
+        assert summary.production_count[Task.RETRIEVAL] == 1
+        assert summary.calibration_count[Task.GROUNDING] == 1
+        assert summary.total_count[Task.GROUNDING] == 1
+        assert summary.calibration_count[Task.GENERATION] == 0
+        assert summary.total_count[Task.GENERATION] == 1
+
+    def test_realised_fraction_zero_when_no_units(self) -> None:
+        settings = _default_settings(calibration_fraction=0.3)
+        summary = summarize_partitions([], settings)
+
+        assert all(summary.realised_fraction[t] == 0.0 for t in Task)
+        assert all(summary.total_count[t] == 0 for t in Task)
+
+    def test_realised_fraction_reflects_actual_split(self) -> None:
+        settings = _default_settings(calibration_fraction=0.5)
+        now = datetime.now(timezone.utc)
+        entries = [
+            PartitionManifestEntry(
+                grounding_generation_calibration={Task.GROUNDING: i < 1, Task.GENERATION: False},
+                retrieval_chunk_calibration={f"chunk-{i}": i < 1},
+                import_id="imp1",
+                calibration_fraction_at_import={t: 0.5 for t in Task},
+                assigned_at=now,
+            )
+            for i in range(4)
+        ]
+
+        summary = summarize_partitions(entries, settings)
+
+        # 1 of 4 grounding records calibration.
+        assert summary.realised_fraction[Task.GROUNDING] == pytest.approx(0.25)
+
+    def test_configured_fraction_resolves_per_task(self) -> None:
+        settings = AnnotationSettings(
+            calibration_fraction=0.1,
+            workspaces={
+                "retrieval": WorkspaceSettings(
+                    tasks={Task.RETRIEVAL: TaskSettings(calibration_fraction=0.4)},
+                ),
+                "grounding": WorkspaceSettings(tasks={Task.GROUNDING: TaskSettings()}),
+                "generation": WorkspaceSettings(tasks={Task.GENERATION: TaskSettings()}),
+            },
+        )
+
+        summary = summarize_partitions([], settings)
+
+        assert summary.configured_fraction[Task.RETRIEVAL] == 0.4  # task override
+        assert summary.configured_fraction[Task.GROUNDING] == 0.1  # deployment default
+        assert summary.configured_fraction[Task.GENERATION] == 0.1
+
+    def test_configured_fraction_zero_for_absent_task(self) -> None:
+        settings = AnnotationSettings(
+            workspaces={"retrieval": WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings()})},
+        )
+        summary = summarize_partitions([], settings)
+
+        assert summary.configured_fraction[Task.GROUNDING] == 0.0
+        assert summary.configured_fraction[Task.GENERATION] == 0.0
