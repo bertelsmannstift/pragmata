@@ -87,7 +87,7 @@ def _consolidate_training_rows(
 
     kept_positions: list[int] = []
 
-    for _, group in working.groupby(key_columns, sort=False, dropna=False):
+    for _, group in working.groupby(list(key_columns), sort=False, dropna=False):
         selected_position = group.index[0]
 
         if len(group) > 1:
