@@ -22,12 +22,15 @@ def build_tlmtc_frame(
         task: Eval task that determines the source text, text-pair, and label
             columns.
         mode: Target tlmtc workflow. Train mode also renames task label columns
-            to ``label_*`` columns. Predict mode only renames text columns.
+            to ``label_*`` columns. Retrieval train mode additionally maps
+            ``record_uuid`` to ``split_group`` so rows from the same retrieval
+            example stay in the same train/validation/test split. Predict mode
+            only renames text columns.
 
     Returns:
         Dataframe with all input columns preserved, a reset integer index, and
         task-specific columns renamed to tlmtc's ``text``, ``text_pair``, and
-        train-only ``label_*`` names.
+        train-only ``label_*``, and retrieval-train-only ``split_group`` names.
 
     Raises:
         ValueError: If ``mode`` is unsupported or the input already contains a
@@ -44,8 +47,10 @@ def build_tlmtc_frame(
 
     if mode == "train":
         source_label_columns = LABEL_COLUMNS_BY_TASK[task]
-        label_columns = tuple(f"label_{column}" for column in source_label_columns)
-        rename_map.update(dict(zip(source_label_columns, label_columns, strict=True)))
+        rename_map.update({column: f"label_{column}" for column in source_label_columns})
+
+        if task == Task.RETRIEVAL:
+            rename_map["record_uuid"] = "split_group"
 
     reserved_columns = sorted(set(rename_map.values()).intersection(frame.columns))
     if reserved_columns:
