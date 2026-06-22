@@ -7,6 +7,12 @@ import pandas as pd
 from pragmata.core.schemas.annotation_task import Task
 from pragmata.core.schemas.eval_input import LABEL_COLUMNS_BY_TASK, TEXT_COLUMNS_BY_TASK
 
+_DUPLICATE_KEY_COLUMNS_BY_TASK: dict[Task, tuple[str, ...]] = {
+    Task.RETRIEVAL: ("record_uuid", "chunk_id"),
+    Task.GROUNDING: ("record_uuid",),
+    Task.GENERATION: ("record_uuid",),
+}
+
 
 def build_tlmtc_frame(
     frame: pd.DataFrame,
@@ -39,6 +45,8 @@ def build_tlmtc_frame(
     if mode not in {"train", "predict"}:
         raise ValueError(f"Unsupported eval transform mode: {mode!r}.")
 
+    consolidated_frame = _consolidate_training_rows(frame, task=task) if mode == "train" else frame
+
     text_column, text_pair_column = TEXT_COLUMNS_BY_TASK[task]
     rename_map = {
         text_column: "text",
@@ -52,8 +60,49 @@ def build_tlmtc_frame(
         if task == Task.RETRIEVAL:
             rename_map["record_uuid"] = "split_group"
 
-    reserved_columns = sorted(set(rename_map.values()).intersection(frame.columns))
+    reserved_columns = sorted(set(rename_map.values()).intersection(consolidated_frame.columns))
     if reserved_columns:
         raise ValueError(f"Input contains reserved tlmtc columns that Pragmata derives internally: {reserved_columns}.")
 
-    return frame.reset_index(drop=True).rename(columns=rename_map)
+    return consolidated_frame.reset_index(drop=True).rename(columns=rename_map)
+
+
+def _consolidate_training_rows(
+    frame: pd.DataFrame,
+    *,
+    task: Task,
+) -> pd.DataFrame:
+    """Deduplicate repeated annotation units with deterministic consensus fallback."""
+    key_columns = _DUPLICATE_KEY_COLUMNS_BY_TASK[task]
+    label_columns = LABEL_COLUMNS_BY_TASK[task]
+
+    if any(column not in frame.columns for column in key_columns):
+        return frame
+
+    if not frame.duplicated(subset=key_columns, keep=False).any():
+        return frame
+
+    working = frame.reset_index(drop=True)
+    working_labels = working.loc[:, label_columns].astype("int64")
+
+    kept_positions: list[int] = []
+
+    for _, group in working.groupby(key_columns, sort=False, dropna=False):
+        selected_position = group.index[0]
+
+        if len(group) > 1:
+            labels = working_labels.loc[group.index]
+            positive_counts = labels.sum(axis=0)
+            majority_threshold = len(group) / 2
+
+            has_tie = positive_counts.eq(majority_threshold).any()
+            if not has_tie:
+                majority_vector = positive_counts.gt(majority_threshold).astype("int64")
+                matching_rows = labels.eq(majority_vector, axis=1).all(axis=1)
+
+                if matching_rows.any():
+                    selected_position = matching_rows.idxmax()
+
+        kept_positions.append(selected_position)
+
+    return frame.iloc[kept_positions].copy()
