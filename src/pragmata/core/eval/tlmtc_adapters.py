@@ -64,9 +64,7 @@ def train_evaluator(
     try:
         from tlmtc import train_tlmtc
     except ImportError as exc:
-        raise ImportError(
-            "tlmtc is required for evaluator training. Install pragmata with the 'eval' extra."
-        ) from exc
+        raise ImportError("tlmtc is required for evaluator training. Install pragmata with the 'eval' extra.") from exc
 
     train_args: dict[str, Any] = {
         "raw_csv": raw_csv,

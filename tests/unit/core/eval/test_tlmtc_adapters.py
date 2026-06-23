@@ -11,12 +11,7 @@ import pytest
 
 from pragmata.core.eval.tlmtc_adapters import train_evaluator
 
-
-_DEDICATED_TRAIN_EVALUATOR_ARGS = [
-    name
-    for name in signature(train_evaluator).parameters
-    if name != "train_kwargs"
-]
+_DEDICATED_TRAIN_EVALUATOR_ARGS = [name for name in signature(train_evaluator).parameters if name != "train_kwargs"]
 
 
 def _train_evaluator_kwargs(
@@ -83,11 +78,7 @@ def test_train_evaluator_rejects_reserved_train_kwargs(
 ) -> None:
     """train_kwargs must not override settings managed by dedicated arguments."""
     with pytest.raises(ValueError, match=reserved_key):
-        train_evaluator(
-            **_train_evaluator_kwargs(
-                train_kwargs={reserved_key: "override"}
-            )
-        )
+        train_evaluator(**_train_evaluator_kwargs(train_kwargs={reserved_key: "override"}))
 
 
 def test_train_evaluator_imports_tlmtc_lazily_and_reports_missing_extra(
