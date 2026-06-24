@@ -5,8 +5,8 @@
 Builds the eval scoring stage 
 - turns per-row labels (either manually annotated or evaluator-predicted) into corpus metrics defined in the [metrics taxonomy](../methodology/metrics-taxonomy.md) 
 - attach a confidence interval to every reported metric
-- expose it via a API and a new `pragmata eval {__}` CLI, 
-- reuses the existing IAA stats machinery. 
+- exposes via API + `pragmata eval {__}` CLI, 
+- reuses/generalises existing IAA stats machinery
 
 ## Background - current state
 
@@ -19,7 +19,7 @@ Builds the eval scoring stage
  [tlmtc train / predict  (EXTERNAL, ADR-0002)]              → per-row predicted labels
    ▼
  ╔════════════════════════════════════════╗
- ║  SCORING  (per-row labels → metrics)   ║   MISSING - this issue
+ ║  SCORING  (per-row labels -> metrics)  ║   MISSING - this issue
  ╚════════════════════════════════════════╝
    ▼
  *_scores.json  (core/schemas/eval_output.py)           NEEDS UPDATING CUFRENTLY:
@@ -44,7 +44,7 @@ Builds the eval scoring stage
 - evaluator label noise: cross-encoder is imperfect; propagating its classification error is only relevant on the predict-from-model path (human-label scoring has none) and is a materially larger design/owned by tlmtc? Deferred.
 - run-to-run comparison / significance: ee emit per-run CIs only; comparing two runs rigorously needs a *paired* difference-CI (overlap of two independent CIs is **not** a
   significance test). Downstream / out of scope.
-- bias-corrected-&-accelerated intervals: ercentile for v1; BCa is the upgrade only if coverage proves poor.
+- bias-corrected-&-accelerated intervals: we chose percentile; BCa is the upgrade only if coverage proves poor.
 
 ## Design
 
@@ -79,7 +79,8 @@ Flat utility module (matches `core/atomic_io.py`, `csv_io.py`, `types.py`).
 ```python
 def wilson_interval(successes: int, n: int, *, ci: float = 0.95) -> tuple[float, float]:
     """Wilson score interval for a binomial proportion. Returns (lower, upper)."""
-
+```
+```python
 def percentile_bootstrap(
     n_units: int,
     statistic: Callable[[NDArray[np.intp]], float],
@@ -92,8 +93,7 @@ def percentile_bootstrap(
 
 ### Output contract - `core/schemas/eval_output.py`
 
-Introduce a nested per-metric model (JSON artifact; named fields
-kept because the metric set is a fixed taxonomy):
+Introduce nested per-metric model (JSON):
 
 ```python
 class MetricScore(BaseModel):
@@ -102,10 +102,10 @@ class MetricScore(BaseModel):
     ci_lower: Rate
     ci_upper: Rate
     method: Literal["wilson", "bootstrap"]
-    n: PositiveInt            # effective denominator (queries; cited subset for conditional)
+    n: PositiveInt            # effective denominator (queries)
 ```
 
-Each metric field changes from `Rate` -> `MetricScore` 
+= each metric field changes from `Rate` -> `MetricScore` 
 
 ### Compute + orchestration
 
@@ -131,8 +131,8 @@ the i/o wrapper:
 def score_eval(
     *, base_dir: str | Path | Unset = UNSET,
     score_id: str | None = None,
-    labeled_input_path: str | Path | None = None,   
-    prediction_run_id: str | None = None,         
+    labeled_input_path: str | Path | None = None,   # Needed?
+    prediction_run_id: str | None = None,    # Needed?  
     task: Task,
     top_k: int | None = None,
     n_resamples: int = 1000, ci: float = 0.95, seed: int | None = None,
@@ -147,27 +147,28 @@ Reuses `EvalScoreSettings` (`settings/eval_settings.py`), `resolve_eval_score_pa
 
 ### CLI - `cli/commands/eval.py` (new) + wire into `cli/app.py`
 
-`eval_app = typer.Typer()`; `app.add_typer(eval_app, name="eval")` (mirrors `annotation`).
+- typer app (same as annotatiojn & querygen)
+- subcommand `score` ??
 
 ```
 pragmata eval score --task retrieval \
-  [--labeled-input-path P | --prediction-run-id ID] \
-  [--score-id ID] [--base-dir DIR] [--top-k K] \
+  [--import-run-id ID ???] [--export-run-id ID] \
+  [--base-dir DIR] \
   [--n-resamples 1000] [--ci 0.95] [--seed N] [--config FILE]
 ```
 
+- run-id here would be the annotation's export_id = input selector. Would need to considr more how this takes human-labeled vs predicted-labeled (see the above comments in the api block)
+- score/export-id would be where the results are written  = this runs handle... could remove?
+
 ### TODO
 
-Input-contract dependency (decision needed):
-
-retrieval scoring contract currently lacks the columns the `@k` metrics need. `RETRIEVAL_*_SCHEMA` (`eval_input.py`) is `(query, chunk, labels)`; `strict=False` = lets extras pass but nothing is required/ordered. To score retrieval we need, per row:
-
-- **`record_uuid`** - group chunks into queries (the per-query unit).
-- **`rank`** (1..K) - required by NDCG@K and MRR@K and any top-K truncation.
-- **`chunk_id`** - stable identity within a query (already a dup-key in `transforms.py`).
-
-So 
-- extend the retrieval scoring schema to 
+- decide the above api / cli shapes
+- input-contract dependency (decision(s) needed):
+  - retrieval scoring contract currently lacks the columns the `@k` metrics need. `RETRIEVAL_*_SCHEMA` (`eval_input.py`) is `(query, chunk, labels)`; `strict=False` = lets extras pass but nothing is required/ordered. To score retrieval we need, per row:
+    - `record_uuid` - group chunks into queries (the per-query unit).
+    - `rank` (1...K) - required by NDCG@K and MRR@K and any top-K truncation.
+    - `chunk_id` - stable identity within a query (already a dup-key in `transforms.py`).
+- So extend the retrieval scoring schema to 
   1. require `record_uuid`, `rank`, `chunk_id` (w/o `rank`,NDCG/MRR cannot be computed)
   2.  define how `K` is set (explicit `--top-k` vs inferred per-query chunkcount)???.
 - grounding/generation need `record_uuid` 
