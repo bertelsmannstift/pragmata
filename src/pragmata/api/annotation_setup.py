@@ -1,9 +1,9 @@
 """Argilla annotation setup API — thin orchestration over core/ implementation."""
 
 import logging
-import os
 from pathlib import Path
 
+from pragmata.api._env import annotation_env_layer
 from pragmata.api._error_log import error_log
 from pragmata.core.annotation.client import resolve_argilla_client
 from pragmata.core.annotation.setup import SetupResult, provision_users, setup_workspaces, teardown_resources
@@ -53,7 +53,7 @@ def setup(
     """
     settings = AnnotationSettings.resolve(
         config=load_config_file(config_path) if isinstance(config_path, (str, Path)) else None,
-        env={"argilla": {"api_url": os.environ.get("ARGILLA_API_URL")}} if os.environ.get("ARGILLA_API_URL") else None,
+        env=annotation_env_layer(),
         overrides={
             "argilla": {"api_url": api_url},
             "base_dir": base_dir,
@@ -102,7 +102,7 @@ def teardown(
     """
     settings = AnnotationSettings.resolve(
         config=load_config_file(config_path) if isinstance(config_path, (str, Path)) else None,
-        env={"argilla": {"api_url": os.environ.get("ARGILLA_API_URL")}} if os.environ.get("ARGILLA_API_URL") else None,
+        env=annotation_env_layer(),
         overrides={
             "argilla": {"api_url": api_url},
             "dataset_id": dataset_id,

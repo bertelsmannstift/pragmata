@@ -143,7 +143,7 @@ Each tool has a settings module in `core/settings/` containing:
 - **Semantically scoped settings classes** for logical groupings (e.g. `LlmSettings` for model config)
 - **A `RunSettings` class** that bundles the above plus run-level fields and inherits from `ResolvableSettings`
 
-A shared base in `core/settings/` provides deterministic precedence resolution. Each tool's settings bundle inherits this — no reimplementation per tool. The API entrypoint resolves settings and passes them to the implementation layer.
+A shared base in `core/settings/` provides deterministic precedence resolution. Each tool's settings bundle inherits this — no reimplementation per tool. The API entrypoint resolves settings and passes them to the implementation layer. Where a tool reads multiple config env vars, those reads are centralised in a private `_env.py` helper within `pragmata.api` (e.g. `annotation_env_layer()`) rather than duplicated inline across entry points.
 
 
 ---
