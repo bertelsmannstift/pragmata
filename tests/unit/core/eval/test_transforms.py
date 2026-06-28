@@ -293,6 +293,39 @@ def test_build_tlmtc_frame_consolidates_training_duplicates_by_earliest_fallback
     pd.testing.assert_frame_equal(transformed, expected)
 
 
+def test_build_tlmtc_frame_consolidates_training_duplicates_by_per_label_majority(
+    generation_train_frame: FrameFactory,
+) -> None:
+    frame = generation_train_frame(
+        query=["query", "query", "query", "query"],
+        answer=["answer", "answer", "answer", "answer"],
+        record_uuid=["record-1", "record-1", "record-1", "record-1"],
+        proper_action=[0, 1, 1, 1],
+        response_on_topic=[1, 1, 1, 1],
+        helpful=[0, 1, 0, 1],
+        incomplete=[0, 0, 1, 1],
+        unsafe_content=[1, 0, 0, 0],
+        annotator_id=["annotator-a", "annotator-b", "annotator-c", "annotator-d"],
+    )
+
+    transformed = build_tlmtc_frame(frame, task=Task.GENERATION, mode="train")
+
+    expected = pd.DataFrame(
+        {
+            "text": ["query"],
+            "text_pair": ["answer"],
+            "record_uuid": ["record-1"],
+            "label_proper_action": [1],
+            "label_response_on_topic": [1],
+            "label_helpful": [1],
+            "label_incomplete": [0],
+            "label_unsafe_content": [0],
+            "annotator_id": ["annotator-b"],
+        }
+    )
+    pd.testing.assert_frame_equal(transformed, expected)
+
+
 def test_build_tlmtc_frame_consolidates_retrieval_duplicates_by_record_and_chunk(
     retrieval_train_frame: FrameFactory,
 ) -> None:
