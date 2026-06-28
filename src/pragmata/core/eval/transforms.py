@@ -1,11 +1,14 @@
 """Transforms from pragmata eval frames to tlmtc-compatible frames."""
 
+import logging
 from typing import Literal
 
 import pandas as pd
 
 from pragmata.core.schemas.annotation_task import Task
 from pragmata.core.schemas.eval_input import LABEL_COLUMNS_BY_TASK, TEXT_COLUMNS_BY_TASK
+
+logger = logging.getLogger(__name__)
 
 _DUPLICATE_KEY_COLUMNS_BY_TASK: dict[Task, tuple[str, ...]] = {
     Task.RETRIEVAL: ("record_uuid", "chunk_id"),
@@ -145,5 +148,16 @@ def _consolidate_training_rows(
 
     for target_position, label_override in label_overrides_by_target.items():
         consolidated.loc[target_position, label_override.index] = label_override
+
+    logger.info(
+        "Consolidated duplicate eval training rows for %s: input_rows=%d output_rows=%d "
+        "collapsed_rows=%d duplicate_units=%d key_columns=%s",
+        task.value,
+        len(frame),
+        len(consolidated),
+        len(frame) - len(consolidated),
+        duplicate_groups.ngroups,
+        key_columns,
+    )
 
     return consolidated.reset_index(drop=True)
