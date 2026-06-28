@@ -72,37 +72,78 @@ def _consolidate_training_rows(
     *,
     task: Task,
 ) -> pd.DataFrame:
-    """Deduplicate repeated annotation units with deterministic consensus fallback."""
+    """Deduplicate repeated annotation units with per-label majority consensus.
+
+    For duplicate rows, labels with a strict majority are consolidated independently.
+    Tied labels fall back to the selected source row. When an observed row matches
+    all strict-majority labels, that row is selected to preserve non-label metadata
+    deterministically.
+    """
     key_columns = _DUPLICATE_KEY_COLUMNS_BY_TASK[task]
     label_columns = LABEL_COLUMNS_BY_TASK[task]
 
     if any(column not in frame.columns for column in key_columns):
         return frame
 
-    if not frame.duplicated(subset=key_columns, keep=False).any():
+    duplicate_mask = frame.duplicated(subset=key_columns, keep=False)
+    if not duplicate_mask.any():
         return frame
 
     working = frame.reset_index(drop=True)
+    duplicate_mask = working.duplicated(subset=key_columns, keep=False)
+    subsequent_duplicate_mask = working.duplicated(subset=key_columns, keep="first")
     working_labels = working.loc[:, label_columns].astype("int64")
 
-    kept_positions: list[int] = []
+    consolidated = working.loc[~subsequent_duplicate_mask].copy()
 
-    for _, group in working.groupby(list(key_columns), sort=False, dropna=False):
-        selected_position = group.index[0]
+    replacement_sources_by_target: dict[int, int] = {}
+    label_overrides_by_target: dict[int, pd.Series] = {}
 
-        if len(group) > 1:
-            labels = working_labels.loc[group.index]
-            positive_counts = labels.sum(axis=0)
-            majority_threshold = len(group) / 2
+    duplicate_groups = working.loc[duplicate_mask].groupby(
+        list(key_columns),
+        sort=False,
+        dropna=False,
+    )
 
-            has_tie = positive_counts.eq(majority_threshold).any()
-            if not has_tie:
-                majority_vector = positive_counts.gt(majority_threshold).astype("int64")
-                matching_rows = labels.eq(majority_vector, axis=1).all(axis=1)
+    for _, group in duplicate_groups:
+        target_position = group.index[0]
+        selected_position = target_position
 
-                if matching_rows.any():
-                    selected_position = matching_rows.idxmax()
+        labels = working_labels.loc[group.index]
+        positive_counts = labels.sum(axis=0)
+        majority_threshold = len(group) / 2
 
-        kept_positions.append(selected_position)
+        strict_majority_labels = positive_counts.ne(majority_threshold)
+        majority_vector = positive_counts.gt(majority_threshold).astype("int64")
 
-    return frame.iloc[kept_positions].copy()
+        if strict_majority_labels.any():
+            matching_rows = (
+                labels.loc[:, strict_majority_labels]
+                .eq(
+                    majority_vector.loc[strict_majority_labels],
+                    axis=1,
+                )
+                .all(axis=1)
+            )
+
+            if matching_rows.any():
+                selected_position = matching_rows.idxmax()
+
+            label_overrides_by_target[target_position] = majority_vector.loc[strict_majority_labels]
+
+        if selected_position != target_position:
+            replacement_sources_by_target[target_position] = selected_position
+
+    if replacement_sources_by_target:
+        target_positions = list(replacement_sources_by_target)
+        source_positions = list(replacement_sources_by_target.values())
+
+        consolidated.loc[target_positions, :] = working.loc[
+            source_positions,
+            consolidated.columns,
+        ].to_numpy()
+
+    for target_position, label_override in label_overrides_by_target.items():
+        consolidated.loc[target_position, label_override.index] = label_override
+
+    return consolidated.reset_index(drop=True)
