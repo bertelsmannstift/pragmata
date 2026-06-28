@@ -1,5 +1,6 @@
 """Tests for eval dataframe transforms."""
 
+import logging
 from collections.abc import Callable
 
 import pandas as pd
@@ -324,6 +325,30 @@ def test_build_tlmtc_frame_consolidates_training_duplicates_by_per_label_majorit
         }
     )
     pd.testing.assert_frame_equal(transformed, expected)
+
+
+def test_build_tlmtc_frame_logs_training_duplicate_consolidation(
+    generation_train_frame: FrameFactory,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    frame = generation_train_frame(
+        query=["query", "query", "query", "query"],
+        answer=["answer", "answer", "answer", "answer"],
+        record_uuid=["record-1", "record-1", "record-1", "record-1"],
+        proper_action=[0, 1, 1, 1],
+        response_on_topic=[1, 1, 1, 1],
+        helpful=[0, 1, 0, 1],
+        incomplete=[0, 0, 1, 1],
+        unsafe_content=[1, 0, 0, 0],
+    )
+
+    with caplog.at_level(logging.INFO, logger="pragmata.core.eval.transforms"):
+        build_tlmtc_frame(frame, task=Task.GENERATION, mode="train")
+
+    assert caplog.messages == [
+        "Consolidated duplicate eval training rows for generation: input_rows=4 output_rows=1 "
+        "collapsed_rows=3 duplicate_units=1 key_columns=('record_uuid',)"
+    ]
 
 
 def test_build_tlmtc_frame_consolidates_retrieval_duplicates_by_record_and_chunk(
