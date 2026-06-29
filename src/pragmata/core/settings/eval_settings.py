@@ -63,7 +63,7 @@ class EvalTrainSettings(ResolveSettings):
     train_kwargs: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
-    def default_target_name(
+    def _default_target_name(
         self,
     ) -> Self:
         """Fill the task-specific target name when the caller omits one."""
