@@ -19,7 +19,7 @@ def _train_evaluator_kwargs(
     train_kwargs: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
-        "raw_csv": Path("train.csv"),
+        "labeled_data": Path("train.csv"),
         "work_dir": Path("eval"),
         "target_name": "Retrieval evaluation",
         "checkpoint": "EuroBERT/EuroBERT-610m",
@@ -58,7 +58,7 @@ def test_train_evaluator_merges_curated_args_and_train_kwargs(
 
     assert result is expected_result
     assert captured_kwargs == {
-        "raw_csv": Path("train.csv"),
+        "labeled_data": Path("train.csv"),
         "work_dir": Path("eval"),
         "target_name": "Retrieval evaluation",
         "checkpoint": "EuroBERT/EuroBERT-610m",
@@ -69,6 +69,36 @@ def test_train_evaluator_merges_curated_args_and_train_kwargs(
         "run_id": "custom-run",
         "batch_size": 8,
         "verbosity": "quiet",
+    }
+
+
+def test_train_evaluator_forwards_dedicated_args_when_train_kwargs_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """train_evaluator forwards exactly the dedicated args without passthrough kwargs."""
+    captured_kwargs: dict[str, Any] = {}
+    fake_tlmtc = ModuleType("tlmtc")
+    expected_result = object()
+
+    def train_tlmtc(**kwargs: Any) -> object:
+        captured_kwargs.update(kwargs)
+        return expected_result
+
+    setattr(fake_tlmtc, "train_tlmtc", train_tlmtc)
+    monkeypatch.setitem(sys.modules, "tlmtc", fake_tlmtc)
+
+    result = train_evaluator(**_train_evaluator_kwargs(train_kwargs={}))
+
+    assert result is expected_result
+    assert captured_kwargs == {
+        "labeled_data": Path("train.csv"),
+        "work_dir": Path("eval"),
+        "target_name": "Retrieval evaluation",
+        "checkpoint": "EuroBERT/EuroBERT-610m",
+        "proxy_checkpoint": "EuroBERT/EuroBERT-210m",
+        "scale_learning_rate": True,
+        "sequence_length": 1024,
+        "trust_remote_code": True,
     }
 
 

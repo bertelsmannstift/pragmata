@@ -3,9 +3,12 @@
 from pathlib import Path
 from typing import Any
 
+import pandas as pd
+
+# Keep this in sync with train_evaluator's dedicated arguments.
 _RESERVED_TRAIN_KWARGS = frozenset(
     {
-        "raw_csv",
+        "labeled_data",
         "work_dir",
         "target_name",
         "checkpoint",
@@ -19,7 +22,7 @@ _RESERVED_TRAIN_KWARGS = frozenset(
 
 def train_evaluator(
     *,
-    raw_csv: Path,
+    labeled_data: str | Path | pd.DataFrame,
     work_dir: Path,
     target_name: str,
     checkpoint: str,
@@ -32,7 +35,9 @@ def train_evaluator(
     """Train a pragmata evaluator model through tlmtc.
 
     Args:
-        raw_csv: tlmtc-compatible labeled training CSV.
+        labeled_data: Path to labeled multi-label training data, or an in-memory
+            DataFrame. The data must contain a ``text`` column, at least two
+            binary ``label_*`` columns, and optionally a ``text_pair`` column.
         work_dir: Base eval work directory passed through to tlmtc.
         target_name: Display name used in tlmtc logs and reports.
         checkpoint: Target checkpoint used for final fine-tuning.
@@ -67,7 +72,7 @@ def train_evaluator(
         raise ImportError("tlmtc is required for evaluator training. Install pragmata with the 'eval' extra.") from exc
 
     train_args: dict[str, Any] = {
-        "raw_csv": raw_csv,
+        "labeled_data": labeled_data,
         "work_dir": work_dir,
         "target_name": target_name,
         "checkpoint": checkpoint,
