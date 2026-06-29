@@ -43,7 +43,7 @@ def train_evaluator(
         trust_remote_code: Whether Hugging Face loading may execute custom
             checkpoint code.
         train_kwargs: Additional tlmtc-owned keyword arguments. Keys managed by
-            pragmata's dedicated arguments are rejected.
+            pragmata are rejected.
 
     Returns:
         The result returned by ``tlmtc.train_tlmtc``.
@@ -57,7 +57,7 @@ def train_evaluator(
     if overlapping_keys:
         overlapping = ", ".join(sorted(overlapping_keys))
         raise ValueError(
-            f"train_kwargs must not override core tlmtc train settings: {overlapping}. "
+            f"train_kwargs must not override pragmata-managed train settings: {overlapping}. "
             "Pass these via dedicated arguments instead."
         )
 
