@@ -67,7 +67,7 @@ def train_evaluator(
     """
     settings = EvalTrainSettings.resolve(
         config=load_config_file(config_path) if isinstance(config_path, (str, Path)) else None,
-        env=None, # Environment-derived settings are not wired for train_evaluator yet.
+        env=None,  # Environment-derived settings are not wired for train_evaluator yet.
         overrides={
             "base_dir": base_dir,
             "labeled_data_path": labeled_data_path,
