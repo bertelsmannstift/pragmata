@@ -64,7 +64,7 @@ def train_evaluator(
     """
     settings = EvalTrainSettings.resolve(
         config=load_config_file(config_path) if isinstance(config_path, (str, Path)) else None,
-        env=None, # Environment-derived settings are not wired for train_evaluator yet.
+        env=None,  # Environment-derived settings are not wired for train_evaluator yet.
         overrides={
             "base_dir": base_dir,
             "labeled_data_path": labeled_data_path,
@@ -79,13 +79,12 @@ def train_evaluator(
             "train_kwargs": train_kwargs,
         },
     )
-    workspace = WorkspacePaths.from_base_dir(settings.base_dir)
     train_paths = resolve_eval_train_paths(
-        workspace=workspace,
+        workspace=WorkspacePaths.from_base_dir(settings.base_dir),
         task=settings.task,
         labeled_data_path=settings.labeled_data_path,
         export_id=settings.export_id,
-    )
+    ).ensure_dirs()
 
     eval_frame = import_eval_train_frame(
         path=train_paths.training_input_csv,
@@ -100,7 +99,7 @@ def train_evaluator(
     assert settings.target_name is not None
     return run_tlmtc_train(
         labeled_data=tlmtc_frame,
-        work_dir=workspace.tool_root("eval"),
+        work_dir=train_paths.tool_root,
         target_name=settings.target_name,
         checkpoint=settings.checkpoint,
         proxy_checkpoint=settings.proxy_checkpoint,
