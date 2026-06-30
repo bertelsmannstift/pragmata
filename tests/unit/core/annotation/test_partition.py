@@ -173,6 +173,35 @@ class TestAssignPartitions:
         assert entry.calibration_fraction_at_import[Task.RETRIEVAL] == 0.1
         assert entry.calibration_fraction_at_import[Task.GROUNDING] == 0.5
 
+    def test_calibration_fraction_resolves_per_task(self, empty_manifest: PartitionManifest) -> None:
+        """PartitionResult.calibration_fraction resolves task → workspace → deployment."""
+        settings = AnnotationSettings(
+            calibration_fraction=0.1,
+            workspaces={
+                "retrieval": WorkspaceSettings(
+                    tasks={Task.RETRIEVAL: TaskSettings(calibration_fraction=0.4)},
+                ),
+                "grounding": WorkspaceSettings(tasks={Task.GROUNDING: TaskSettings()}),
+                "generation": WorkspaceSettings(tasks={Task.GENERATION: TaskSettings()}),
+            },
+        )
+
+        partition = assign_partitions([], manifest=empty_manifest, settings=settings, import_id="imp1")
+
+        assert partition.calibration_fraction[Task.RETRIEVAL] == 0.4  # task override
+        assert partition.calibration_fraction[Task.GROUNDING] == 0.1  # deployment default
+        assert partition.calibration_fraction[Task.GENERATION] == 0.1
+
+    def test_calibration_fraction_zero_for_absent_task(self, empty_manifest: PartitionManifest) -> None:
+        """Tasks absent from the topology resolve to 0.0."""
+        settings = AnnotationSettings(
+            workspaces={"retrieval": WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings()})},
+        )
+        partition = assign_partitions([], manifest=empty_manifest, settings=settings, import_id="imp1")
+
+        assert partition.calibration_fraction[Task.GROUNDING] == 0.0
+        assert partition.calibration_fraction[Task.GENERATION] == 0.0
+
     def test_reimport_same_topology_leaves_entry_untouched(self, empty_manifest: PartitionManifest) -> None:
         """No backfill when the topology is unchanged - existing entry is reused as-is."""
         settings = _default_settings(calibration_fraction=0.5)
@@ -275,7 +304,7 @@ class TestSummarizePartitions:
     """Per-task partition reporting derived in core (formerly inline in api/)."""
 
     def test_counts_chunks_for_retrieval_records_for_others(self) -> None:
-        settings = _default_settings(calibration_fraction=0.5)
+        configured_fraction = {t: 0.5 for t in Task}
         now = datetime.now(timezone.utc)
         # One record: grounding cal, generation prod; 3 retrieval chunks, 2 cal.
         entry = PartitionManifestEntry(
@@ -286,7 +315,7 @@ class TestSummarizePartitions:
             assigned_at=now,
         )
 
-        summary = summarize_partitions([entry], settings)
+        summary = summarize_partitions([entry], configured_fraction)
 
         assert summary.calibration_count[Task.RETRIEVAL] == 2
         assert summary.total_count[Task.RETRIEVAL] == 3
@@ -297,14 +326,13 @@ class TestSummarizePartitions:
         assert summary.total_count[Task.GENERATION] == 1
 
     def test_realised_fraction_zero_when_no_units(self) -> None:
-        settings = _default_settings(calibration_fraction=0.3)
-        summary = summarize_partitions([], settings)
+        summary = summarize_partitions([], {t: 0.3 for t in Task})
 
         assert all(summary.realised_fraction[t] == 0.0 for t in Task)
         assert all(summary.total_count[t] == 0 for t in Task)
 
     def test_realised_fraction_reflects_actual_split(self) -> None:
-        settings = _default_settings(calibration_fraction=0.5)
+        configured_fraction = {t: 0.5 for t in Task}
         now = datetime.now(timezone.utc)
         entries = [
             PartitionManifestEntry(
@@ -317,34 +345,14 @@ class TestSummarizePartitions:
             for i in range(4)
         ]
 
-        summary = summarize_partitions(entries, settings)
+        summary = summarize_partitions(entries, configured_fraction)
 
         # 1 of 4 grounding records calibration.
         assert summary.realised_fraction[Task.GROUNDING] == pytest.approx(0.25)
 
-    def test_configured_fraction_resolves_per_task(self) -> None:
-        settings = AnnotationSettings(
-            calibration_fraction=0.1,
-            workspaces={
-                "retrieval": WorkspaceSettings(
-                    tasks={Task.RETRIEVAL: TaskSettings(calibration_fraction=0.4)},
-                ),
-                "grounding": WorkspaceSettings(tasks={Task.GROUNDING: TaskSettings()}),
-                "generation": WorkspaceSettings(tasks={Task.GENERATION: TaskSettings()}),
-            },
-        )
+    def test_configured_fraction_carried_through_unchanged(self) -> None:
+        configured_fraction = {Task.RETRIEVAL: 0.4, Task.GROUNDING: 0.1, Task.GENERATION: 0.1}
 
-        summary = summarize_partitions([], settings)
+        summary = summarize_partitions([], configured_fraction)
 
-        assert summary.configured_fraction[Task.RETRIEVAL] == 0.4  # task override
-        assert summary.configured_fraction[Task.GROUNDING] == 0.1  # deployment default
-        assert summary.configured_fraction[Task.GENERATION] == 0.1
-
-    def test_configured_fraction_zero_for_absent_task(self) -> None:
-        settings = AnnotationSettings(
-            workspaces={"retrieval": WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings()})},
-        )
-        summary = summarize_partitions([], settings)
-
-        assert summary.configured_fraction[Task.GROUNDING] == 0.0
-        assert summary.configured_fraction[Task.GENERATION] == 0.0
+        assert summary.configured_fraction == configured_fraction

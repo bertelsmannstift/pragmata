@@ -443,24 +443,6 @@ def count_units_per_task(entries: Iterable[PartitionManifestEntry]) -> TaskUnitC
     return TaskUnitCounts(calibration=calibration, total=total)
 
 
-def _configured_fraction_per_task(settings: AnnotationSettings) -> dict[Task, float]:
-    """Resolve per-task ``calibration_fraction`` for reporting.
-
-    Picks the first workspace that owns each task. Returns ``0.0`` for any task
-    missing from the workspaces topology, matching the assignment behaviour for
-    absent tasks.
-    """
-    fraction: dict[Task, float] = {}
-    for ws_name, ws in settings.workspaces.items():
-        for task in ws.tasks:
-            if task in fraction:
-                continue
-            fraction[task] = settings.resolved_task(ws_name, task).calibration_fraction
-    for task in Task:
-        fraction.setdefault(task, 0.0)
-    return fraction
-
-
 @dataclass(frozen=True)
 class PartitionSummary:
     """Per-task partition reporting derived from a set of manifest entries.
@@ -488,13 +470,16 @@ class PartitionSummary:
 
 def summarize_partitions(
     entries: Iterable[PartitionManifestEntry],
-    settings: AnnotationSettings,
+    configured_fraction: dict[Task, float],
 ) -> PartitionSummary:
-    """Compute per-task partition reporting from manifest entries + settings.
+    """Compute per-task partition reporting from manifest entries.
 
     Counts calibration vs total annotation items per task in a single pass
-    (retrieval counts chunks; grounding/generation count records), derives the
-    realised calibration fraction, and resolves the configured fraction per task.
+    (retrieval counts chunks; grounding/generation count records) and derives
+    the realised calibration fraction. ``configured_fraction`` is the per-task
+    fraction already resolved by ``assign_partitions`` (see
+    ``PartitionResult.calibration_fraction``); it is carried through unchanged
+    rather than re-resolved from settings, keeping a single source of truth.
     """
     counts = count_units_per_task(entries)
     calibration_count = counts.calibration
@@ -503,7 +488,6 @@ def summarize_partitions(
     realised_fraction = {
         task: (calibration_count[task] / total_count[task]) if total_count[task] else 0.0 for task in Task
     }
-    configured_fraction = _configured_fraction_per_task(settings)
     return PartitionSummary(
         calibration_count=calibration_count,
         total_count=total_count,

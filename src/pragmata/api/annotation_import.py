@@ -195,7 +195,7 @@ def import_records(
             import_id=import_id,
         )
 
-        summary = summarize_partitions(partition.assignments.values(), settings)
+        summary = summarize_partitions(partition.assignments.values(), partition.calibration_fraction)
 
         # Manifest is written only after fan-out succeeds. On failure, the
         # in-memory assignments are dropped; a retry with the same corpus + seed
