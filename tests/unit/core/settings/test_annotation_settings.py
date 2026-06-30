@@ -4,6 +4,7 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
+from pragmata.core.annotation.logical_constraints import CONSTRAINT_BY_ID
 from pragmata.core.schemas.annotation_task import Task
 from pragmata.core.settings.annotation_settings import (
     AnnotationSettings,
@@ -482,6 +483,46 @@ class TestYamlRoundtrip:
         )
         s = AnnotationSettings(**data)
         assert s.resolved_task("r", Task.RETRIEVAL).production_min_submitted == 4
+
+
+class TestConstraintSeverityDefaults:
+    """Out-of-the-box severity defaults live on ``AnnotationSettings.constraint_severity``."""
+
+    def test_default_factory_covers_all_known_constraint_ids(self):
+        s = AnnotationSettings()
+        assert set(s.constraint_severity) == set(CONSTRAINT_BY_ID)
+
+    def test_default_for_block_constraint(self):
+        s = AnnotationSettings()
+        assert s.constraint_severity["evidence_requires_relevance"] == "block"
+
+    def test_default_for_warn_constraint(self):
+        s = AnnotationSettings()
+        assert s.constraint_severity["evidence_excludes_misleading"] == "warn"
+
+    def test_user_subset_merges_with_defaults(self):
+        s = AnnotationSettings(constraint_severity={"evidence_requires_relevance": "warn"})
+        # user override applied
+        assert s.constraint_severity["evidence_requires_relevance"] == "warn"
+        # other defaults preserved
+        assert s.constraint_severity["evidence_excludes_misleading"] == "warn"
+        assert s.constraint_severity["contradiction_requires_unsupported"] == "block"
+        assert s.constraint_severity["fabricated_requires_cited"] == "block"
+
+    def test_unknown_constraint_id_rejected(self):
+        with pytest.raises(ValidationError, match=r"deployment constraint_severity references unknown constraint_id"):
+            AnnotationSettings(constraint_severity={"nonexistent_constraint": "warn"})
+
+    def test_yaml_subset_override(self):
+        data = yaml.safe_load(
+            """
+            constraint_severity:
+              evidence_requires_relevance: warn
+            """
+        )
+        s = AnnotationSettings(**data)
+        assert s.constraint_severity["evidence_requires_relevance"] == "warn"
+        assert s.constraint_severity["evidence_excludes_misleading"] == "warn"
 
 
 class TestArgillaSettings:

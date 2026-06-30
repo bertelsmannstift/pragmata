@@ -7,8 +7,11 @@ the export code.
 """
 
 from dataclasses import dataclass
+from typing import Literal
 
 from pragmata.core.schemas.annotation_task import Task
+
+Severity = Literal["warn", "block"]
 
 
 @dataclass(frozen=True)
@@ -81,3 +84,7 @@ LOGICAL_CONSTRAINTS: dict[Task, list[LogicalConstraint]] = {
     ],
     Task.GENERATION: [],
 }
+
+# By-id lookup over the flattened catalogue, used by the settings layer to
+# validate that override maps reference known constraint_ids.
+CONSTRAINT_BY_ID: dict[str, LogicalConstraint] = {c.constraint_id: c for cs in LOGICAL_CONSTRAINTS.values() for c in cs}
