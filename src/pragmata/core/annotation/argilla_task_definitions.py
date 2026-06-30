@@ -18,6 +18,7 @@ dataset creation time.
 """
 
 import json
+from collections.abc import Callable
 from importlib.resources import files
 from string import Template
 from typing import Any
@@ -319,7 +320,7 @@ def build_task_settings(settings: AnnotationSettings, locale: Locale = "en") -> 
     # Build only for tasks present in the workspaces topology: the constraints
     # widget renders against the task's workspace, and there's no consumer for
     # the unused rg.Settings.
-    task_builders: dict[Task, callable] = {
+    task_builders: dict[Task, Callable[[], rg.Settings]] = {
         Task.RETRIEVAL: lambda: assemble(
             Task.RETRIEVAL,
             content_fields=[
