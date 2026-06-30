@@ -16,13 +16,23 @@ class EvalTrainPaths:
     """Resolved labeled input path and source provenance for eval train.
 
     Attributes:
+        tool_root: Root directory for eval artifacts. Passed to tlmtc as
+            ``work_dir`` for training.
         training_input_csv: Concrete labeled CSV path consumed by eval train.
         annotation_export_id: Resolved annotation export ID when the input comes
             from the annotation tool. ``None`` for direct user-provided CSV input.
     """
 
+    tool_root: Path
     training_input_csv: Path
     annotation_export_id: str | None = None
+
+    def ensure_dirs(
+        self,
+    ) -> Self:
+        """Create the eval tool directory scaffold."""
+        self.tool_root.mkdir(parents=True, exist_ok=True)
+        return self
 
 
 def find_latest_annotation_export_id(
@@ -109,6 +119,7 @@ def resolve_eval_train_paths(
             raise FileNotFoundError(f"Labeled eval training input CSV does not exist: {training_input_csv}")
 
         return EvalTrainPaths(
+            tool_root=workspace.tool_root("eval"),
             training_input_csv=training_input_csv,
             annotation_export_id=None,
         )
@@ -143,6 +154,7 @@ def resolve_eval_train_paths(
         )
 
     return EvalTrainPaths(
+        tool_root=workspace.tool_root("eval"),
         training_input_csv=training_input_csv,
         annotation_export_id=resolved_export_id,
     )
