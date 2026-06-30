@@ -176,10 +176,19 @@ Hidden questions persist discard data on the discarded response so it is availab
 
 **Implementation note:** The CustomField uses `srcdoc`-rendered iframe with same-origin parent DOM access (`window.parent.document`). DOM selectors (`[data-question-name="..."]`, `.button--discard`) may need re-verification on Argilla upgrades.
 
+### Annotation-time constraint feedback
+
+The same logical constraints validated at export time (see [Annotation Protocol](../methodology/annotation-protocol.md)) also drive a live annotator-facing widget. A `constraints_panel` `rg.CustomField` is added to each task whose protocol defines rules; it mirrors the discard-panel pattern (srcdoc iframe, same-origin parent DOM access). On every mutation of the record form, it re-evaluates each rule against the currently-selected chip values for the relevant questions and either:
+
+- **Warns** (yellow banner) — inline explanation, submission still allowed; for soft/heuristic constraints
+- **Blocks** (red banner + native Submit button disabled) — submission is prevented until the violation is resolved; for hard logical constraints
+
+Both consumers (export-time Python checks and annotation-time JS widget) read from one declarative rule list (`pragmata.core.annotation.logical_constraints.LOGICAL_CONSTRAINTS`), so they cannot drift.
+
 
 ## Design Rationale
 
-**Joint labelling:** Argilla v2 does not support conditional question logic or grouping headers. Custom progressive disclosure would require building a frontend, which is out of scope. Joint labelling is the accepted limitation.
+**Joint labelling:** Argilla v2 does not support conditional question logic or grouping headers. Custom progressive disclosure would require building a frontend, which is out of scope. Joint labelling is the accepted limitation; logical consistency between answers is instead enforced by the annotation-time constraint widget described above, not by hiding questions.
 
 **Visibility contract:** Primary content is the minimal unit needed for the labelling task. Supporting context is included to aid consistency but kept secondary to reduce anchoring bias on the primary judgement.
 
