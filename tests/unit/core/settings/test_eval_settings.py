@@ -87,6 +87,12 @@ def test_eval_train_settings_construction_with_defaults() -> None:
     assert settings.labeled_data_path is None
     assert settings.export_id is None
     assert settings.task == Task.RETRIEVAL
+    assert settings.target_name == "Retrieval evaluation"
+    assert settings.checkpoint == "EuroBERT/EuroBERT-610m"
+    assert settings.proxy_checkpoint == "EuroBERT/EuroBERT-210m"
+    assert settings.scale_learning_rate is True
+    assert settings.sequence_length == 1024
+    assert settings.trust_remote_code is True
     assert settings.train_kwargs == {}
 
 
@@ -101,6 +107,7 @@ def test_eval_train_settings_accepts_labeled_data_path() -> None:
 
     assert settings.labeled_data_path == Path("data/labeled.csv")
     assert settings.task == Task.GROUNDING
+    assert settings.target_name == "Grounding evaluation"
 
 
 def test_eval_train_settings_accepts_export_id_and_train_kwargs() -> None:
@@ -109,6 +116,12 @@ def test_eval_train_settings_accepts_export_id_and_train_kwargs() -> None:
         {
             "export_id": "export-001",
             "task": "generation",
+            "target_name": "Custom target",
+            "checkpoint": "custom/checkpoint",
+            "proxy_checkpoint": "custom/proxy",
+            "scale_learning_rate": False,
+            "sequence_length": 384,
+            "trust_remote_code": False,
             "train_kwargs": {
                 "run_id": "custom-train-run",
                 "batch_size": 8,
@@ -118,6 +131,12 @@ def test_eval_train_settings_accepts_export_id_and_train_kwargs() -> None:
 
     assert settings.export_id == "export-001"
     assert settings.task == Task.GENERATION
+    assert settings.target_name == "Custom target"
+    assert settings.checkpoint == "custom/checkpoint"
+    assert settings.proxy_checkpoint == "custom/proxy"
+    assert settings.scale_learning_rate is False
+    assert settings.sequence_length == 384
+    assert settings.trust_remote_code is False
     assert settings.train_kwargs == {
         "run_id": "custom-train-run",
         "batch_size": 8,
