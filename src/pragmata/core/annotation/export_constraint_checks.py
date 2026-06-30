@@ -46,8 +46,8 @@ def check_generation(row: GenerationAnnotation) -> list[LogicalConstraint]:
     return _evaluate(Task.GENERATION, row)
 
 
-type ConstraintChecker = Callable[..., list[str]]
-"""A task checker: takes an annotation row and returns violation strings."""
+type ConstraintChecker = Callable[..., list[LogicalConstraint]]
+"""A task checker: takes an annotation row and returns the violated logical constraints."""
 
 CONSTRAINT_CHECKERS: dict[Task, ConstraintChecker] = {
     Task.RETRIEVAL: check_retrieval,

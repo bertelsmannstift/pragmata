@@ -384,9 +384,7 @@ class TestConstraintViolations:
         record = _make_record(
             fields=RETRIEVAL_FIELDS,
             metadata=BASE_METADATA,
-            responses=_retrieval_responses(
-                _UID1, topically_relevant="no", evidence_sufficient="yes", misleading="yes"
-            ),
+            responses=_retrieval_responses(_UID1, topically_relevant="no", evidence_sufficient="yes", misleading="yes"),
         )
         dataset = MagicMock()
         dataset.records.return_value = iter([record])
