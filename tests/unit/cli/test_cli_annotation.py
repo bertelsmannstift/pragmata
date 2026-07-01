@@ -90,13 +90,12 @@ class TestStatusCommand:
         assert "integrity warnings: 3" in result.output
 
     @patch("pragmata.annotation.report_status")
-    def test_status_threads_unset_for_default_options(self, mock_status):
+    def test_status_threads_defaults(self, mock_status):
         mock_status.return_value = self._stub_report()
         runner.invoke(app, ["annotation", "status"])
         kwargs = mock_status.call_args.kwargs
         assert kwargs["api_url"] is UNSET
-        assert kwargs["dataset_id"] is UNSET
-        assert kwargs["base_dir"] is UNSET
+        assert kwargs["workspace"] is None
 
 
 class TestIaaCommand:

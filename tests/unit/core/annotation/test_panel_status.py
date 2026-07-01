@@ -1,4 +1,4 @@
-"""Unit tests for live panel status (read-only)."""
+"""Unit tests for live panel status (read-only, config-free)."""
 
 import logging
 from unittest.mock import MagicMock
@@ -6,6 +6,8 @@ from unittest.mock import MagicMock
 import pytest
 
 from pragmata.core.annotation.panel_status import compute_panel_status
+
+WS = "dom_retrieval"
 
 
 def _record(
@@ -31,42 +33,28 @@ def _record(
     return rec
 
 
-def _settings(
+def _dataset(
+    name: str,
+    records: list[MagicMock],
     *,
-    with_calibration: bool = False,
-    production_min_submitted: int = 1,
-    calibration_min_submitted: int | None = 3,
+    workspace: str = WS,
+    min_submitted: int = 1,
+    progress: dict | None = None,
 ) -> MagicMock:
-    settings = MagicMock()
-    settings.dataset_id = ""
-    ws_settings = MagicMock()
-    ws_settings.tasks = ["retrieval"]
-    settings.workspaces = {"ws1": ws_settings}
-    resolved = MagicMock()
-    resolved.production_min_submitted = production_min_submitted
-    resolved.calibration_min_submitted = calibration_min_submitted if with_calibration else None
-    settings.resolved_task.return_value = resolved
-    return settings
+    """A config-free dataset handle: name + workspace + records + live min_submitted."""
+    ds = MagicMock()
+    ds.name = name
+    ds.workspace.name = workspace
+    ds.records.side_effect = lambda *a, **kw: iter(records)
+    ds.progress.return_value = progress or {"total": 0, "completed": 0, "pending": 0}
+    ds.settings.distribution.min_submitted = min_submitted
+    return ds
 
 
-def _client(records_by_dataset: dict[str, list[MagicMock]], progress: dict | None = None) -> MagicMock:
-    """Build a mock client where each dataset name maps to its records (re-iterable per call)."""
+def _client(datasets: list[MagicMock]) -> MagicMock:
+    """Config-free client: ``client.datasets`` is the iterable of dataset handles."""
     client = MagicMock()
-    p = progress or {"total": 0, "completed": 0, "pending": 0}
-
-    def _datasets(name: str, workspace: str | None = None):
-        records = records_by_dataset.get(name)
-        if records is None:
-            return None
-        ds = MagicMock()
-        ds.name = name
-        ds.records.side_effect = lambda *a, **kw: iter(records)
-        ds.progress.return_value = p
-        # Settings.metadata gettable as absent (so ensure_metadata_property adds the tag prop)
-        ds.settings.metadata.__getitem__ = MagicMock(return_value=None)
-        return ds
-
-    client.datasets.side_effect = _datasets
+    client.datasets = list(datasets)
     return client
 
 
@@ -79,8 +67,7 @@ class TestComputePanelStatus:
     def test_headline_aggregated_from_progress(self) -> None:
         records = [_record(chunk_id=f"c{i}", response_statuses=["submitted"]) for i in range(3)]
         report = compute_panel_status(
-            _client({"retrieval_production": records}, progress={"total": 10, "completed": 4, "pending": 6}),
-            _settings(),
+            _client([_dataset("retrieval_production", records, progress={"total": 10, "completed": 4, "pending": 6})])
         )
         assert report.headline.total == 10
         assert report.headline.completed == 4
@@ -88,8 +75,8 @@ class TestComputePanelStatus:
 
     def test_panel_complete_when_every_chunk_has_terminal(self) -> None:
         records = [_record(chunk_id=f"c{i}", response_statuses=["submitted"]) for i in range(5)]
-        report = compute_panel_status(_client({"retrieval_production": records}), _settings())
-        panel = report.panels["u1"]
+        report = compute_panel_status(_client([_dataset("retrieval_production", records)]))
+        panel = report.panels[(WS, "u1")]
         assert panel.panel_complete is True
         assert panel.k_records == 5
         assert panel.n_terminal == 5
@@ -100,10 +87,14 @@ class TestComputePanelStatus:
             _record(record_uuid="u-cal", chunk_id=f"c{i}", response_statuses=["submitted"]) for i in range(3)
         ]
         report = compute_panel_status(
-            _client({"retrieval_production": [], "retrieval_calibration": cal_records}),
-            _settings(with_calibration=True, calibration_min_submitted=3),
+            _client(
+                [
+                    _dataset("retrieval_production", []),
+                    _dataset("retrieval_calibration", cal_records, min_submitted=3),
+                ]
+            )
         )
-        panel = report.panels["u-cal"]
+        panel = report.panels[(WS, "u-cal")]
         assert panel.panel_complete is True
         assert panel.distribution_satisfied is False
 
@@ -112,13 +103,17 @@ class TestComputePanelStatus:
             _record(record_uuid="u-cal", chunk_id=f"c{i}", response_statuses=["submitted", "submitted", "submitted"])
             for i in range(3)
         ]
-        report = compute_panel_status(
-            _client({"retrieval_production": [], "retrieval_calibration": cal_records}),
-            _settings(with_calibration=True, calibration_min_submitted=3),
-        )
-        panel = report.panels["u-cal"]
+        report = compute_panel_status(_client([_dataset("retrieval_calibration", cal_records, min_submitted=3)]))
+        panel = report.panels[(WS, "u-cal")]
         assert panel.panel_complete is True
         assert panel.distribution_satisfied is True
+
+    def test_min_submitted_read_from_live_dataset_settings(self) -> None:
+        """distribution_satisfied uses each dataset's live min_submitted, not config."""
+        # 2 submitted on the only chunk; dataset says it needs 3 → not satisfied.
+        records = [_record(record_uuid="u1", chunk_id="c1", response_statuses=["submitted", "submitted"])]
+        report = compute_panel_status(_client([_dataset("retrieval_calibration", records, min_submitted=3)]))
+        assert report.panels[(WS, "u1")].distribution_satisfied is False
 
     def test_integrity_warning_when_records_mismatch_metadata_k(self, caplog: pytest.LogCaptureFixture) -> None:
         records = [
@@ -126,8 +121,8 @@ class TestComputePanelStatus:
             _record(chunk_id="c2", n_retrieved_chunks=5, response_statuses=["submitted"]),
         ]
         with caplog.at_level(logging.WARNING, logger="pragmata.core.annotation.panel_status"):
-            report = compute_panel_status(_client({"retrieval_production": records}), _settings())
-        panel = report.panels["u1"]
+            report = compute_panel_status(_client([_dataset("retrieval_production", records)]))
+        panel = report.panels[(WS, "u1")]
         assert panel.integrity_ok is False
         assert report.n_integrity_warnings == 1
         assert any("integrity warning" in r.message for r in caplog.records)
@@ -135,57 +130,74 @@ class TestComputePanelStatus:
     def test_integrity_ok_when_metadata_absent(self) -> None:
         """No metadata K → integrity_ok=True (skips the check). Pre-backfill state."""
         records = [_record(chunk_id="c1", n_retrieved_chunks=None, response_statuses=["submitted"])]
-        report = compute_panel_status(_client({"retrieval_production": records}), _settings())
-        assert report.panels["u1"].integrity_ok is True
+        report = compute_panel_status(_client([_dataset("retrieval_production", records)]))
+        assert report.panels[(WS, "u1")].integrity_ok is True
 
     def test_orphan_record_excluded(self) -> None:
         records = [
             _record(record_uuid="", chunk_id="orphan"),
             _record(record_uuid="u1", chunk_id="c1", response_statuses=["submitted"]),
         ]
-        report = compute_panel_status(_client({"retrieval_production": records}), _settings())
-        assert "" not in report.panels
+        report = compute_panel_status(_client([_dataset("retrieval_production", records)]))
+        assert (WS, "") not in report.panels
         assert report.n_orphans_skipped == 1
 
-    def test_walks_prod_then_cal_when_enabled(self) -> None:
+    def test_walks_prod_and_cal(self) -> None:
         prod = [_record(record_uuid="u-prod", chunk_id="c1", response_statuses=["submitted"])]
         cal = [_record(record_uuid="u-cal", chunk_id="c1", response_statuses=["submitted"])]
         report = compute_panel_status(
-            _client({"retrieval_production": prod, "retrieval_calibration": cal}),
-            _settings(with_calibration=True),
+            _client([_dataset("retrieval_production", prod), _dataset("retrieval_calibration", cal, min_submitted=3)])
         )
-        assert set(report.panels) == {"u-prod", "u-cal"}
+        assert set(report.panels) == {(WS, "u-prod"), (WS, "u-cal")}
+
+    def test_same_uuid_in_two_workspaces_not_fused(self) -> None:
+        """Multi-domain walk: identical record_uuid in two workspaces stays two panels."""
+        d1 = _dataset(
+            "retrieval_production",
+            [_record(record_uuid="u1", chunk_id="c1", response_statuses=["submitted"])],
+            workspace="dom1_retrieval",
+        )
+        d2 = _dataset(
+            "retrieval_production",
+            [_record(record_uuid="u1", chunk_id="c1", response_statuses=[])],
+            workspace="dom2_retrieval",
+        )
+        report = compute_panel_status(_client([d1, d2]))
+        assert set(report.panels) == {("dom1_retrieval", "u1"), ("dom2_retrieval", "u1")}
+        assert report.panels[("dom1_retrieval", "u1")].panel_complete is True
+        assert report.panels[("dom2_retrieval", "u1")].panel_complete is False
+
+    def test_non_retrieval_datasets_are_skipped(self) -> None:
+        """Default task='retrieval' selects by name prefix; other tasks are ignored."""
+        report = compute_panel_status(
+            _client(
+                [
+                    _dataset("generation_production", [_record(record_uuid="g1", chunk_id="c1")]),
+                    _dataset(
+                        "retrieval_production",
+                        [_record(record_uuid="u1", chunk_id="c1", response_statuses=["submitted"])],
+                    ),
+                ]
+            )
+        )
+        assert set(report.panels) == {(WS, "u1")}
 
 
 class TestComputePanelStatusEdgeCases:
     def test_distribution_aggregates_submissions_across_duplicate_chunk_records(self) -> None:
-        """If a single chunk_id has two records (rare anomaly), submissions sum across them.
-
-        Without this, two records-for-one-chunk would each get checked
-        independently against min_submitted, producing a spurious False.
-        """
-        # Two records under the same panel uuid AND same chunk_id, each with
-        # 2 submitted responses. Cal threshold is 3. Total submissions on
-        # chunk c1 = 4 >= 3, so distribution must be satisfied.
+        """If a single chunk_id has two records (rare anomaly), submissions sum across them."""
         rec_a = _record(record_uuid="u-cal", chunk_id="c1", response_statuses=["submitted", "submitted"])
         rec_b = _record(record_uuid="u-cal", chunk_id="c1", response_statuses=["submitted", "submitted"])
-        report = compute_panel_status(
-            _client({"retrieval_production": [], "retrieval_calibration": [rec_a, rec_b]}),
-            _settings(with_calibration=True, calibration_min_submitted=3),
-        )
-        panel = report.panels["u-cal"]
+        report = compute_panel_status(_client([_dataset("retrieval_calibration", [rec_a, rec_b], min_submitted=3)]))
+        panel = report.panels[(WS, "u-cal")]
         assert panel.distribution_satisfied is True
 
     def test_warns_when_all_panels_have_unknown_k(self, caplog: pytest.LogCaptureFixture) -> None:
-        """Pre-backfill: all records missing n_retrieved_chunks → distinct warning.
-
-        Operators must not read 0% complete as "annotators haven't started"
-        when the real cause is that the backfill hasn't run yet.
-        """
+        """Pre-backfill: all records missing n_retrieved_chunks → distinct warning."""
         records = [
             _record(record_uuid="u1", chunk_id="c1", n_retrieved_chunks=None, response_statuses=["submitted"]),
             _record(record_uuid="u2", chunk_id="c1", n_retrieved_chunks=None, response_statuses=["submitted"]),
         ]
         with caplog.at_level(logging.WARNING, logger="pragmata.core.annotation.panel_status"):
-            compute_panel_status(_client({"retrieval_production": records}), _settings())
+            compute_panel_status(_client([_dataset("retrieval_production", records)]))
         assert any("unknown K" in r.message for r in caplog.records)

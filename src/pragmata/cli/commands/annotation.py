@@ -231,19 +231,17 @@ def export_command(
 def status_command(
     api_url: str | None = _api_url_opt,
     api_key: str | None = _api_key_opt,
-    dataset_id: str | None = _dataset_id_opt,
-    base_dir: str | None = _base_dir_opt,
-    config: str | None = _config_opt,
+    workspace: str | None = typer.Option(
+        None, "--workspace", help="Only datasets in this Argilla workspace. Default: all workspaces."
+    ),
 ) -> None:
-    """Report live retrieval panel-completeness across prod + cal datasets."""
+    """Report live retrieval panel-completeness across all workspaces (config-free)."""
     from pragmata import annotation
 
     report = annotation.report_status(
         api_url=UNSET if api_url is None else api_url,
         api_key=UNSET if api_key is None else api_key,
-        base_dir=UNSET if base_dir is None else base_dir,
-        dataset_id=UNSET if dataset_id is None else dataset_id,
-        config_path=UNSET if config is None else config,
+        workspace=workspace,
     )
     h = report.headline
     typer.echo(f"records: total={h.total} completed={h.completed} pending={h.pending}")
