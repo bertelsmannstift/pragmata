@@ -14,10 +14,12 @@ import importlib
 from typing import TYPE_CHECKING
 
 __all__ = [
+    "CompletenessReport",
     "ExportResult",
     "IaaReport",
     "ImportResult",
     "Locale",
+    "PanelCompleteness",
     "SetupResult",
     "Task",
     "UserSpec",
@@ -29,10 +31,12 @@ __all__ = [
 ]
 
 _LAZY: dict[str, tuple[str, str]] = {
+    "CompletenessReport": ("pragmata.core.annotation.completeness", "CompletenessReport"),
     "ExportResult": ("pragmata.core.annotation.export_runner", "ExportResult"),
     "IaaReport": ("pragmata.core.schemas.iaa_report", "IaaReport"),
     "ImportResult": ("pragmata.api.annotation_import", "ImportResult"),
     "Locale": ("pragmata.core.schemas.annotation_task", "Locale"),
+    "PanelCompleteness": ("pragmata.core.annotation.completeness", "PanelCompleteness"),
     "SetupResult": ("pragmata.core.annotation.setup", "SetupResult"),
     "Task": ("pragmata.core.schemas.annotation_task", "Task"),
     "UserSpec": ("pragmata.core.settings.annotation_settings", "UserSpec"),
@@ -65,6 +69,8 @@ if TYPE_CHECKING:
     from pragmata.api.annotation_import import import_records as import_records
     from pragmata.api.annotation_setup import setup as setup
     from pragmata.api.annotation_setup import teardown as teardown
+    from pragmata.core.annotation.completeness import CompletenessReport as CompletenessReport
+    from pragmata.core.annotation.completeness import PanelCompleteness as PanelCompleteness
     from pragmata.core.annotation.export_runner import ExportResult as ExportResult
     from pragmata.core.annotation.setup import SetupResult as SetupResult
     from pragmata.core.schemas.annotation_task import Locale as Locale
