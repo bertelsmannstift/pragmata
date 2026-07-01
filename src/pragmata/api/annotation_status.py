@@ -10,7 +10,7 @@ import logging
 import os
 
 from pragmata.core.annotation.client import resolve_argilla_client
-from pragmata.core.annotation.panel_status import StatusReport, compute_panel_status
+from pragmata.core.annotation.panel_status import StatusReport, compute_panel_status, compute_task_progress
 from pragmata.core.settings.settings_base import UNSET, Unset, resolve_api_key
 
 logger = logging.getLogger(__name__)
@@ -34,12 +34,14 @@ def report_status(
         workspace: If set, only datasets in this Argilla workspace.
 
     Returns:
-        ``StatusReport`` with per-panel facts and headline totals.
+        ``StatusReport`` with the all-task ``progress`` summary plus the
+        retrieval per-panel facts.
     """
     url = api_url if isinstance(api_url, str) else os.environ.get("ARGILLA_API_URL")
     key = api_key if isinstance(api_key, str) else resolve_api_key("argilla")
     client = resolve_argilla_client(url, key)
-    report = compute_panel_status(client, workspace=workspace)
+    progress = compute_task_progress(client, workspace=workspace)
+    report = compute_panel_status(client, workspace=workspace).with_progress(progress)
     logger.info(
         "Status: %d panels, %d complete (%.0f%%), %d distribution-satisfied, %d integrity warnings",
         report.n_panels,

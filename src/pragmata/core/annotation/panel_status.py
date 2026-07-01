@@ -40,7 +40,7 @@ any Argilla mutation surface).
 
 import logging
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import argilla as rg
 
@@ -49,6 +49,12 @@ from pragmata.core.annotation.export_fetcher import TERMINAL_STATUSES
 logger = logging.getLogger(__name__)
 
 RETRIEVAL_TASK = "retrieval"
+_TASK_ORDER = {"retrieval": 0, "grounding": 1, "generation": 2}
+
+
+def _task_of(dataset_name: str) -> str:
+    """Task label for a dataset = its name prefix before the first underscore."""
+    return dataset_name.split("_", 1)[0]
 
 
 def _select_datasets(client: rg.Argilla, workspace: str | None, task: str | None) -> Iterator[rg.Dataset]:
@@ -102,8 +108,33 @@ class HeadlineTotals:
 
 
 @dataclass(frozen=True)
+class ProgressRow:
+    """Record-level progress for one grouping (a task, a workspace, or a dataset)."""
+
+    label: str  # display label: task name, workspace name, or "workspace/dataset"
+    task: str  # the task this row belongs to (equals label for by-task rows)
+    total: int
+    completed: int  # records that reached their Argilla min_submitted
+    pending: int
+
+
+@dataclass(frozen=True)
+class ProgressReport:
+    """All-task record progress from ``dataset.progress()``, grouped three ways."""
+
+    grand: HeadlineTotals
+    by_task: list[ProgressRow]
+    by_workspace: list[ProgressRow]
+    by_dataset: list[ProgressRow]
+
+
+@dataclass(frozen=True)
 class StatusReport:
-    """Live per-panel status + headline aggregates."""
+    """Live per-panel status + headline aggregates.
+
+    ``progress`` (all-task record counts) is attached by ``report_status``; the
+    panel fields below are retrieval-only.
+    """
 
     panels: dict[tuple[str, str], PanelStatus]
     headline: HeadlineTotals
@@ -112,6 +143,11 @@ class StatusReport:
     n_distribution_satisfied: int
     n_integrity_warnings: int
     n_orphans_skipped: int
+    progress: "ProgressReport | None" = None
+
+    def with_progress(self, progress: ProgressReport) -> "StatusReport":
+        """Return a copy with the all-task ``progress`` summary attached."""
+        return replace(self, progress=progress)
 
 
 @dataclass
@@ -328,3 +364,49 @@ def compute_panel_status(
     Pure read; safe to invoke against live datasets without side effects.
     """
     return _build_report(_collect_records(client, workspace=workspace, task=task))
+
+
+def compute_task_progress(client: rg.Argilla, *, workspace: str | None = None) -> ProgressReport:
+    """All-task record progress from ``dataset.progress()``.
+
+    Grouped by task, workspace, and dataset. Config-free and cheap: one
+    ``progress()`` call per dataset (no record iteration), covering every
+    task/workspace in one pass. Rows are ordered retrieval -> grounding ->
+    generation, then by workspace/dataset name.
+    """
+    grand = {"total": 0, "completed": 0, "pending": 0}
+    by_task: dict[str, dict[str, int]] = {}
+    by_ws: dict[tuple[str, str], dict[str, int]] = {}
+    by_ds: dict[tuple[str, str, str], dict[str, int]] = {}
+
+    def _acc(bucket: dict[str, int], p: dict) -> None:
+        for key in bucket:
+            bucket[key] += int(p.get(key, 0) or 0)
+
+    def _bucket(store: dict, key) -> dict[str, int]:
+        return store.setdefault(key, {"total": 0, "completed": 0, "pending": 0})
+
+    for ds in _select_datasets(client, workspace, task=None):
+        task = _task_of(ds.name)
+        ws_name = ds.workspace.name
+        p = dict(ds.progress())
+        _acc(grand, p)
+        _acc(_bucket(by_task, task), p)
+        _acc(_bucket(by_ws, (ws_name, task)), p)
+        _acc(_bucket(by_ds, (ws_name, ds.name, task)), p)
+
+    def _row(label: str, task: str, b: dict[str, int]) -> ProgressRow:
+        return ProgressRow(label=label, task=task, total=b["total"], completed=b["completed"], pending=b["pending"])
+
+    task_rows = [_row(t, t, b) for t, b in sorted(by_task.items(), key=lambda kv: _TASK_ORDER.get(kv[0], 99))]
+    ws_rows = [
+        _row(ws, task, b)
+        for (ws, task), b in sorted(by_ws.items(), key=lambda kv: (_TASK_ORDER.get(kv[0][1], 99), kv[0][0]))
+    ]
+    ds_rows = [
+        _row(f"{ws}/{name}", task, b)
+        for (ws, name, task), b in sorted(
+            by_ds.items(), key=lambda kv: (_TASK_ORDER.get(kv[0][2], 99), kv[0][0], kv[0][1])
+        )
+    ]
+    return ProgressReport(grand=HeadlineTotals(**grand), by_task=task_rows, by_workspace=ws_rows, by_dataset=ds_rows)

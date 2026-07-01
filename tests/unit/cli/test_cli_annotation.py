@@ -59,28 +59,48 @@ class TestStatusCommand:
         n_integrity_warnings: int = 0,
         n_orphans_skipped: int = 0,
     ):
-        from pragmata.core.annotation.panel_status import HeadlineTotals, StatusReport
+        from pragmata.core.annotation.panel_status import (
+            HeadlineTotals,
+            ProgressReport,
+            ProgressRow,
+            StatusReport,
+        )
 
+        progress = ProgressReport(
+            grand=HeadlineTotals(total=100, completed=20, pending=80),
+            by_task=[
+                ProgressRow(label="retrieval", task="retrieval", total=60, completed=10, pending=50),
+                ProgressRow(label="grounding", task="grounding", total=20, completed=4, pending=16),
+                ProgressRow(label="generation", task="generation", total=20, completed=6, pending=14),
+            ],
+            by_workspace=[ProgressRow(label="ws1_retrieval", task="retrieval", total=60, completed=10, pending=50)],
+            by_dataset=[
+                ProgressRow(
+                    label="ws1_retrieval/retrieval_production", task="retrieval", total=60, completed=10, pending=50
+                )
+            ],
+        )
         return StatusReport(
             panels={},
-            headline=HeadlineTotals(total=10, completed=5, pending=5),
+            headline=HeadlineTotals(total=60, completed=10, pending=50),
             n_panels=n_panels,
             n_complete=n_complete,
             n_distribution_satisfied=n_distribution_satisfied,
             n_integrity_warnings=n_integrity_warnings,
             n_orphans_skipped=n_orphans_skipped,
-        )
+        ).with_progress(progress)
 
     @patch("pragmata.annotation.report_status")
-    def test_status_displays_headline_and_panels(self, mock_status):
+    def test_status_shows_all_tasks_and_panels(self, mock_status):
         mock_status.return_value = self._stub_report()
         result = runner.invoke(app, ["annotation", "status"])
         assert result.exit_code == 0
-        assert "total=10" in result.output
-        assert "completed=5" in result.output
-        assert "panels: 2" in result.output
-        assert "1 complete = 50.0%" in result.output
-        assert "1 distribution-satisfied" in result.output
+        assert "records: 100 total" in result.output
+        assert "20 completed" in result.output
+        for task in ("retrieval", "grounding", "generation"):
+            assert task in result.output  # all three tasks displayed
+        assert "PANELS" in result.output
+        assert "–" in result.output  # non-retrieval tasks show a dash for panels
 
     @patch("pragmata.annotation.report_status")
     def test_status_reports_integrity_warnings_when_present(self, mock_status):
@@ -88,6 +108,14 @@ class TestStatusCommand:
         result = runner.invoke(app, ["annotation", "status"])
         assert result.exit_code == 0
         assert "integrity warnings: 3" in result.output
+
+    @patch("pragmata.annotation.report_status")
+    def test_status_by_workspace_and_by_dataset_flags(self, mock_status):
+        mock_status.return_value = self._stub_report()
+        out_ws = runner.invoke(app, ["annotation", "status", "--by-workspace"]).output
+        assert "WORKSPACE" in out_ws and "ws1_retrieval" in out_ws
+        out_ds = runner.invoke(app, ["annotation", "status", "--by-dataset"]).output
+        assert "DATASET" in out_ds and "retrieval_production" in out_ds
 
     @patch("pragmata.annotation.report_status")
     def test_status_threads_defaults(self, mock_status):

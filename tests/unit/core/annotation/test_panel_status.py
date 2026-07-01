@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from pragmata.core.annotation.panel_status import compute_panel_status
+from pragmata.core.annotation.panel_status import compute_panel_status, compute_task_progress
 
 WS = "dom_retrieval"
 
@@ -201,3 +201,53 @@ class TestComputePanelStatusEdgeCases:
         with caplog.at_level(logging.WARNING, logger="pragmata.core.annotation.panel_status"):
             compute_panel_status(_client([_dataset("retrieval_production", records)]))
         assert any("unknown K" in r.message for r in caplog.records)
+
+
+class TestComputeTaskProgress:
+    def test_groups_by_task_workspace_dataset(self) -> None:
+        client = _client(
+            [
+                _dataset(
+                    "retrieval_production",
+                    [],
+                    workspace="A_retrieval",
+                    progress={"total": 100, "completed": 10, "pending": 90},
+                ),
+                _dataset(
+                    "grounding_production",
+                    [],
+                    workspace="A_grounding",
+                    progress={"total": 20, "completed": 5, "pending": 15},
+                ),
+                _dataset(
+                    "generation_production",
+                    [],
+                    workspace="A_generation",
+                    progress={"total": 30, "completed": 9, "pending": 21},
+                ),
+            ]
+        )
+        pr = compute_task_progress(client)
+        # grand total across all tasks
+        assert (pr.grand.total, pr.grand.completed, pr.grand.pending) == (150, 24, 126)
+        # by-task ordered retrieval -> grounding -> generation
+        assert [r.task for r in pr.by_task] == ["retrieval", "grounding", "generation"]
+        assert pr.by_task[0].total == 100
+        # by-workspace and by-dataset carry the same numbers, labelled differently
+        assert {r.label for r in pr.by_workspace} == {"A_retrieval", "A_grounding", "A_generation"}
+        assert any(r.label == "A_retrieval/retrieval_production" for r in pr.by_dataset)
+
+    def test_all_tasks_present_even_with_zero_progress(self) -> None:
+        client = _client(
+            [
+                _dataset(
+                    "grounding_production",
+                    [],
+                    workspace="B_grounding",
+                    progress={"total": 5, "completed": 0, "pending": 5},
+                )
+            ]
+        )
+        pr = compute_task_progress(client)
+        assert [r.task for r in pr.by_task] == ["grounding"]
+        assert pr.grand.completed == 0

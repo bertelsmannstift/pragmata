@@ -227,6 +227,24 @@ def export_command(
         typer.echo(f"  {path}")
 
 
+def _render_table(headers: list[str], rows: list[tuple[str, ...]], aligns: str) -> list[str]:
+    """Aligned fixed-width table as a list of lines.
+
+    ``aligns`` is one char per column: 'l' (left) or 'r' (right).
+    """
+    widths = [len(h) for h in headers]
+    for row in rows:
+        for i, cell in enumerate(row):
+            widths[i] = max(widths[i], len(cell))
+
+    def _fmt(cells: tuple[str, ...]) -> str:
+        return "  ".join(
+            cell.rjust(widths[i]) if aligns[i] == "r" else cell.ljust(widths[i]) for i, cell in enumerate(cells)
+        ).rstrip()
+
+    return [_fmt(tuple(headers)), *[_fmt(r) for r in rows]]
+
+
 @annotation_app.command("status")
 def status_command(
     api_url: str | None = _api_url_opt,
@@ -234,8 +252,15 @@ def status_command(
     workspace: str | None = typer.Option(
         None, "--workspace", help="Only datasets in this Argilla workspace. Default: all workspaces."
     ),
+    by_workspace: bool = typer.Option(False, "--by-workspace", help="Add a per-workspace progress breakdown."),
+    by_dataset: bool = typer.Option(False, "--by-dataset", help="Add a per-dataset progress breakdown."),
 ) -> None:
-    """Report live retrieval panel-completeness across all workspaces (config-free)."""
+    """Report live annotation progress across all tasks, plus retrieval panel-completeness.
+
+    Config-free: walks every Argilla dataset. Record progress (total / completed)
+    is shown per task; the retrieval row also carries panel-completeness. Add
+    --by-workspace / --by-dataset for finer breakdowns.
+    """
     from pragmata import annotation
 
     report = annotation.report_status(
@@ -243,17 +268,55 @@ def status_command(
         api_key=UNSET if api_key is None else api_key,
         workspace=workspace,
     )
-    h = report.headline
-    typer.echo(f"records: total={h.total} completed={h.completed} pending={h.pending}")
-    pct = (100.0 * report.n_complete / report.n_panels) if report.n_panels else 0.0
+
+    def _num(n: int) -> str:
+        return f"{n:,}"
+
+    def _pct(done: int, total: int) -> str:
+        return f"{round(100 * done / total)}%" if total else "0%"
+
+    prog = report.progress
+    g = prog.grand
     typer.echo(
-        f"panels: {report.n_panels} ({report.n_complete} complete = {pct:.1f}%, "
-        f"{report.n_distribution_satisfied} distribution-satisfied)"
+        f"records: {_num(g.total)} total · {_num(g.completed)} completed "
+        f"({_pct(g.completed, g.total)}) · {_num(g.pending)} pending"
     )
+    typer.echo("")
+
+    # By task (default). The retrieval row carries panel-completeness; other
+    # tasks are single-record and have no panels ("-").
+    task_rows: list[tuple[str, ...]] = []
+    for row in prog.by_task:
+        if row.task == "retrieval":
+            panels = (_num(report.n_panels), _num(report.n_complete), _num(report.n_distribution_satisfied))
+        else:
+            panels = ("–", "–", "–")
+        task_rows.append((row.label, _num(row.total), _num(row.completed), _pct(row.completed, row.total), *panels))
+    for line in _render_table(["TASK", "TOTAL", "COMPLETED", "%", "PANELS", "COMPL", "DIST-SAT"], task_rows, "lrrrrrr"):
+        typer.echo(line)
+
+    if by_workspace:
+        typer.echo("")
+        ws_rows = [
+            (row.label, row.task, _num(row.total), _num(row.completed), _pct(row.completed, row.total))
+            for row in prog.by_workspace
+        ]
+        for line in _render_table(["WORKSPACE", "TASK", "TOTAL", "COMPL", "%"], ws_rows, "llrrr"):
+            typer.echo(line)
+
+    if by_dataset:
+        typer.echo("")
+        ds_rows = [
+            (row.label, _num(row.total), _num(row.completed), _pct(row.completed, row.total)) for row in prog.by_dataset
+        ]
+        for line in _render_table(["DATASET", "TOTAL", "COMPL", "%"], ds_rows, "lrrr"):
+            typer.echo(line)
+
     if report.n_integrity_warnings:
+        typer.echo("")
         typer.echo(f"integrity warnings: {report.n_integrity_warnings} panel(s) (records != n_retrieved_chunks)")
         typer.echo(
-            "  note: panel_complete here uses live record-count K; the export sidecar uses the metadata K, "
+            "  note: panel_complete uses live record-count K; the export sidecar uses the metadata K, "
             "so flagged panels may read panel_complete=False in retrieval.csv even if shown complete above."
         )
     if report.n_orphans_skipped:
