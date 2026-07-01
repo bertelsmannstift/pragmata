@@ -81,9 +81,31 @@ def test_resolve_eval_train_paths_uses_direct_labeled_data_path(
     )
 
     assert paths == EvalTrainPaths(
+        tool_root=workspace.base_dir / "eval",
         training_input_csv=input_csv.resolve(),
         annotation_export_id=None,
     )
+
+
+def test_eval_train_paths_ensure_dirs_creates_eval_tool_root(
+    workspace: WorkspacePaths,
+) -> None:
+    """EvalTrainPaths.ensure_dirs creates the eval tool root and returns self."""
+    input_csv = workspace.base_dir / "standalone" / "labeled.csv"
+    input_csv.parent.mkdir()
+    input_csv.write_text("example_id\nexample-1\n", encoding="utf-8")
+    paths = resolve_eval_train_paths(
+        workspace=workspace,
+        task=Task.RETRIEVAL,
+        labeled_data_path=input_csv,
+    )
+
+    assert not paths.tool_root.exists()
+
+    returned = paths.ensure_dirs()
+
+    assert returned is paths
+    assert paths.tool_root.is_dir()
 
 
 def test_resolve_eval_train_paths_rejects_missing_direct_labeled_data_path(
@@ -119,6 +141,7 @@ def test_resolve_eval_train_paths_uses_explicit_annotation_export_id(
 
     expected_csv = workspace.base_dir / "annotation" / "exports" / "export-a" / "retrieval.csv"
     assert paths == EvalTrainPaths(
+        tool_root=workspace.base_dir / "eval",
         training_input_csv=expected_csv,
         annotation_export_id="export-a",
     )
@@ -290,6 +313,7 @@ def test_resolve_eval_train_paths_uses_latest_annotation_export_when_selector_is
 
     expected_csv = workspace.base_dir / "annotation" / "exports" / "newer" / "retrieval.csv"
     assert paths == EvalTrainPaths(
+        tool_root=workspace.base_dir / "eval",
         training_input_csv=expected_csv,
         annotation_export_id="newer",
     )

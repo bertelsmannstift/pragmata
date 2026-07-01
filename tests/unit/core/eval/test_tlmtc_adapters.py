@@ -9,12 +9,12 @@ from typing import Any, cast
 
 import pytest
 
-from pragmata.core.eval.tlmtc_adapters import train_evaluator
+from pragmata.core.eval.tlmtc_adapters import run_tlmtc_train
 
-_DEDICATED_TRAIN_EVALUATOR_ARGS = [name for name in signature(train_evaluator).parameters if name != "train_kwargs"]
+_DEDICATED_RUN_TLMTC_TRAIN_ARGS = [name for name in signature(run_tlmtc_train).parameters if name != "train_kwargs"]
 
 
-def _train_evaluator_kwargs(
+def _run_tlmtc_train_kwargs(
     *,
     train_kwargs: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -31,10 +31,10 @@ def _train_evaluator_kwargs(
     }
 
 
-def test_train_evaluator_merges_curated_args_and_train_kwargs(
+def test_run_tlmtc_train_merges_curated_args_and_train_kwargs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """train_evaluator forwards curated settings plus tlmtc-owned passthrough kwargs."""
+    """run_tlmtc_train forwards curated settings plus tlmtc-owned passthrough kwargs."""
     captured_kwargs: dict[str, Any] = {}
     fake_tlmtc = ModuleType("tlmtc")
     expected_result = object()
@@ -46,8 +46,8 @@ def test_train_evaluator_merges_curated_args_and_train_kwargs(
     setattr(fake_tlmtc, "train_tlmtc", train_tlmtc)
     monkeypatch.setitem(sys.modules, "tlmtc", fake_tlmtc)
 
-    result = train_evaluator(
-        **_train_evaluator_kwargs(
+    result = run_tlmtc_train(
+        **_run_tlmtc_train_kwargs(
             train_kwargs={
                 "run_id": "custom-run",
                 "batch_size": 8,
@@ -72,10 +72,10 @@ def test_train_evaluator_merges_curated_args_and_train_kwargs(
     }
 
 
-def test_train_evaluator_forwards_dedicated_args_when_train_kwargs_empty(
+def test_run_tlmtc_train_forwards_dedicated_args_when_train_kwargs_empty(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """train_evaluator forwards exactly the dedicated args without passthrough kwargs."""
+    """run_tlmtc_train forwards exactly the dedicated args without passthrough kwargs."""
     captured_kwargs: dict[str, Any] = {}
     fake_tlmtc = ModuleType("tlmtc")
     expected_result = object()
@@ -87,7 +87,7 @@ def test_train_evaluator_forwards_dedicated_args_when_train_kwargs_empty(
     setattr(fake_tlmtc, "train_tlmtc", train_tlmtc)
     monkeypatch.setitem(sys.modules, "tlmtc", fake_tlmtc)
 
-    result = train_evaluator(**_train_evaluator_kwargs(train_kwargs={}))
+    result = run_tlmtc_train(**_run_tlmtc_train_kwargs(train_kwargs={}))
 
     assert result is expected_result
     assert captured_kwargs == {
@@ -102,16 +102,16 @@ def test_train_evaluator_forwards_dedicated_args_when_train_kwargs_empty(
     }
 
 
-@pytest.mark.parametrize("reserved_key", _DEDICATED_TRAIN_EVALUATOR_ARGS)
-def test_train_evaluator_rejects_reserved_train_kwargs(
+@pytest.mark.parametrize("reserved_key", _DEDICATED_RUN_TLMTC_TRAIN_ARGS)
+def test_run_tlmtc_train_rejects_reserved_train_kwargs(
     reserved_key: str,
 ) -> None:
     """train_kwargs must not override settings managed by dedicated arguments."""
     with pytest.raises(ValueError, match=reserved_key):
-        train_evaluator(**_train_evaluator_kwargs(train_kwargs={reserved_key: "override"}))
+        run_tlmtc_train(**_run_tlmtc_train_kwargs(train_kwargs={reserved_key: "override"}))
 
 
-def test_train_evaluator_imports_tlmtc_lazily_and_reports_missing_extra(
+def test_run_tlmtc_train_imports_tlmtc_lazily_and_reports_missing_extra(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Missing tlmtc raises an install hint only when training is invoked."""
@@ -119,4 +119,4 @@ def test_train_evaluator_imports_tlmtc_lazily_and_reports_missing_extra(
     monkeypatch.setitem(modules, "tlmtc", None)
 
     with pytest.raises(ImportError, match="Install pragmata with the 'eval' extra"):
-        train_evaluator(**_train_evaluator_kwargs())
+        run_tlmtc_train(**_run_tlmtc_train_kwargs())
