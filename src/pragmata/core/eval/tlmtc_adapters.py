@@ -5,7 +5,7 @@ from typing import Any
 
 import pandas as pd
 
-# Keep this in sync with train_evaluator's dedicated arguments.
+# Keep this in sync with run_tlmtc_train's dedicated arguments.
 _RESERVED_TRAIN_KWARGS = frozenset(
     {
         "labeled_data",
@@ -20,7 +20,7 @@ _RESERVED_TRAIN_KWARGS = frozenset(
 )
 
 
-def train_evaluator(
+def run_tlmtc_train(
     *,
     labeled_data: str | Path | pd.DataFrame,
     work_dir: Path,
