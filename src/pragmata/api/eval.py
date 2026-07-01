@@ -43,7 +43,7 @@ def train_evaluator(
             directory.
         config_path: Path to a YAML configuration file.
         target_name: Display name passed to tlmtc for logs and reports.
-            Defaults to the selected task name as an evaluation target.
+            Defaults to a task-specific evaluation label, e.g. "Retrieval evaluation".
         checkpoint: Target checkpoint used for final fine-tuning. Defaults to
             ``"EuroBERT/EuroBERT-610m"``.
         proxy_checkpoint: Proxy checkpoint used for hyperparameter tuning.
@@ -60,7 +60,10 @@ def train_evaluator(
             ``tlmtc.train_tlmtc``.
 
     Returns:
-        The result returned by ``tlmtc.train_tlmtc``.
+        Result metadata containing resolved filesystem paths for a single tlmtc
+        training run, including the run ID, run directory, model directory,
+        prepared split artifacts, metadata sidecar, and evaluation artifacts
+        under ``<base_dir>/eval/train_outputs/<run_id>/``.
     """
     settings = EvalTrainSettings.resolve(
         config=load_config_file(config_path) if isinstance(config_path, (str, Path)) else None,
