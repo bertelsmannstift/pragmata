@@ -58,7 +58,6 @@ class TestStatusCommand:
         n_distribution_satisfied: int = 1,
         n_integrity_warnings: int = 0,
         n_orphans_skipped: int = 0,
-        tag_result=None,
     ):
         from pragmata.core.annotation.panel_status import HeadlineTotals, StatusReport
 
@@ -70,7 +69,6 @@ class TestStatusCommand:
             n_distribution_satisfied=n_distribution_satisfied,
             n_integrity_warnings=n_integrity_warnings,
             n_orphans_skipped=n_orphans_skipped,
-            tag_result=tag_result,
         )
 
     @patch("pragmata.annotation.report_status")
@@ -92,32 +90,25 @@ class TestStatusCommand:
         assert "integrity warnings: 3" in result.output
 
     @patch("pragmata.annotation.report_status")
-    def test_status_threads_tag_incomplete_flag(self, mock_status):
-        from pragmata.core.annotation.panel_status import TagResult
-
-        mock_status.return_value = self._stub_report(
-            tag_result=TagResult(n_tagged=2, n_cleared=1, n_already_tagged=3),
-        )
-        result = runner.invoke(app, ["annotation", "status", "--tag-incomplete"])
-        assert result.exit_code == 0
-        assert mock_status.call_args.kwargs["tag_incomplete"] is True
-        assert "tagged=2" in result.output
-        assert "cleared=1" in result.output
-
-    @patch("pragmata.annotation.report_status")
-    def test_status_default_tag_incomplete_false(self, mock_status):
-        mock_status.return_value = self._stub_report()
-        runner.invoke(app, ["annotation", "status"])
-        assert mock_status.call_args.kwargs["tag_incomplete"] is False
-
-    @patch("pragmata.annotation.report_status")
-    def test_status_threads_unset_for_default_options(self, mock_status):
+    def test_status_threads_defaults(self, mock_status):
         mock_status.return_value = self._stub_report()
         runner.invoke(app, ["annotation", "status"])
         kwargs = mock_status.call_args.kwargs
         assert kwargs["api_url"] is UNSET
-        assert kwargs["dataset_id"] is UNSET
-        assert kwargs["base_dir"] is UNSET
+        assert kwargs["workspace"] is None
+        assert kwargs["tag_partial_panels"] is False
+
+    @patch("pragmata.annotation.report_status")
+    def test_status_tag_partial_panels_flag_and_echo(self, mock_status):
+        from pragmata.core.annotation.panel_status import TagResult
+
+        mock_status.return_value = self._stub_report().with_tag_result(
+            TagResult(n_tagged=5, n_cleared=2, n_already_tagged=1)
+        )
+        result = runner.invoke(app, ["annotation", "status", "--tag-partial-panels"])
+        assert result.exit_code == 0
+        assert mock_status.call_args.kwargs["tag_partial_panels"] is True
+        assert "tag-partial-panels: tagged=5 cleared=2 already_tagged=1" in result.output
 
 
 class TestIaaCommand:

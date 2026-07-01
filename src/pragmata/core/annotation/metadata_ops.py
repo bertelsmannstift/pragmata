@@ -1,6 +1,6 @@
 """Shared safe metadata operations for live Argilla mutations.
 
-Used by both the ``--tag-incomplete`` write path in ``panel_status`` and the
+Used by both the ``--tag-partial-panels`` write path in ``panel_status`` and the
 one-off backfill script under ``scripts/``. Centralises the two safety
 invariants that every metadata write must respect on Argilla v2.8.0:
 

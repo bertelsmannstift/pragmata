@@ -1,4 +1,4 @@
-"""Unit tests for shared safe metadata ops (used by status --tag-incomplete + backfill)."""
+"""Unit tests for shared safe metadata ops (used by status --tag-partial-panels + backfill)."""
 
 from unittest.mock import MagicMock
 
@@ -17,7 +17,9 @@ def _mock_dataset(*, existing_metadata_props: list[str] | None = None) -> MagicM
 
 
 def _mock_record(metadata: dict[str, object], record_id: str = "rec-1") -> MagicMock:
-    record = MagicMock()
+    # spec=rg.Record so the "returns an rg.Record, not a dict" assertion is
+    # meaningful (a bare MagicMock never satisfies isinstance(..., rg.Record)).
+    record = MagicMock(spec=rg.Record)
     record.id = record_id
     record.metadata = metadata
     return record

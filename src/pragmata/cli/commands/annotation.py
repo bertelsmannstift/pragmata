@@ -231,28 +231,31 @@ def export_command(
 def status_command(
     api_url: str | None = _api_url_opt,
     api_key: str | None = _api_key_opt,
-    dataset_id: str | None = _dataset_id_opt,
-    base_dir: str | None = _base_dir_opt,
-    config: str | None = _config_opt,
-    tag_incomplete: bool = typer.Option(
+    workspace: str | None = typer.Option(
+        None, "--workspace", help="Only datasets in this Argilla workspace. Default: all workspaces."
+    ),
+    tag_partial_panels: bool = typer.Option(
         False,
-        "--tag-incomplete",
+        "--tag-partial-panels",
         help=(
-            "Stamp a 'needs_completion' metadata tag on incomplete unresolved retrieval chunks (and "
-            "idempotently clear stale tags). The tag is visible to annotators in the Argilla UI for filtering."
+            "Live write: stamp 'needs_completion' on the unresolved chunks of PARTIAL panels "
+            "(some but not all chunks annotated) and clear stale tags, so annotators can filter "
+            "straight to them in the Argilla UI. Off by default (read-only)."
         ),
     ),
 ) -> None:
-    """Report live retrieval panel-completeness across prod + cal datasets."""
+    """Report live retrieval panel-completeness across all workspaces (config-free).
+
+    With --tag-partial-panels, also stamps the 'needs_completion' advisory tag
+    on partial panels' unresolved chunks (a live write).
+    """
     from pragmata import annotation
 
     report = annotation.report_status(
         api_url=UNSET if api_url is None else api_url,
         api_key=UNSET if api_key is None else api_key,
-        base_dir=UNSET if base_dir is None else base_dir,
-        dataset_id=UNSET if dataset_id is None else dataset_id,
-        config_path=UNSET if config is None else config,
-        tag_incomplete=tag_incomplete,
+        workspace=workspace,
+        tag_partial_panels=tag_partial_panels,
     )
     h = report.headline
     typer.echo(f"records: total={h.total} completed={h.completed} pending={h.pending}")
@@ -271,7 +274,9 @@ def status_command(
         typer.echo(f"orphans skipped: {report.n_orphans_skipped} record(s) with empty record_uuid")
     if report.tag_result is not None:
         tr = report.tag_result
-        typer.echo(f"tag-incomplete: tagged={tr.n_tagged} cleared={tr.n_cleared} already_tagged={tr.n_already_tagged}")
+        typer.echo(
+            f"tag-partial-panels: tagged={tr.n_tagged} cleared={tr.n_cleared} already_tagged={tr.n_already_tagged}"
+        )
 
 
 @annotation_app.command("iaa")
@@ -305,60 +310,3 @@ def iaa_command(
                 typer.echo(f"  {label.label}: n/a (insufficient overlap)")
             else:
                 typer.echo(f"  {label.label}: alpha={label.alpha:.3f} [{label.ci_lower:.3f}, {label.ci_upper:.3f}]")
-
-
-@annotation_app.command("incomplete")
-def incomplete_command(
-    api_url: str | None = _api_url_opt,
-    api_key: str | None = _api_key_opt,
-    workspace: str | None = typer.Option(
-        None, "--workspace", help="Only datasets in this Argilla workspace. Default: all workspaces."
-    ),
-    task: str | None = typer.Option(
-        None, "--task", help="Only this task: retrieval | grounding | generation. Default: all tasks."
-    ),
-    tag: bool = typer.Option(
-        False,
-        "--tag",
-        help=(
-            "Live write: stamp 'needs_completion' on the listed records (and clear stale tags) so "
-            "annotators can filter straight to them in the Argilla UI. Off by default (read-only)."
-        ),
-    ),
-) -> None:
-    """List records still needed to complete their bundle; --tag steers annotators to them.
-
-    A bundle is all Argilla records sharing a record_uuid (K chunk-records for
-    retrieval, a single record for generation/grounding). Read-only unless --tag.
-    """
-    from pragmata import annotation
-
-    report = annotation.report_incomplete(
-        api_url=UNSET if api_url is None else api_url,
-        api_key=UNSET if api_key is None else api_key,
-        workspace=workspace,
-        task=task,
-        tag=tag,
-    )
-    if not report.bundles:
-        typer.echo("no partially-complete query-bundles in scope")
-    else:
-        for b in report.bundles:
-            typer.echo(
-                f"{b.workspace}/{b.dataset}  {b.record_uuid}  "
-                f"{b.n_submitted}/{b.n_records} done, {len(b.missing_record_ids)} to finish"
-            )
-        typer.echo("")
-        typer.echo(
-            f"TOTAL: {report.n_bundles} incomplete query-bundle(s) in {report.n_domains} domain(s) "
-            f"({', '.join(report.tasks)}), {report.n_records} record(s) need completion"
-        )
-        if not report.tagged:
-            typer.echo(
-                "Run 'pragmata annotation incomplete --tag' to flag these records so "
-                "annotators can filter to them in the Argilla UI."
-            )
-    if report.tagged:
-        typer.echo(
-            f"tagged={report.n_tagged} cleared={report.n_cleared} already_tagged={report.n_already_tagged}"
-        )
