@@ -91,10 +91,35 @@ class GenerationAnnotation(AnnotationBase):
 
 
 class RetrievalExportRow(RetrievalAnnotation):
-    """Full on-disk CSV row for retrieval: extends RetrievalAnnotation with constraint metadata."""
+    """Full on-disk CSV row for retrieval: annotation + constraint + panel-completeness metadata.
+
+    Column order is **annotation fields → constraint columns → completeness columns**.
+    New derived columns APPEND at the tail (keep header diffs minimal for
+    downstream consumers; never reorder existing columns).
+    """
 
     constraint_violated: bool
     constraint_details: str = ""
+    # panel_complete is the STRICT default: True iff every K chunk in the
+    # panel has at least one SUBMITTED response. Discarded responses are
+    # abstentions (pragmata's DiscardReason enum is refusal-only), not
+    # judgements, so they don't count toward "ready for metric scoring".
+    # Permissive derivation in 1 line: `n_annotated_chunks == n_retrieved_chunks`.
+    panel_complete: bool = False
+    # All three counts are DISTINCT chunk_ids in this panel. The sets aren't
+    # disjoint: a chunk with both submitted and discarded responses (from
+    # different annotators) is counted in n_annotated_chunks AND
+    # n_submitted_chunks AND n_discarded_chunks. So
+    # n_submitted + n_discarded >= n_annotated (equality when no mixed chunks).
+    # n_mixed_chunks = n_submitted + n_discarded - n_annotated.
+    n_annotated_chunks: int = 0  # union: chunks with any terminal response
+    n_submitted_chunks: int = 0  # chunks with any submitted response (used by panel_complete)
+    n_discarded_chunks: int = 0  # chunks with any discarded response
+    # n_records_seen = distinct chunk-records observed for this panel. Used
+    # for the integrity check (records_seen != n_retrieved_chunks → records
+    # lost or duplicated upstream). Surfaced per-row so consumers can spot
+    # corrupted panels in dataframe pipelines without re-joining the sidecar.
+    n_records_seen: int = 0
 
 
 class GroundingExportRow(GroundingAnnotation):
@@ -111,6 +136,40 @@ class GenerationExportRow(GenerationAnnotation):
     constraint_details: str = ""
 
 
+class KBucketStat(BaseModel):
+    """Per K-bucket panel counts for retrieval completeness MNAR analysis.
+
+    Incompleteness correlates with K (the panel size), so reporting coverage
+    bucketed by K lets the eval side detect bias from dropping partial panels.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    n_panels: NonNegativeInt
+    n_complete: NonNegativeInt
+
+
+class CompletenessSummary(BaseModel):
+    """Retrieval panel-completeness aggregates for one export run.
+
+    ``n_panels`` counts distinct non-orphan ``record_uuid``s; ``n_complete``
+    counts those whose all K chunks have a terminal (submitted-or-discarded)
+    response. ``by_k_bucket`` cross-tabs the same counts by K bucket
+    (``k_lt_5`` / ``k_eq_5`` / ``k_gt_5``) for at-a-glance reporting;
+    ``by_k`` is the full per-K histogram for MNAR / per-K marginal analysis.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    n_panels: NonNegativeInt
+    n_complete: NonNegativeInt
+    fraction_complete: float = Field(ge=0.0, le=1.0)
+    by_k_bucket: dict[str, KBucketStat]
+    by_k: dict[int, KBucketStat]
+    n_integrity_warnings: NonNegativeInt
+    n_orphans_skipped: NonNegativeInt
+
+
 class AnnotationExportMeta(BaseModel):
     """Schema for annotation export run provenance (sidecar to the task CSVs)."""
 
@@ -125,6 +184,11 @@ class AnnotationExportMeta(BaseModel):
     n_annotators: dict[Task, NonNegativeInt]
     calibration_enabled: dict[Task, bool] = Field(default_factory=dict)
     constraint_summary: dict[str, NonNegativeInt]
+    # completeness_status disambiguates completeness_summary=None between
+    # "retrieval not in tasks" (not_requested) and "compute_completeness
+    # raised" (failed). When ok, completeness_summary is populated.
+    completeness_summary: CompletenessSummary | None = None
+    completeness_status: Literal["ok", "failed", "not_requested"] = "not_requested"
 
     @model_validator(mode="after")
     def validate_keys_match_tasks(self) -> "AnnotationExportMeta":
