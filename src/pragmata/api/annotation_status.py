@@ -1,10 +1,10 @@
-"""Annotation status API - live per-panel completeness report + optional tag.
+"""Annotation status API - live progress + retrieval panel report + optional tag.
 
-Config-free: resolves Argilla credentials, then walks the live retrieval
-datasets (optionally narrowed by workspace) with no local topology config.
+Config-free: resolves Argilla credentials, then walks the live datasets (all
+tasks; optionally narrowed by workspace) with no local topology config.
 ``tag_partial_panels=True`` additionally stamps the ``needs_completion``
-advisory tag on partial panels' unresolved chunks - the one live-write surface,
-sharing the same single walk as the read path.
+advisory tag on partial retrieval panels' unresolved chunks - the one live-write
+surface, sharing the same retrieval walk as the panel report.
 """
 
 import logging
@@ -16,6 +16,7 @@ from pragmata.core.annotation.panel_status import (
     _apply_tags,
     _build_report,
     _collect_records,
+    compute_task_progress,
 )
 from pragmata.core.settings.settings_base import UNSET, Unset, resolve_api_key
 
@@ -29,7 +30,7 @@ def report_status(
     workspace: str | None = None,
     tag_partial_panels: bool = False,
 ) -> StatusReport:
-    """Fetch live retrieval panel status from Argilla (config-free).
+    """Fetch live annotation status from Argilla (config-free).
 
     Credential resolution (config-free):
     - ``api_url``: kwarg > ``ARGILLA_API_URL`` env
@@ -43,16 +44,18 @@ def report_status(
             panels' unresolved chunks (and clear stale tags). Opt-in live write.
 
     Returns:
-        ``StatusReport`` with per-panel facts and headline totals, plus an
-        optional ``tag_result`` populated when ``tag_partial_panels=True``.
+        ``StatusReport`` with the all-task ``progress`` summary and the
+        retrieval per-panel facts, plus an optional ``tag_result`` populated
+        when ``tag_partial_panels=True``.
     """
     url = api_url if isinstance(api_url, str) else os.environ.get("ARGILLA_API_URL")
     key = api_key if isinstance(api_key, str) else resolve_api_key("argilla")
     client = resolve_argilla_client(url, key)
 
-    # One walk shared between the read report and the optional tag write.
+    progress = compute_task_progress(client, workspace=workspace)
+    # One retrieval walk shared between the panel report and the optional tag write.
     collected = _collect_records(client, workspace=workspace)
-    report = _build_report(collected)
+    report = _build_report(collected).with_progress(progress)
     if tag_partial_panels:
         report = report.with_tag_result(_apply_tags(collected))
 
