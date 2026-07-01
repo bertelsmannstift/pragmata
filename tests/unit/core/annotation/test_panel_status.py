@@ -81,8 +81,8 @@ class TestComputePanelStatus:
         assert panel.k_records == 5
         assert panel.n_terminal == 5
 
-    def test_label_vs_distribution_diverges_in_calibration(self) -> None:
-        """One submitted response per cal chunk → panel_complete but NOT distribution_satisfied (cal needs 3)."""
+    def test_label_vs_overlap_diverges_in_calibration(self) -> None:
+        """One submitted response per cal chunk → panel_complete but NOT overlap_satisfied (cal needs 3)."""
         cal_records = [
             _record(record_uuid="u-cal", chunk_id=f"c{i}", response_statuses=["submitted"]) for i in range(3)
         ]
@@ -96,9 +96,9 @@ class TestComputePanelStatus:
         )
         panel = report.panels[(WS, "u-cal")]
         assert panel.panel_complete is True
-        assert panel.distribution_satisfied is False
+        assert panel.overlap_satisfied is False
 
-    def test_distribution_satisfied_when_three_submitted_in_calibration(self) -> None:
+    def test_overlap_satisfied_when_three_submitted_in_calibration(self) -> None:
         cal_records = [
             _record(record_uuid="u-cal", chunk_id=f"c{i}", response_statuses=["submitted", "submitted", "submitted"])
             for i in range(3)
@@ -106,14 +106,14 @@ class TestComputePanelStatus:
         report = compute_panel_status(_client([_dataset("retrieval_calibration", cal_records, min_submitted=3)]))
         panel = report.panels[(WS, "u-cal")]
         assert panel.panel_complete is True
-        assert panel.distribution_satisfied is True
+        assert panel.overlap_satisfied is True
 
     def test_min_submitted_read_from_live_dataset_settings(self) -> None:
-        """distribution_satisfied uses each dataset's live min_submitted, not config."""
+        """overlap_satisfied uses each dataset's live min_submitted, not config."""
         # 2 submitted on the only chunk; dataset says it needs 3 → not satisfied.
         records = [_record(record_uuid="u1", chunk_id="c1", response_statuses=["submitted", "submitted"])]
         report = compute_panel_status(_client([_dataset("retrieval_calibration", records, min_submitted=3)]))
-        assert report.panels[(WS, "u1")].distribution_satisfied is False
+        assert report.panels[(WS, "u1")].overlap_satisfied is False
 
     def test_integrity_warning_when_records_mismatch_metadata_k(self, caplog: pytest.LogCaptureFixture) -> None:
         records = [
@@ -184,13 +184,13 @@ class TestComputePanelStatus:
 
 
 class TestComputePanelStatusEdgeCases:
-    def test_distribution_aggregates_submissions_across_duplicate_chunk_records(self) -> None:
+    def test_overlap_aggregates_submissions_across_duplicate_chunk_records(self) -> None:
         """If a single chunk_id has two records (rare anomaly), submissions sum across them."""
         rec_a = _record(record_uuid="u-cal", chunk_id="c1", response_statuses=["submitted", "submitted"])
         rec_b = _record(record_uuid="u-cal", chunk_id="c1", response_statuses=["submitted", "submitted"])
         report = compute_panel_status(_client([_dataset("retrieval_calibration", [rec_a, rec_b], min_submitted=3)]))
         panel = report.panels[(WS, "u-cal")]
-        assert panel.distribution_satisfied is True
+        assert panel.overlap_satisfied is True
 
     def test_warns_when_all_panels_have_unknown_k(self, caplog: pytest.LogCaptureFixture) -> None:
         """Pre-backfill: all records missing n_retrieved_chunks → distinct warning."""

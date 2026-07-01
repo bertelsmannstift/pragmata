@@ -288,11 +288,11 @@ def status_command(
     task_rows: list[tuple[str, ...]] = []
     for row in prog.by_task:
         if row.task == "retrieval":
-            panels = (_num(report.n_panels), _num(report.n_complete), _num(report.n_distribution_satisfied))
+            panels = (_num(report.n_panels), _num(report.n_complete), _num(report.n_overlap_satisfied))
         else:
             panels = ("–", "–", "–")
         task_rows.append((row.label, _num(row.total), _num(row.completed), _pct(row.completed, row.total), *panels))
-    for line in _render_table(["TASK", "TOTAL", "COMPLETED", "%", "PANELS", "COMPL", "DIST-SAT"], task_rows, "lrrrrrr"):
+    for line in _render_table(["TASK", "TOTAL", "COMPLETED", "%", "PANELS", "COMPL", "OVERLAP"], task_rows, "lrrrrrr"):
         typer.echo(line)
 
     if by_workspace:

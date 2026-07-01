@@ -6,10 +6,12 @@ reports two distinct notions of "complete":
 - ``panel_complete`` (metric-facing, STRICT) = all K chunks have at least
   one SUBMITTED response. Discards are abstentions, not judgements, so they
   don't count toward "ready for eval scoring" - see completeness.py.
-- ``distribution_satisfied`` (operational) = every chunk's submitted-response
-  count is >= the dataset's Argilla ``min_submitted`` threshold (typically 1
-  for production, 3 for calibration). A panel can be metric-complete but
-  distribution-unsatisfied, or vice versa - don't conflate them.
+- ``overlap_satisfied`` (operational) = every chunk's submitted-response count
+  is >= the dataset's annotator overlap target (Argilla ``min_submitted``;
+  typically 1 for production, 3 for calibration - the term used throughout
+  the daily report's IAA tables). This is the readiness signal for
+  Krippendorff's alpha, distinct from merely having a first opinion: a panel
+  can be complete but overlap-unsatisfied (e.g. 1-of-3 calibration votes in).
 
 The walk is CONFIG-FREE: it enumerates the live datasets and selects retrieval
 ones by name prefix (``retrieval`` / ``retrieval_*``), so it covers every
@@ -94,7 +96,7 @@ class PanelStatus:
     n_terminal: int  # distinct chunks with >=1 terminal response (submitted OR discarded)
     n_submitted: int  # distinct chunks with >=1 submitted response (used by panel_complete)
     panel_complete: bool  # STRICT: k_records > 0 and n_submitted == k_records
-    distribution_satisfied: bool  # every chunk meets its dataset min_submitted
+    overlap_satisfied: bool  # every chunk meets its dataset's annotator overlap (min_submitted)
     integrity_ok: bool  # k_records == k_metadata (when metadata present)
 
 
@@ -140,7 +142,7 @@ class StatusReport:
     headline: HeadlineTotals
     n_panels: int
     n_complete: int
-    n_distribution_satisfied: int
+    n_overlap_satisfied: int
     n_integrity_warnings: int
     n_orphans_skipped: int
     progress: "ProgressReport | None" = None
@@ -286,12 +288,12 @@ def _build_report(collected: _CollectedRecords) -> StatusReport:
     """Build StatusReport from already-collected records. Pure aggregation."""
     panels: dict[tuple[str, str], PanelStatus] = {}
     n_complete = 0
-    n_distribution_satisfied = 0
+    n_overlap_satisfied = 0
     n_integrity_warnings = 0
     n_panels_unknown_k = 0
     for (ws_name, uuid), group in _group_by_panel(collected.records).items():
         facts = _panel_facts(uuid, group)
-        # Distribution: sum submitted responses PER chunk_id (so duplicate
+        # Overlap: sum submitted responses PER chunk_id (so duplicate
         # chunk-records for one chunk_id don't each get checked separately
         # against the threshold). Each chunk-record carries its own dataset's
         # min_submitted; if a chunk spans prod+cal (rare), require the higher.
@@ -300,7 +302,7 @@ def _build_report(collected: _CollectedRecords) -> StatusReport:
         for rec in group:
             submitted_by_chunk[rec.chunk_id] = submitted_by_chunk.get(rec.chunk_id, 0) + rec.n_submitted_responses
             threshold_by_chunk[rec.chunk_id] = max(threshold_by_chunk.get(rec.chunk_id, 0), rec.min_submitted)
-        distribution_satisfied = all(n >= threshold_by_chunk[cid] for cid, n in submitted_by_chunk.items())
+        overlap_satisfied = all(n >= threshold_by_chunk[cid] for cid, n in submitted_by_chunk.items())
         integrity_ok = facts.k_metadata == 0 or facts.k_metadata == facts.k_records
         if not integrity_ok:
             logger.warning(
@@ -314,8 +316,8 @@ def _build_report(collected: _CollectedRecords) -> StatusReport:
             n_panels_unknown_k += 1
         if facts.panel_complete:
             n_complete += 1
-        if distribution_satisfied:
-            n_distribution_satisfied += 1
+        if overlap_satisfied:
+            n_overlap_satisfied += 1
         panels[(ws_name, uuid)] = PanelStatus(
             workspace=ws_name,
             record_uuid=uuid,
@@ -324,7 +326,7 @@ def _build_report(collected: _CollectedRecords) -> StatusReport:
             n_terminal=len(facts.chunk_ids_terminal),
             n_submitted=len(facts.chunk_ids_submitted),
             panel_complete=facts.panel_complete,
-            distribution_satisfied=distribution_satisfied,
+            overlap_satisfied=overlap_satisfied,
             integrity_ok=integrity_ok,
         )
 
@@ -349,7 +351,7 @@ def _build_report(collected: _CollectedRecords) -> StatusReport:
         headline=collected.headline,
         n_panels=len(panels),
         n_complete=n_complete,
-        n_distribution_satisfied=n_distribution_satisfied,
+        n_overlap_satisfied=n_overlap_satisfied,
         n_integrity_warnings=n_integrity_warnings,
         n_orphans_skipped=collected.n_orphans,
     )
