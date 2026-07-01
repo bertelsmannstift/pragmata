@@ -254,12 +254,23 @@ def status_command(
     ),
     by_workspace: bool = typer.Option(False, "--by-workspace", help="Add a per-workspace progress breakdown."),
     by_dataset: bool = typer.Option(False, "--by-dataset", help="Add a per-dataset progress breakdown."),
+    tag_partial_panels: bool = typer.Option(
+        False,
+        "--tag-partial-panels",
+        help=(
+            "Live write: stamp 'needs_completion' on the unresolved chunks of PARTIAL panels "
+            "(some but not all chunks annotated) and clear stale tags, so annotators can filter "
+            "straight to them in the Argilla UI. Off by default (read-only)."
+        ),
+    ),
 ) -> None:
     """Report live annotation progress across all tasks, plus retrieval panel-completeness.
 
     Config-free: walks every Argilla dataset. Record progress (total / completed)
     is shown per task; the retrieval row also carries panel-completeness. Add
-    --by-workspace / --by-dataset for finer breakdowns.
+    --by-workspace / --by-dataset for finer breakdowns. With --tag-partial-panels,
+    also stamps the 'needs_completion' advisory tag on partial panels' unresolved
+    chunks (a live write).
     """
     from pragmata import annotation
 
@@ -267,6 +278,7 @@ def status_command(
         api_url=UNSET if api_url is None else api_url,
         api_key=UNSET if api_key is None else api_key,
         workspace=workspace,
+        tag_partial_panels=tag_partial_panels,
     )
 
     def _num(n: int) -> str:
@@ -321,6 +333,11 @@ def status_command(
         )
     if report.n_orphans_skipped:
         typer.echo(f"orphans skipped: {report.n_orphans_skipped} record(s) with empty record_uuid")
+    if report.tag_result is not None:
+        tr = report.tag_result
+        typer.echo(
+            f"tag-partial-panels: tagged={tr.n_tagged} cleared={tr.n_cleared} already_tagged={tr.n_already_tagged}"
+        )
 
 
 @annotation_app.command("iaa")
