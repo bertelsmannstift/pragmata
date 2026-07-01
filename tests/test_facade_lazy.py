@@ -117,15 +117,18 @@ def test_dir_returns_public_surface() -> None:
 
     expected = {
         "ExportResult",
+        "HeadlineTotals",
         "IaaReport",
         "ImportResult",
         "Locale",
         "SetupResult",
+        "StatusReport",
         "Task",
         "UserSpec",
         "compute_iaa",
         "export_annotations",
         "import_records",
+        "report_status",
         "setup",
         "teardown",
     }
