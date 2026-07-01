@@ -55,7 +55,7 @@ class TestStatusCommand:
         *,
         n_panels: int = 2,
         n_complete: int = 1,
-        n_distribution_satisfied: int = 1,
+        n_overlap_satisfied: int = 1,
         n_integrity_warnings: int = 0,
         n_orphans_skipped: int = 0,
     ):
@@ -85,7 +85,7 @@ class TestStatusCommand:
             headline=HeadlineTotals(total=60, completed=10, pending=50),
             n_panels=n_panels,
             n_complete=n_complete,
-            n_distribution_satisfied=n_distribution_satisfied,
+            n_overlap_satisfied=n_overlap_satisfied,
             n_integrity_warnings=n_integrity_warnings,
             n_orphans_skipped=n_orphans_skipped,
         ).with_progress(progress)

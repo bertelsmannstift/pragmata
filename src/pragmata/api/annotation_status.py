@@ -60,11 +60,11 @@ def report_status(
         report = report.with_tag_result(_apply_tags(collected))
 
     logger.info(
-        "Status: %d panels, %d complete (%.0f%%), %d distribution-satisfied, %d integrity warnings",
+        "Status: %d panels, %d complete (%.0f%%), %d overlap-satisfied, %d integrity warnings",
         report.n_panels,
         report.n_complete,
         100.0 * report.n_complete / report.n_panels if report.n_panels else 0.0,
-        report.n_distribution_satisfied,
+        report.n_overlap_satisfied,
         report.n_integrity_warnings,
     )
     return report
