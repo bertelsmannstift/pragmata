@@ -112,6 +112,40 @@ class GenerationExportRow(GenerationAnnotation):
     constraint_details: str = ""
 
 
+class KBucketStat(BaseModel):
+    """Per K-bucket panel counts for retrieval completeness MNAR analysis.
+
+    Incompleteness correlates with K (the panel size), so reporting coverage
+    bucketed by K lets the eval side detect bias from dropping partial panels.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    n_panels: NonNegativeInt
+    n_complete: NonNegativeInt
+
+
+class CompletenessSummary(BaseModel):
+    """Retrieval panel-completeness aggregates for one export run.
+
+    ``n_panels`` counts distinct non-orphan ``record_uuid``s; ``n_complete``
+    counts those whose all K chunks have a terminal (submitted-or-discarded)
+    response. ``by_k_bucket`` cross-tabs the same counts by K bucket
+    (``k_lt_5`` / ``k_eq_5`` / ``k_gt_5``) for at-a-glance reporting;
+    ``by_k`` is the full per-K histogram for MNAR / per-K marginal analysis.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    n_panels: NonNegativeInt
+    n_complete: NonNegativeInt
+    fraction_complete: float = Field(ge=0.0, le=1.0)
+    by_k_bucket: dict[str, KBucketStat]
+    by_k: dict[int, KBucketStat]
+    n_integrity_warnings: NonNegativeInt
+    n_orphans_skipped: NonNegativeInt
+
+
 class AnnotationExportMeta(BaseModel):
     """Schema for annotation export run provenance (sidecar to the task CSVs)."""
 
