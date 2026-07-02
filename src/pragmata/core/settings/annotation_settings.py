@@ -37,10 +37,10 @@ CalibrationFractionOverride = Annotated[float, Field(ge=0.0, le=1.0)] | Inherit
 # LogicalConstraint may warrant "block" in one deployment and "warn" in another.
 # It therefore lives here rather than as a field on LogicalConstraint.
 _DEFAULT_CONSTRAINT_SEVERITY: dict[str, Severity] = {
-    "evidence_requires_relevance": "block",
-    "evidence_excludes_misleading": "warn",
-    "contradiction_requires_unsupported": "block",
-    "fabricated_requires_cited": "block",
+    "evidence_requires_relevance": Severity.BLOCK,
+    "evidence_excludes_misleading": Severity.WARN,
+    "contradiction_requires_unsupported": Severity.BLOCK,
+    "fabricated_requires_cited": Severity.BLOCK,
 }
 
 

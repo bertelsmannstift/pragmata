@@ -7,11 +7,16 @@ the export code.
 """
 
 from dataclasses import dataclass
-from typing import Literal
+from enum import StrEnum
 
 from pragmata.core.schemas.annotation_task import Task
 
-Severity = Literal["warn", "block"]
+
+class Severity(StrEnum):
+    """Annotator-time feedback severity for a logical constraint violation."""
+
+    WARN = "warn"
+    BLOCK = "block"
 
 
 @dataclass(frozen=True)
