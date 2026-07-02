@@ -231,6 +231,29 @@ class AnnotationSettings(ResolveSettings):
         return self
 
     @model_validator(mode="after")
+    def _validate_workspace_constraint_severity_scope(self) -> Self:
+        """Reject a workspace override for a constraint_id whose task isn't served by that workspace.
+
+        ``resolved_severity()`` is only ever looked up per-task against that
+        task's own constraints, so an override for a constraint_id outside the
+        workspace's tasks would validate but silently never be read.
+        """
+        for ws_name, ws in self.workspaces.items():
+            out_of_scope = {
+                cid: CONSTRAINT_BY_ID[cid].task
+                for cid in ws.constraint_severity
+                if CONSTRAINT_BY_ID[cid].task not in ws.tasks
+            }
+            if out_of_scope:
+                detail = ", ".join(f"{cid!r} (task {task.value!r})" for cid, task in sorted(out_of_scope.items()))
+                served = sorted(t.value for t in ws.tasks)
+                raise ValueError(
+                    f"workspace {ws_name!r} constraint_severity references constraint_id(s) "
+                    f"outside its own tasks {served}: {detail}."
+                )
+        return self
+
+    @model_validator(mode="after")
     def _validate_task_uniqueness(self) -> Self:
         seen: set[Task] = set()
         for ws in self.workspaces.values():
