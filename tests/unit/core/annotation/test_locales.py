@@ -6,7 +6,9 @@ import pytest
 from pragmata.core.annotation.argilla_task_definitions import build_task_settings
 from pragmata.core.annotation.locales.registry import CATALOGS, get_catalog
 from pragmata.core.schemas.annotation_task import Locale, Task
+from pragmata.core.settings.annotation_settings import AnnotationSettings
 
+_SETTINGS = AnnotationSettings()
 _NON_EN_LOCALES = sorted(loc for loc in CATALOGS if loc != "en")
 _ALL_LOCALES = sorted(CATALOGS)
 
@@ -31,18 +33,17 @@ class TestCatalogCompleteness:
 
 
 class TestLocaleAwareSettings:
-    """build_task_settings() returns locale-appropriate titles while preserving structure."""
+    """build_task_settings(_SETTINGS) returns locale-appropriate titles while preserving structure."""
 
     def test_default_locale_is_english(self) -> None:
-        # Cached separately from explicit "en" call, but should produce identical content.
-        default_settings = build_task_settings()
-        en_settings = build_task_settings("en")
+        default_settings = build_task_settings(_SETTINGS)
+        en_settings = build_task_settings(_SETTINGS, "en")
         for task in Task:
             assert _titles(default_settings[task]) == _titles(en_settings[task])
 
     def test_de_titles_differ_from_en(self) -> None:
-        en = build_task_settings("en")
-        de = build_task_settings("de")
+        en = build_task_settings(_SETTINGS, "en")
+        de = build_task_settings(_SETTINGS, "de")
         # At least some titles must differ — otherwise translations aren't wired through.
         for task in Task:
             en_titles = _titles(en[task])
@@ -52,8 +53,8 @@ class TestLocaleAwareSettings:
     @pytest.mark.parametrize("locale", _ALL_LOCALES)
     def test_field_and_question_names_stable_across_locales(self, locale: Locale) -> None:
         """Identities (name=) must not change with locale — exports depend on this."""
-        en = build_task_settings("en")
-        other = build_task_settings(locale)
+        en = build_task_settings(_SETTINGS, "en")
+        other = build_task_settings(_SETTINGS, locale)
         for task in Task:
             assert [f.name for f in en[task].fields] == [f.name for f in other[task].fields]
             assert [q.name for q in en[task].questions] == [q.name for q in other[task].questions]
@@ -61,8 +62,8 @@ class TestLocaleAwareSettings:
     @pytest.mark.parametrize("locale", _ALL_LOCALES)
     def test_label_values_stable_across_locales(self, locale: Locale) -> None:
         """Label values (e.g. 'yes'/'no') must not change with locale — export parsing depends on this."""
-        en = build_task_settings("en")
-        other = build_task_settings(locale)
+        en = build_task_settings(_SETTINGS, "en")
+        other = build_task_settings(_SETTINGS, locale)
         for task in Task:
             for en_q, other_q in zip(en[task].questions, other[task].questions, strict=True):
                 if isinstance(en_q, rg.LabelQuestion):
@@ -73,8 +74,8 @@ class TestLocaleAwareSettings:
 
     def test_label_displays_differ_in_de(self) -> None:
         """Label display text (option text shown in the UI) must change with locale."""
-        en = build_task_settings("en")
-        de = build_task_settings("de")
+        en = build_task_settings(_SETTINGS, "en")
+        de = build_task_settings(_SETTINGS, "de")
         seen_any_diff = False
         for task in Task:
             for en_q, de_q in zip(en[task].questions, de[task].questions, strict=True):
@@ -91,27 +92,27 @@ class TestLocaleAwareSettings:
 
     def test_label_yes_no_displays_in_de(self) -> None:
         """Spot-check: the 'yes'/'no' label values render as 'Ja'/'Nein' in DE."""
-        de = build_task_settings("de")
+        de = build_task_settings(_SETTINGS, "de")
         q = next(q for q in de[Task.GROUNDING].questions if q.name == "support_present")
         assert isinstance(q, rg.LabelQuestion)
         assert _option_map(q) == {"yes": "Ja", "no": "Nein"}
 
     def test_discard_reason_labels_translated_in_de(self) -> None:
         """Spot-check: discard reasons are translated, while their VALUES stay as DiscardReason.*.value."""
-        de = build_task_settings("de")
+        de = build_task_settings(_SETTINGS, "de")
         q = next(q for q in de[Task.GROUNDING].questions if q.name == "discard_reason")
         assert isinstance(q, rg.LabelQuestion)
         opts = _option_map(q)
         assert set(opts.keys()) == {"invalid_or_unrealistic", "unclear", "outside_reviewer_expertise"}
         # All displays should be non-English (cheap heuristic: differ from the EN spelling).
-        en = build_task_settings("en")
+        en = build_task_settings(_SETTINGS, "en")
         en_q = next(q for q in en[Task.GROUNDING].questions if q.name == "discard_reason")
         assert isinstance(en_q, rg.LabelQuestion)
         assert _option_map(q) != _option_map(en_q)
 
 
 def _discard_field(locale: Locale) -> rg.CustomField:
-    settings = build_task_settings(locale)
+    settings = build_task_settings(_SETTINGS, locale)
     return next(f for f in settings[Task.GROUNDING].fields if f.name == "discard_flow")
 
 

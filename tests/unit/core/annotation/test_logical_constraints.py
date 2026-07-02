@@ -64,6 +64,7 @@ class TestConstraintById:
                     when_value=True,
                     then_question="b",
                     then_value=True,
+                    message="dup a/b",
                 )
             ],
             Task.GROUNDING: [
@@ -74,6 +75,7 @@ class TestConstraintById:
                     when_value=True,
                     then_question="d",
                     then_value=True,
+                    message="dup c/d",
                 )
             ],
         }
@@ -142,6 +144,7 @@ def implication_constraint():
         when_value=True,
         then_question="topically_relevant",
         then_value=True,
+        message="If evidence is sufficient the chunk must also be relevant.",
     )
 
 
