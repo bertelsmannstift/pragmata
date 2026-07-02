@@ -33,6 +33,9 @@ T = TypeVar("T")
 # Inheritable calibration_fraction override: bounded [0, 1] or the INHERIT sentinel.
 CalibrationFractionOverride = Annotated[float, Field(ge=0.0, le=1.0)] | Inherit
 
+# Severity is a deployment concern, not a property of the rule itself - the same
+# LogicalConstraint may warrant "block" in one deployment and "warn" in another.
+# It therefore lives here rather than as a field on LogicalConstraint.
 _DEFAULT_CONSTRAINT_SEVERITY: dict[str, Severity] = {
     "evidence_requires_relevance": "block",
     "evidence_excludes_misleading": "warn",
@@ -170,7 +173,7 @@ class AnnotationSettings(ResolveSettings):
         fall through to the field's default.
         """
         if isinstance(data, dict) and isinstance(data.get("constraint_severity"), dict):
-            data["constraint_severity"] = {**_DEFAULT_CONSTRAINT_SEVERITY, **data["constraint_severity"]}
+            return {**data, "constraint_severity": {**_DEFAULT_CONSTRAINT_SEVERITY, **data["constraint_severity"]}}
         return data
 
     @model_validator(mode="after")
