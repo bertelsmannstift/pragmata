@@ -211,6 +211,26 @@ class AnnotationSettings(ResolveSettings):
         return self
 
     @model_validator(mode="after")
+    def _validate_constraint_severity_complete(self) -> Self:
+        """Every known constraint_id must resolve to a deployment-scope severity.
+
+        ``resolved_severity()`` falls through to ``self.constraint_severity`` for
+        any constraint_id not overridden at workspace scope. A gap here would
+        otherwise surface only as a bare ``KeyError`` deep in severity resolution
+        (e.g. mid-widget-render) rather than at construction time - typically
+        because a new ``LogicalConstraint`` was added without a matching entry
+        in ``_DEFAULT_CONSTRAINT_SEVERITY``.
+        """
+        missing = set(CONSTRAINT_BY_ID) - set(self.constraint_severity)
+        if missing:
+            raise ValueError(
+                f"deployment constraint_severity is missing entries for known constraint_id(s): "
+                f"{sorted(missing)}. Every constraint must have a deployment-scope severity "
+                f"(add it to _DEFAULT_CONSTRAINT_SEVERITY)."
+            )
+        return self
+
+    @model_validator(mode="after")
     def _validate_task_uniqueness(self) -> Self:
         seen: set[Task] = set()
         for ws in self.workspaces.values():

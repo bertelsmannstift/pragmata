@@ -532,6 +532,18 @@ class TestConstraintSeverityDefaults:
         assert s.constraint_severity["evidence_requires_relevance"] == "warn"
         assert s.constraint_severity["evidence_excludes_misleading"] == "warn"
 
+    def test_missing_default_for_known_constraint_id_rejected(self, monkeypatch):
+        """A known constraint_id missing from _DEFAULT_CONSTRAINT_SEVERITY must be caught at construction.
+
+        Not surfaced later as a bare KeyError deep in resolved_severity().
+        """
+        patched = {**CONSTRAINT_BY_ID, "new_constraint": CONSTRAINT_BY_ID["evidence_requires_relevance"]}
+        monkeypatch.setattr("pragmata.core.settings.annotation_settings.CONSTRAINT_BY_ID", patched)
+        with pytest.raises(
+            ValidationError, match=r"deployment constraint_severity is missing entries for known constraint_id"
+        ):
+            AnnotationSettings()
+
 
 class TestWorkspaceConstraintSeverity:
     """Workspace-scope overrides win over deployment defaults via ``resolved_severity()``."""
@@ -577,9 +589,8 @@ class TestWorkspaceConstraintSeverity:
         )
         # retrieval workspace has the override
         assert s.resolved_severity("retrieval", "evidence_excludes_misleading") == "block"
-        # grounding workspace does not (deployment default applies, but this constraint
-        # belongs to retrieval anyway; the per-workspace resolution still returns the
-        # deployment default for any id not overridden in that workspace)
+        # grounding workspace has no override, so it still sees the deployment default
+        assert s.resolved_severity("grounding", "evidence_excludes_misleading") == "warn"
 
     def test_unknown_constraint_id_at_workspace_rejected(self):
         with pytest.raises(
