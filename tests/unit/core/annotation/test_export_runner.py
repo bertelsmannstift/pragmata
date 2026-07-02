@@ -14,6 +14,7 @@ from pragmata.core.annotation.export_runner import (
     ExportResult,
     write_export_csv,
 )
+from pragmata.core.annotation.logical_constraints import CONSTRAINT_BY_ID
 from pragmata.core.csv_io import read_csv
 from pragmata.core.paths.annotation_paths import AnnotationExportPaths
 from pragmata.core.schemas.annotation_export import (
@@ -155,24 +156,28 @@ class TestWriteExportCsv:
 
     def test_writes_row_with_violations(self, tmp_path: Path) -> None:
         row = _retrieval(topically_relevant=False, evidence_sufficient=True)
-        violations = ["retrieval: evidence_sufficient=True but topically_relevant=False"]
+        violations = [CONSTRAINT_BY_ID["evidence_requires_relevance"]]
         out = tmp_path / "out.csv"
         write_export_csv([(row, violations)], out, Task.RETRIEVAL)
         with out.open() as f:
             reader = csv.DictReader(f)
             data = list(reader)
         assert data[0]["constraint_violated"] == "true"
-        assert data[0]["constraint_details"] == violations[0]
+        assert data[0]["constraint_details"] == violations[0].violation_string()
 
     def test_multiple_violations_semicolon_joined(self, tmp_path: Path) -> None:
         row = _retrieval()
-        violations = ["violation A", "violation B"]
+        violations = [
+            CONSTRAINT_BY_ID["evidence_requires_relevance"],
+            CONSTRAINT_BY_ID["evidence_excludes_misleading"],
+        ]
         out = tmp_path / "out.csv"
         write_export_csv([(row, violations)], out, Task.RETRIEVAL)
         with out.open() as f:
             reader = csv.DictReader(f)
             data = list(reader)
-        assert data[0]["constraint_details"] == "violation A;violation B"
+        expected = ";".join(c.violation_string() for c in violations)
+        assert data[0]["constraint_details"] == expected
 
     def test_bool_values_serialised_lowercase(self, tmp_path: Path) -> None:
         row = _retrieval(topically_relevant=True, evidence_sufficient=False)
@@ -239,8 +244,12 @@ class TestExportRowRoundTrip:
 
     def test_csv_roundtrips_via_read_csv(self, tmp_path: Path) -> None:
         out = tmp_path / "out.csv"
+        violations = [
+            CONSTRAINT_BY_ID["evidence_requires_relevance"],
+            CONSTRAINT_BY_ID["evidence_excludes_misleading"],
+        ]
         write_export_csv(
-            [(_retrieval(), []), (_retrieval(chunk_id="c2"), ["rule_a", "rule_b"])],
+            [(_retrieval(), []), (_retrieval(chunk_id="c2"), violations)],
             out,
             Task.RETRIEVAL,
         )
@@ -249,7 +258,7 @@ class TestExportRowRoundTrip:
         assert rows[0].constraint_violated is False
         assert rows[0].constraint_details == ""
         assert rows[1].constraint_violated is True
-        assert rows[1].constraint_details == "rule_a;rule_b"
+        assert rows[1].constraint_details == ";".join(c.violation_string() for c in violations)
 
 
 # ---------------------------------------------------------------------------
@@ -366,8 +375,33 @@ class TestConstraintViolations:
         _set_production_dataset(mock_client, dataset)
 
         result = export_annotations(base_dir=tmp_path, export_id="test-run", tasks=[Task.RETRIEVAL])
-        assert result.constraint_summary
-        assert sum(result.constraint_summary.values()) >= 1
+        assert result.constraint_summary == {"evidence_requires_relevance": 1}
+
+    def test_constraint_summary_keyed_by_constraint_id(self, tmp_path: Path, mock_client: MagicMock) -> None:
+        """Summary keys are stable short ids, not verbose violation strings."""
+        from pragmata.api.annotation_export import export_annotations
+
+        record = _make_record(
+            fields=RETRIEVAL_FIELDS,
+            metadata=BASE_METADATA,
+            responses=_retrieval_responses(_UID1, topically_relevant="no", evidence_sufficient="yes", misleading="yes"),
+        )
+        dataset = MagicMock()
+        dataset.records.return_value = iter([record])
+        _set_production_dataset(mock_client, dataset)
+
+        result = export_annotations(base_dir=tmp_path, export_id="test-run", tasks=[Task.RETRIEVAL])
+        # Both retrieval constraints trip on this row.
+        assert result.constraint_summary == {
+            "evidence_requires_relevance": 1,
+            "evidence_excludes_misleading": 1,
+        }
+        # Sidecar mirrors the in-memory summary.
+        payload = json.loads(result.paths.export_meta_json.read_text())
+        assert payload["constraint_summary"] == {
+            "evidence_requires_relevance": 1,
+            "evidence_excludes_misleading": 1,
+        }
 
 
 class TestNotesCoercion:
