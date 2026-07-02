@@ -370,7 +370,8 @@ class TestConstraintsFieldSeverityWireUp:
     def test_no_overrides_uses_deployment_defaults(self):
         settings = AnnotationSettings()
         task_settings = build_task_settings(settings)
-        for task in (Task.RETRIEVAL, Task.GROUNDING):
+        # Generation has no logical constraints, so it's empty, but included here for completeness
+        for task in (Task.RETRIEVAL, Task.GROUNDING, Task.GENERATION):
             severities = self._payload_severities(_get_field(task_settings[task], "constraints_panel").template)
             for constraint_id, sev in severities.items():
                 assert sev == settings.constraint_severity[constraint_id]
