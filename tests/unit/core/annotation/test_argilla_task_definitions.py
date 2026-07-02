@@ -354,3 +354,41 @@ class TestConstraintsField:
         for settings in (_RETRIEVAL, _GROUNDING):
             names = _field_names(settings)
             assert names.index("constraints_panel") == names.index("discard_flow") - 1
+
+
+class TestConstraintsFieldSeverityWireUp:
+    """Widget receives the workspace-resolved severity for each constraint."""
+
+    def _payload_severities(self, template: str) -> dict[str, str]:
+        import json
+        import re
+
+        match = re.search(r"var CONSTRAINTS = (\[.*?\]);", template, re.DOTALL)
+        assert match, "CONSTRAINTS JSON not found in template"
+        return {c["constraint_id"]: c["severity"] for c in json.loads(match.group(1))}
+
+    def test_no_overrides_uses_deployment_defaults(self):
+        settings = AnnotationSettings()
+        task_settings = build_task_settings(settings)
+        # Generation has no logical constraints, so it's empty, but included here for completeness
+        for task in (Task.RETRIEVAL, Task.GROUNDING, Task.GENERATION):
+            severities = self._payload_severities(_get_field(task_settings[task], "constraints_panel").template)
+            for constraint_id, sev in severities.items():
+                assert sev == settings.constraint_severity[constraint_id]
+
+    def test_workspace_override_reaches_widget(self):
+        from pragmata.core.settings.annotation_settings import TaskSettings, WorkspaceSettings
+
+        settings = AnnotationSettings(
+            workspaces={
+                "retrieval": WorkspaceSettings(
+                    constraint_severity={"evidence_requires_relevance": "warn"},
+                    tasks={Task.RETRIEVAL: TaskSettings()},
+                ),
+                "grounding": WorkspaceSettings(tasks={Task.GROUNDING: TaskSettings()}),
+                "generation": WorkspaceSettings(tasks={Task.GENERATION: TaskSettings()}),
+            },
+        )
+        task_settings = build_task_settings(settings)
+        severities = self._payload_severities(_get_field(task_settings[Task.RETRIEVAL], "constraints_panel").template)
+        assert severities["evidence_requires_relevance"] == "warn"
