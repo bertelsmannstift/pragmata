@@ -627,6 +627,27 @@ class TestWorkspaceConstraintSeverity:
         s = AnnotationSettings(**data)
         assert s.resolved_severity("retrieval", "evidence_requires_relevance") == "warn"
 
+    def test_out_of_scope_constraint_id_at_workspace_rejected(self):
+        """A GROUNDING constraint_id on a RETRIEVAL-only workspace must be rejected at construction.
+
+        It would otherwise validate as 'known' but never be read by
+        resolved_severity() for that workspace, silently no-op-ing.
+        """
+        with pytest.raises(
+            ValidationError,
+            match=r"workspace 'retrieval' constraint_severity references constraint_id\(s\) outside its own tasks",
+        ):
+            AnnotationSettings(
+                workspaces={
+                    "retrieval": WorkspaceSettings(
+                        constraint_severity={"fabricated_requires_cited": "warn"},  # a GROUNDING constraint
+                        tasks={Task.RETRIEVAL: TaskSettings()},
+                    ),
+                    "grounding": WorkspaceSettings(tasks={Task.GROUNDING: TaskSettings()}),
+                    "generation": WorkspaceSettings(tasks={Task.GENERATION: TaskSettings()}),
+                },
+            )
+
 
 class TestTaskToWorkspace:
     """``task_to_workspace()`` inverts the workspaces topology to a Task → name map."""
