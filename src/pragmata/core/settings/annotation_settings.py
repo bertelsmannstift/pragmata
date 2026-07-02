@@ -1,6 +1,6 @@
 """Operational settings for annotation (workspace topology, distribution).
 
-Settings are organised into three scopes — deployment (``AnnotationSettings``),
+Settings are organised into three scopes: deployment (``AnnotationSettings``),
 workspace (``WorkspaceSettings``), task (``TaskSettings``). The inheritable
 fields (``production_min_submitted``, ``calibration_min_submitted``, ``locale``,
 ``calibration_fraction``) may be set at any scope; child scopes default to
@@ -9,6 +9,12 @@ fields (``production_min_submitted``, ``calibration_min_submitted``, ``locale``,
 ``model_dump()``). ``resolved_task(workspace_name, task)`` returns the
 **computed** values after walking task → workspace → deployment — the CSS
 "computed value" analogy: first non-``INHERIT`` ancestor wins.
+
+Multi-key maps (e.g. ``constraint_severity: dict[str, Severity]``) use
+**sparse-dict overlay** rather than the ``INHERIT`` sentinel: user-supplied keys
+override the deployment default for that key only; omitted keys fall through.
+This is the natural mechanism for dict-shaped fields; INHERIT is reserved for
+single-value primitives.
 """
 
 from dataclasses import dataclass, field
@@ -17,6 +23,7 @@ from typing import Annotated, Literal, Self, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, NonNegativeInt, PositiveInt, model_validator
 
+from pragmata.core.annotation.logical_constraints import CONSTRAINT_BY_ID, Severity
 from pragmata.core.schemas.annotation_task import Locale, Task
 from pragmata.core.settings.settings_base import INHERIT, Inherit, ResolveSettings
 from pragmata.core.types import SafePathSegment
@@ -25,6 +32,16 @@ T = TypeVar("T")
 
 # Inheritable calibration_fraction override: bounded [0, 1] or the INHERIT sentinel.
 CalibrationFractionOverride = Annotated[float, Field(ge=0.0, le=1.0)] | Inherit
+
+# Severity is a deployment concern (not a property of the rule itself); it's user
+# configurable. The same LogicalConstraint may b "block" in one deployment and
+# "warn" in another. so it lives here rather than as a field on LogicalConstraint.
+_DEFAULT_CONSTRAINT_SEVERITY: dict[str, Severity] = {
+    "evidence_requires_relevance": Severity.BLOCK,
+    "evidence_excludes_misleading": Severity.WARN,
+    "contradiction_requires_unsupported": Severity.BLOCK,
+    "fabricated_requires_cited": Severity.BLOCK,
+}
 
 
 class ArgillaSettings(BaseModel):
@@ -117,6 +134,7 @@ class AnnotationSettings(ResolveSettings):
     calibration_fraction: float = Field(0.1, ge=0.0, le=1.0)
     calibration_partition_seed: NonNegativeInt = 0
     include_discarded: bool = False
+    constraint_severity: dict[str, Severity] = Field(default_factory=lambda: dict(_DEFAULT_CONSTRAINT_SEVERITY))
     workspaces: dict[str, WorkspaceSettings] = Field(
         default_factory=lambda: {
             "retrieval": WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings()}),
@@ -145,6 +163,29 @@ class AnnotationSettings(ResolveSettings):
             locale=_inherit(ts.locale, ws.locale, self.locale),
             calibration_fraction=_inherit(ts.calibration_fraction, ws.calibration_fraction, self.calibration_fraction),
         )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _merge_constraint_severity_defaults(cls, data: object) -> object:
+        """Overlay user-provided deployment severities onto the built-in defaults.
+
+        Users supply only the constraint_ids they want to override; the rest
+        fall through to the field's default.
+        """
+        if isinstance(data, dict) and isinstance(data.get("constraint_severity"), dict):
+            return {**data, "constraint_severity": {**_DEFAULT_CONSTRAINT_SEVERITY, **data["constraint_severity"]}}
+        return data
+
+    @model_validator(mode="after")
+    def _validate_constraint_severity_keys(self) -> Self:
+        known = set(CONSTRAINT_BY_ID)
+        unknown = set(self.constraint_severity) - known
+        if unknown:
+            raise ValueError(
+                f"deployment constraint_severity references unknown constraint_id(s): "
+                f"{sorted(unknown)}. Known constraint_ids: {sorted(known)}."
+            )
+        return self
 
     @model_validator(mode="after")
     def _validate_task_uniqueness(self) -> Self:

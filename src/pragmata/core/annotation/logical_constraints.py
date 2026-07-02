@@ -7,8 +7,16 @@ the export code.
 """
 
 from dataclasses import dataclass
+from enum import StrEnum
 
 from pragmata.core.schemas.annotation_task import Task
+
+
+class Severity(StrEnum):
+    """Annotator-time feedback severity for a logical constraint violation."""
+
+    WARN = "warn"
+    BLOCK = "block"
 
 
 @dataclass(frozen=True)
@@ -81,3 +89,25 @@ LOGICAL_CONSTRAINTS: dict[Task, list[LogicalConstraint]] = {
     ],
     Task.GENERATION: [],
 }
+
+
+def _build_constraint_by_id(
+    catalogue: dict[Task, list[LogicalConstraint]] = LOGICAL_CONSTRAINTS,
+) -> dict[str, LogicalConstraint]:
+    """By-id lookup over the flattened catalogue.
+
+    Used by the settings layer to validate that override maps reference known
+    constraint_ids. Raises eagerly on a duplicate constraint_id rather than
+    silently letting the last one win, which would otherwise hide the earlier
+    constraint from validation and export checks.
+    """
+    by_id: dict[str, LogicalConstraint] = {}
+    for constraints in catalogue.values():
+        for constraint in constraints:
+            if constraint.constraint_id in by_id:
+                raise ValueError(f"duplicate constraint_id {constraint.constraint_id!r} in constraint catalogue")
+            by_id[constraint.constraint_id] = constraint
+    return by_id
+
+
+CONSTRAINT_BY_ID: dict[str, LogicalConstraint] = _build_constraint_by_id()
