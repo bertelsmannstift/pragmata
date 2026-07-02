@@ -513,6 +513,14 @@ class TestConstraintSeverityDefaults:
         with pytest.raises(ValidationError, match=r"deployment constraint_severity references unknown constraint_id"):
             AnnotationSettings(constraint_severity={"nonexistent_constraint": "warn"})
 
+    def test_input_dict_not_mutated(self):
+        """The (mode='before') validator must not mutate the caller's dict in place."""
+        user_override = {"evidence_requires_relevance": "warn"}
+        data = {"constraint_severity": user_override}
+        AnnotationSettings(**data)
+        assert data["constraint_severity"] is user_override
+        assert user_override == {"evidence_requires_relevance": "warn"}
+
     def test_yaml_subset_override(self):
         data = yaml.safe_load(
             """
