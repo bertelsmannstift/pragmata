@@ -33,9 +33,9 @@ T = TypeVar("T")
 # Inheritable calibration_fraction override: bounded [0, 1] or the INHERIT sentinel.
 CalibrationFractionOverride = Annotated[float, Field(ge=0.0, le=1.0)] | Inherit
 
-# Severity is a deployment concern, not a property of the rule itself - the same
-# LogicalConstraint may warrant "block" in one deployment and "warn" in another.
-# It therefore lives here rather than as a field on LogicalConstraint.
+# Severity is a deployment concern (not a property of the rule itself); it's user 
+# configurable. The same LogicalConstraint may b "block" in one deployment and 
+# "warn" in another. so it lives here rather than as a field on LogicalConstraint.
 _DEFAULT_CONSTRAINT_SEVERITY: dict[str, Severity] = {
     "evidence_requires_relevance": Severity.BLOCK,
     "evidence_excludes_misleading": Severity.WARN,
