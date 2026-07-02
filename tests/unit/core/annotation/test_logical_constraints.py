@@ -9,8 +9,10 @@ from typing import get_args
 import pytest
 
 from pragmata.core.annotation.logical_constraints import (
+    CONSTRAINT_BY_ID,
     LOGICAL_CONSTRAINTS,
     LogicalConstraint,
+    _build_constraint_by_id,
 )
 from pragmata.core.schemas.annotation_export import (
     GenerationAnnotation,
@@ -45,6 +47,38 @@ class TestCatalogue:
     def test_grounding_constraint_ids_unique(self):
         ids = [c.constraint_id for c in LOGICAL_CONSTRAINTS[Task.GROUNDING]]
         assert len(ids) == len(set(ids))
+
+
+class TestConstraintById:
+    def test_covers_every_catalogue_entry(self):
+        all_ids = {c.constraint_id for constraints in LOGICAL_CONSTRAINTS.values() for c in constraints}
+        assert set(CONSTRAINT_BY_ID) == all_ids
+
+    def test_duplicate_constraint_id_across_tasks_raises(self):
+        duplicated = {
+            Task.RETRIEVAL: [
+                LogicalConstraint(
+                    task=Task.RETRIEVAL,
+                    constraint_id="dup",
+                    when_question="a",
+                    when_value=True,
+                    then_question="b",
+                    then_value=True,
+                )
+            ],
+            Task.GROUNDING: [
+                LogicalConstraint(
+                    task=Task.GROUNDING,
+                    constraint_id="dup",
+                    when_question="c",
+                    when_value=True,
+                    then_question="d",
+                    then_value=True,
+                )
+            ],
+        }
+        with pytest.raises(ValueError, match=r"duplicate constraint_id 'dup'"):
+            _build_constraint_by_id(duplicated)
 
 
 # ---------------------------------------------------------------------------

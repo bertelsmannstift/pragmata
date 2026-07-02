@@ -85,6 +85,24 @@ LOGICAL_CONSTRAINTS: dict[Task, list[LogicalConstraint]] = {
     Task.GENERATION: [],
 }
 
-# By-id lookup over the flattened catalogue, used by the settings layer to
-# validate that override maps reference known constraint_ids.
-CONSTRAINT_BY_ID: dict[str, LogicalConstraint] = {c.constraint_id: c for cs in LOGICAL_CONSTRAINTS.values() for c in cs}
+
+def _build_constraint_by_id(
+    catalogue: dict[Task, list[LogicalConstraint]] = LOGICAL_CONSTRAINTS,
+) -> dict[str, LogicalConstraint]:
+    """By-id lookup over the flattened catalogue.
+
+    Used by the settings layer to validate that override maps reference known
+    constraint_ids. Raises eagerly on a duplicate constraint_id rather than
+    silently letting the last one win, which would otherwise hide the earlier
+    constraint from validation and export checks.
+    """
+    by_id: dict[str, LogicalConstraint] = {}
+    for constraints in catalogue.values():
+        for constraint in constraints:
+            if constraint.constraint_id in by_id:
+                raise ValueError(f"duplicate constraint_id {constraint.constraint_id!r} in constraint catalogue")
+            by_id[constraint.constraint_id] = constraint
+    return by_id
+
+
+CONSTRAINT_BY_ID: dict[str, LogicalConstraint] = _build_constraint_by_id()
