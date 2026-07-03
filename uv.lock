@@ -2536,6 +2536,7 @@ dev = [
     { name = "pytest" },
     { name = "ruff" },
     { name = "sentence-transformers" },
+    { name = "tlmtc", extra = ["full"] },
     { name = "types-pyyaml" },
 ]
 eval = [
@@ -2594,7 +2595,7 @@ requires-dist = [
     { name = "pandera", extras = ["pandas"], specifier = ">=0.31,<1.0" },
     { name = "pragmata", extras = ["annotation", "querygen", "eval"], marker = "extra == 'full'" },
     { name = "pragmata", extras = ["full", "cohere", "deepseek", "openai", "anthropic", "google-genai"], marker = "extra == 'everything'" },
-    { name = "pragmata", extras = ["test", "lint", "type", "annotation", "querygen"], marker = "extra == 'dev'" },
+    { name = "pragmata", extras = ["test", "lint", "type", "annotation", "querygen", "eval"], marker = "extra == 'dev'" },
     { name = "pydantic", specifier = ">=2.13,<3.0" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=9.0,<10.0" },
     { name = "pyyaml", specifier = ">=6.0,<7.0" },
