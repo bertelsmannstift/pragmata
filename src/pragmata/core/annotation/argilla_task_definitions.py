@@ -18,6 +18,7 @@ dataset creation time.
 """
 
 import json
+from collections.abc import Callable
 from importlib.resources import files
 from string import Template
 from typing import Any
@@ -151,16 +152,18 @@ def _render_discard_template(template_text: str, task: Task, dataset_locale: Loc
     )
 
 
-def _render_constraints_template(task: Task, questions: list, template_text: str, settings: AnnotationSettings) -> str:
+def _render_constraints_template(
+    task: Task, questions: list, template_text: str, settings: AnnotationSettings, workspace_name: str
+) -> str:
     """Substitute the constraint + question-title payload into ``constraints_field.html``.
 
-    Each constraint's payload severity is the deployment-scope value from
-    ``settings.constraint_severity``.
+    Each constraint's payload severity is the resolved severity for
+    ``(workspace_name, constraint_id)``: workspace overrides win over deployment.
     """
     constraints = LOGICAL_CONSTRAINTS[task]
     referenced = {q for c in constraints for q in (c.when_question, c.then_question)}
     titles = {q.name: q.title for q in questions if isinstance(q, rg.LabelQuestion) and q.name in referenced}
-    payloads = [c.to_widget_payload(settings.constraint_severity[c.constraint_id]) for c in constraints]
+    payloads = [c.to_widget_payload(settings.resolved_severity(workspace_name, c.constraint_id)) for c in constraints]
     return Template(template_text).substitute(
         CONSTRAINTS_JSON=json.dumps(payloads, ensure_ascii=False),
         QUESTION_TITLES_JSON=json.dumps(titles, ensure_ascii=False),
@@ -170,12 +173,14 @@ def _render_constraints_template(task: Task, questions: list, template_text: str
 def build_task_settings(settings: AnnotationSettings, locale: Locale = "en") -> dict[Task, rg.Settings]:
     """Build Argilla Settings for each annotation task, in the given locale.
 
-    Not cached: result depends on ``settings.constraint_severity``, so callers
-    should hold the returned dict for the duration of an import operation
-    rather than calling repeatedly. Deferred construction: call after an
-    Argilla client is connected (or with a mock client in tests).
+    Not cached: result depends on ``settings`` (severity resolution per task's
+    owning workspace). Callers should hold the returned dict for the duration
+    of an import operation rather than calling repeatedly. Deferred
+    construction: call after an Argilla client is connected (or with a mock
+    client in tests).
     """
     catalog = get_catalog(locale)
+    task_to_ws = settings.task_to_workspace()
     template_text = files("pragmata.core.annotation").joinpath("collapsible_field.html").read_text(encoding="utf-8")
     discard_template = files("pragmata.core.annotation").joinpath("discard_flow.html").read_text(encoding="utf-8")
     constraints_template = (
@@ -202,7 +207,7 @@ def build_task_settings(settings: AnnotationSettings, locale: Locale = "en") -> 
         return rg.CustomField(
             name="constraints_panel",
             title="Constraint checks",
-            template=_render_constraints_template(task, questions, constraints_template, settings),
+            template=_render_constraints_template(task, questions, constraints_template, settings, task_to_ws[task]),
             advanced_mode=True,
             required=False,
         )
@@ -312,8 +317,11 @@ def build_task_settings(settings: AnnotationSettings, locale: Locale = "en") -> 
         *_discard_questions(Task.GENERATION, catalog),
     ]
 
-    return {
-        Task.RETRIEVAL: assemble(
+    # Build only for tasks present in the workspaces topology: the constraints
+    # widget renders against the task's workspace, and there's no consumer for
+    # the unused rg.Settings.
+    task_builders: dict[Task, Callable[[], rg.Settings]] = {
+        Task.RETRIEVAL: lambda: assemble(
             Task.RETRIEVAL,
             content_fields=[
                 rg.TextField(name="query", title=t(Task.RETRIEVAL, "field", "query"), required=True),
@@ -330,7 +338,7 @@ def build_task_settings(settings: AnnotationSettings, locale: Locale = "en") -> 
             ],
             guidelines=t(Task.RETRIEVAL, "guidelines", ""),
         ),
-        Task.GROUNDING: assemble(
+        Task.GROUNDING: lambda: assemble(
             Task.GROUNDING,
             content_fields=[
                 rg.TextField(name="answer", title=t(Task.GROUNDING, "field", "answer"), required=True),
@@ -344,7 +352,7 @@ def build_task_settings(settings: AnnotationSettings, locale: Locale = "en") -> 
             ],
             guidelines=t(Task.GROUNDING, "guidelines", ""),
         ),
-        Task.GENERATION: assemble(
+        Task.GENERATION: lambda: assemble(
             Task.GENERATION,
             content_fields=[
                 rg.TextField(name="query", title=t(Task.GENERATION, "field", "query"), required=True),
@@ -359,3 +367,4 @@ def build_task_settings(settings: AnnotationSettings, locale: Locale = "en") -> 
             guidelines=t(Task.GENERATION, "guidelines", ""),
         ),
     }
+    return {task: build() for task, build in task_builders.items() if task in task_to_ws}

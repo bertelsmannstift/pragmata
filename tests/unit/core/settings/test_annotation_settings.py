@@ -532,6 +532,148 @@ class TestConstraintSeverityDefaults:
         assert s.constraint_severity["evidence_requires_relevance"] == "warn"
         assert s.constraint_severity["evidence_excludes_misleading"] == "warn"
 
+    def test_missing_default_for_known_constraint_id_rejected(self, monkeypatch):
+        """A known constraint_id missing from _DEFAULT_CONSTRAINT_SEVERITY must be caught at construction.
+
+        Not surfaced later as a bare KeyError deep in resolved_severity().
+        """
+        patched = {**CONSTRAINT_BY_ID, "new_constraint": CONSTRAINT_BY_ID["evidence_requires_relevance"]}
+        monkeypatch.setattr("pragmata.core.settings.annotation_settings.CONSTRAINT_BY_ID", patched)
+        with pytest.raises(
+            ValidationError, match=r"deployment constraint_severity is missing entries for known constraint_id"
+        ):
+            AnnotationSettings()
+
+
+class TestWorkspaceConstraintSeverity:
+    """Workspace-scope overrides win over deployment defaults via ``resolved_severity()``."""
+
+    def test_workspace_override_wins(self):
+        s = AnnotationSettings(
+            workspaces={
+                "retrieval": WorkspaceSettings(
+                    constraint_severity={"evidence_requires_relevance": "warn"},
+                    tasks={Task.RETRIEVAL: TaskSettings()},
+                ),
+                "grounding": WorkspaceSettings(tasks={Task.GROUNDING: TaskSettings()}),
+                "generation": WorkspaceSettings(tasks={Task.GENERATION: TaskSettings()}),
+            },
+        )
+        # workspace override applied
+        assert s.resolved_severity("retrieval", "evidence_requires_relevance") == "warn"
+
+    def test_unlisted_constraint_falls_through_to_deployment(self):
+        s = AnnotationSettings(
+            workspaces={
+                "retrieval": WorkspaceSettings(
+                    constraint_severity={"evidence_requires_relevance": "warn"},
+                    tasks={Task.RETRIEVAL: TaskSettings()},
+                ),
+                "grounding": WorkspaceSettings(tasks={Task.GROUNDING: TaskSettings()}),
+                "generation": WorkspaceSettings(tasks={Task.GENERATION: TaskSettings()}),
+            },
+        )
+        # other constraint_ids fall through to deployment defaults
+        assert s.resolved_severity("retrieval", "evidence_excludes_misleading") == "warn"
+
+    def test_other_workspaces_unaffected(self):
+        s = AnnotationSettings(
+            workspaces={
+                "retrieval": WorkspaceSettings(
+                    constraint_severity={"evidence_excludes_misleading": "block"},
+                    tasks={Task.RETRIEVAL: TaskSettings()},
+                ),
+                "grounding": WorkspaceSettings(tasks={Task.GROUNDING: TaskSettings()}),
+                "generation": WorkspaceSettings(tasks={Task.GENERATION: TaskSettings()}),
+            },
+        )
+        # retrieval workspace has the override
+        assert s.resolved_severity("retrieval", "evidence_excludes_misleading") == "block"
+        # grounding workspace has no override, so it still sees the deployment default
+        assert s.resolved_severity("grounding", "evidence_excludes_misleading") == "warn"
+
+    def test_unknown_constraint_id_at_workspace_rejected(self):
+        with pytest.raises(
+            ValidationError, match=r"workspace 'retrieval' constraint_severity references unknown constraint_id"
+        ):
+            AnnotationSettings(
+                workspaces={
+                    "retrieval": WorkspaceSettings(
+                        constraint_severity={"nonexistent_constraint": "warn"},
+                        tasks={Task.RETRIEVAL: TaskSettings()},
+                    ),
+                    "grounding": WorkspaceSettings(tasks={Task.GROUNDING: TaskSettings()}),
+                    "generation": WorkspaceSettings(tasks={Task.GENERATION: TaskSettings()}),
+                },
+            )
+
+    def test_unknown_constraint_at_workspace_via_yaml(self):
+        data = yaml.safe_load(
+            """
+            workspaces:
+              retrieval:
+                constraint_severity:
+                  evidence_requires_relevance: warn
+                tasks:
+                  retrieval: {}
+              grounding:
+                tasks:
+                  grounding: {}
+              generation:
+                tasks:
+                  generation: {}
+            """
+        )
+        s = AnnotationSettings(**data)
+        assert s.resolved_severity("retrieval", "evidence_requires_relevance") == "warn"
+
+    def test_out_of_scope_constraint_id_at_workspace_rejected(self):
+        """A GROUNDING constraint_id on a RETRIEVAL-only workspace must be rejected at construction.
+
+        It would otherwise validate as 'known' but never be read by
+        resolved_severity() for that workspace, silently no-op-ing.
+        """
+        with pytest.raises(
+            ValidationError,
+            match=r"workspace 'retrieval' constraint_severity references constraint_id\(s\) outside its own tasks",
+        ):
+            AnnotationSettings(
+                workspaces={
+                    "retrieval": WorkspaceSettings(
+                        constraint_severity={"fabricated_requires_cited": "warn"},  # a GROUNDING constraint
+                        tasks={Task.RETRIEVAL: TaskSettings()},
+                    ),
+                    "grounding": WorkspaceSettings(tasks={Task.GROUNDING: TaskSettings()}),
+                    "generation": WorkspaceSettings(tasks={Task.GENERATION: TaskSettings()}),
+                },
+            )
+
+
+class TestTaskToWorkspace:
+    """``task_to_workspace()`` inverts the workspaces topology to a Task → name map."""
+
+    def test_default_topology(self):
+        s = AnnotationSettings()
+        assert s.task_to_workspace() == {
+            Task.RETRIEVAL: "retrieval",
+            Task.GROUNDING: "grounding",
+            Task.GENERATION: "generation",
+        }
+
+    def test_custom_workspace_name(self):
+        s = AnnotationSettings(
+            workspaces={
+                "ws_a": WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings()}),
+                "ws_b": WorkspaceSettings(tasks={Task.GROUNDING: TaskSettings()}),
+                "ws_c": WorkspaceSettings(tasks={Task.GENERATION: TaskSettings()}),
+            },
+        )
+        assert s.task_to_workspace() == {
+            Task.RETRIEVAL: "ws_a",
+            Task.GROUNDING: "ws_b",
+            Task.GENERATION: "ws_c",
+        }
+
 
 class TestArgillaSettings:
     def test_defaults_to_none_api_url(self):
