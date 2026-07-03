@@ -363,22 +363,7 @@ class TestYesNoConversion:
 
 class TestConstraintViolations:
     def test_constraint_violations_in_summary(self, tmp_path: Path, mock_client: MagicMock) -> None:
-        from pragmata.api.annotation_export import export_annotations
-
-        record = _make_record(
-            fields=RETRIEVAL_FIELDS,
-            metadata=BASE_METADATA,
-            responses=_retrieval_responses(_UID1, topically_relevant="no", evidence_sufficient="yes"),
-        )
-        dataset = MagicMock()
-        dataset.records.return_value = iter([record])
-        _set_production_dataset(mock_client, dataset)
-
-        result = export_annotations(base_dir=tmp_path, export_id="test-run", tasks=[Task.RETRIEVAL])
-        assert result.constraint_summary == {"evidence_requires_relevance": 1}
-
-    def test_constraint_summary_keyed_by_constraint_id(self, tmp_path: Path, mock_client: MagicMock) -> None:
-        """Summary keys are stable short ids, not verbose violation strings."""
+        """Summary keys are stable short ids, not verbose violation strings; sidecar mirrors it."""
         from pragmata.api.annotation_export import export_annotations
 
         record = _make_record(
