@@ -219,6 +219,19 @@
     }
   }
 
+  // Argilla's own Submit shortcut (Enter) calls a Vue method directly,
+  // gated by Argilla's internal isSubmitDisabled prop — it never looks at
+  // the DOM button we disable in applySubmitGate, so it isn't blocked by
+  // that alone. Intercept in the capture phase (which always runs before
+  // Argilla's document-level bubble listener) and swallow the key.
+  var blockActive = false;
+  function interceptBlockedSubmit(e) {
+    if (blockActive && e.code === 'Enter' && !e.shiftKey) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+  }
+
   // Skip re-rendering when nothing the user-visible state depends on has
   // changed. Without this, every observed class change in the parent app
   // would write `panel.className = ''` again, fire its own mutation, and
@@ -232,6 +245,7 @@
       sig += hits[i].constraint_id + '|';
       if (hits[i].severity === 'block') hasBlock = true;
     }
+    blockActive = hasBlock;
     sig += hasBlock ? '1' : '0';
     if (sig === lastSig) {
       // Visible state unchanged, but the submit button may have mounted after
@@ -281,8 +295,10 @@
       target.removeEventListener('change', schedule, true);
       target.removeEventListener('click', schedule, true);
     }
+    pdoc.removeEventListener('keydown', interceptBlockedSubmit, true);
   });
 
+  pdoc.addEventListener('keydown', interceptBlockedSubmit, true);
   hideHostBox();
   tick();
   attachObserver();
