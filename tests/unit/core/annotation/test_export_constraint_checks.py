@@ -8,6 +8,7 @@ from pragmata.core.annotation.export_constraint_checks import (
     check_grounding,
     check_retrieval,
 )
+from pragmata.core.annotation.logical_constraints import LogicalConstraint
 from pragmata.core.schemas.annotation_export import (
     GenerationAnnotation,
     GroundingAnnotation,
@@ -98,10 +99,11 @@ class TestCheckRetrieval:
         row = _retrieval(topically_relevant=True, evidence_sufficient=True, misleading=False)
         assert check_retrieval(row) == []
 
-    def test_returns_strings(self) -> None:
+    def test_returns_logical_constraints(self) -> None:
         row = _retrieval(topically_relevant=False, evidence_sufficient=True)
         violations = check_retrieval(row)
-        assert all(isinstance(v, str) for v in violations)
+        assert all(isinstance(v, LogicalConstraint) for v in violations)
+        assert violations[0].constraint_id == "evidence_requires_relevance"
 
 
 # ---------------------------------------------------------------------------
@@ -129,10 +131,11 @@ class TestCheckGrounding:
         )
         assert check_grounding(row) == []
 
-    def test_returns_strings(self) -> None:
+    def test_returns_logical_constraints(self) -> None:
         row = _grounding(contradicted_claim_present=True, unsupported_claim_present=False)
         violations = check_grounding(row)
-        assert all(isinstance(v, str) for v in violations)
+        assert all(isinstance(v, LogicalConstraint) for v in violations)
+        assert violations[0].constraint_id == "contradiction_requires_unsupported"
 
 
 # ---------------------------------------------------------------------------

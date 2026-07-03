@@ -4,7 +4,7 @@ A logical constraint is a binary implication on label values: when one question
 is answered with a specific yes/no value, another question is constrained to a
 specific yes/no value. The same definitions drive:
 
-1. Export-time validation (``constraints.check_*`` returns violation strings)
+1. Export-time validation (``export_constraint_checks.check_*`` returns violated constraints)
 2. Annotation-time UI warnings/blocks (constraints serialised via
    ``to_widget_payload()`` into ``constraints_field.html``)
 
@@ -53,7 +53,7 @@ class LogicalConstraint:
         return getattr(row, self.then_question, None) != self.then_value
 
     def violation_string(self) -> str:
-        """Violation string used in export CSV/constraint_summary."""
+        """Human-readable violation string rendered into the per-row CSV ``constraint_details`` column."""
         return (
             f"{self.task.value}: {self.when_question}={self.when_value} but {self.then_question}={not self.then_value}"
         )
