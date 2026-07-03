@@ -628,6 +628,8 @@ def fan_out_records(
     batches = _build_batches(partition.pairs_by_rid, partition.assignments)
 
     dataset_counts: dict[str, int] = {}
+    # Memoise build_task_settings per locale — its output depends only on (settings, locale).
+    settings_by_locale: dict[Locale, dict[Task, rg.Settings]] = {}
 
     for (task, calibration), rg_records in batches.items():
         if not rg_records:
@@ -648,7 +650,9 @@ def fan_out_records(
         else:
             min_submitted = resolved.production_min_submitted
         locale = resolved.locale
-        task_settings_map = build_task_settings(settings, locale)
+        if locale not in settings_by_locale:
+            settings_by_locale[locale] = build_task_settings(settings, locale)
+        task_settings_map = settings_by_locale[locale]
         dataset = _ensure_dataset(
             client,
             task=task,
