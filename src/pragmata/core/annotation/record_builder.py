@@ -16,7 +16,9 @@ from pathlib import Path
 from typing import Any
 
 import argilla as rg
-from argilla.records._dataset_records import RecordErrorHandling  # no public re-export in argilla v2; resolved to 2.8.0 (see pyproject.toml)
+
+# RecordErrorHandling has no public re-export in argilla v2; resolved to 2.8.0 (see pyproject.toml)
+from argilla.records._dataset_records import RecordErrorHandling
 
 from pragmata.core.annotation.argilla_ops import create_dataset
 from pragmata.core.annotation.argilla_task_definitions import (
