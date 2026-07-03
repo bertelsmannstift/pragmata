@@ -16,10 +16,16 @@ from pathlib import Path
 from typing import Any
 
 import argilla as rg
-from argilla.records._dataset_records import RecordErrorHandling  # no public re-export in argilla v2; pinned to ==2.6.0
+
+# RecordErrorHandling has no public re-export in argilla v2; resolved to 2.8.0 (see pyproject.toml)
+from argilla.records._dataset_records import RecordErrorHandling
 
 from pragmata.core.annotation.argilla_ops import create_dataset
-from pragmata.core.annotation.argilla_task_definitions import build_task_settings, dataset_name
+from pragmata.core.annotation.argilla_task_definitions import (
+    WIDGET_FIELD_PLACEHOLDERS,
+    build_task_settings,
+    dataset_name,
+)
 from pragmata.core.annotation.locales.registry import CATALOGS
 from pragmata.core.schemas.annotation_import import (
     Chunk,
@@ -31,10 +37,6 @@ from pragmata.core.schemas.annotation_task import Locale, Task
 from pragmata.core.settings.annotation_settings import AnnotationSettings
 
 logger = logging.getLogger(__name__)
-
-# Static placeholder — the discard_flow CustomField template reads no record
-# data, but Argilla still requires the field to be present on every record.
-_DISCARD_FLOW_FIELD = {"discard_flow": {"text": ""}}
 
 
 # ---------------------------------------------------------------------------
@@ -127,7 +129,7 @@ def build_retrieval_record_for_chunk(
             "query": pair.query,
             "chunk": chunk.text,
             "generated_answer": {"text": pair.answer},
-            **_DISCARD_FLOW_FIELD,
+            **WIDGET_FIELD_PLACEHOLDERS,
         },
         metadata=metadata,
     )
@@ -144,7 +146,7 @@ def build_grounding_record(pair: QueryResponsePair, record_uuid: str) -> rg.Reco
             "answer": pair.answer,
             "context_set": pair.context_set,
             "query": {"text": pair.query},
-            **_DISCARD_FLOW_FIELD,
+            **WIDGET_FIELD_PLACEHOLDERS,
         },
         metadata=metadata,
     )
@@ -161,7 +163,7 @@ def build_generation_record(pair: QueryResponsePair, record_uuid: str) -> rg.Rec
             "query": pair.query,
             "answer": pair.answer,
             "context_set": {"text": pair.context_set},
-            **_DISCARD_FLOW_FIELD,
+            **WIDGET_FIELD_PLACEHOLDERS,
         },
         metadata=metadata,
     )
@@ -628,6 +630,8 @@ def fan_out_records(
     batches = _build_batches(partition.pairs_by_rid, partition.assignments)
 
     dataset_counts: dict[str, int] = {}
+    # Memoise build_task_settings per locale — its output depends only on (settings, locale).
+    settings_by_locale: dict[Locale, dict[Task, rg.Settings]] = {}
 
     for (task, calibration), rg_records in batches.items():
         if not rg_records:
@@ -648,7 +652,9 @@ def fan_out_records(
         else:
             min_submitted = resolved.production_min_submitted
         locale = resolved.locale
-        task_settings_map = build_task_settings(locale)
+        if locale not in settings_by_locale:
+            settings_by_locale[locale] = build_task_settings(settings, locale)
+        task_settings_map = settings_by_locale[locale]
         dataset = _ensure_dataset(
             client,
             task=task,
