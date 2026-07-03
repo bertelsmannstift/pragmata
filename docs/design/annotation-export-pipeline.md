@@ -201,7 +201,7 @@ exports/{export_id}/
 | `include_discarded` | bool | Whether discarded responses were included in the fetch |
 | `row_counts` | object | `{task: int}` rows written per task |
 | `n_annotators` | object | `{task: int}` distinct annotators per task |
-| `constraint_summary` | object | `{rule_name: int}` violation counts |
+| `constraint_summary` | object | `{constraint_id: int}` violation counts |
 
 The CSVs hold per-row data only; run-level configuration and counts live in the sidecar so downstream pipelines can filter cleanly without unpacking metadata from columns.
 
