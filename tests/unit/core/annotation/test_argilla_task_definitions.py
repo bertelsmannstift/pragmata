@@ -324,8 +324,8 @@ class TestConstraintsField:
         # unsubstituted (would be a hard-to-debug runtime JS error).
         for settings in (_RETRIEVAL, _GROUNDING):
             template = _get_field(settings, "constraints_panel").template
-            assert "@@CONSTRAINTS_JSON" not in template
-            assert "@@QUESTION_TITLES_JSON" not in template
+            assert "$CONSTRAINTS_JSON" not in template
+            assert "$QUESTION_TITLES_JSON" not in template
 
     def test_template_contains_constraint_messages(self):
         # Constraint messages must round-trip into the widget so the annotator sees them.
