@@ -1,6 +1,5 @@
 """Tests CLI commands for evaluation workflows."""
 
-import re
 from pathlib import Path
 from typing import Any
 
@@ -10,20 +9,16 @@ from typer.testing import CliRunner
 from pragmata.api import UNSET
 from pragmata.cli.app import app
 from pragmata.cli.commands.eval import eval_app
+from tests.unit.cli.conftest import strip_ansi
 
 runner = CliRunner()
-
-ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*m")
-
-
-def strip_ansi(text: str) -> str:
-    return ANSI_ESCAPE_RE.sub("", text)
 
 
 class _TrainResult:
     class _Paths:
         run_id = "train-run-123"
         run_dir = Path("workspace/eval/train_outputs/train-run-123")
+        model_dir = Path("workspace/eval/train_outputs/train-run-123/model")
 
     paths = _Paths()
 
@@ -220,3 +215,5 @@ class TestTrainEvaluatorCommand:
         assert "run_id: train-run-123" in result.output
         assert "run_directory:" in result.output
         assert "workspace/eval/train_outputs/train-run-123" in result.output
+        assert "model_directory:" in result.output
+        assert "workspace/eval/train_outputs/train-run-123/model" in result.output
