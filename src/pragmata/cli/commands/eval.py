@@ -91,3 +91,4 @@ def train_evaluator_command(
     typer.echo("Evaluator training run complete.")
     typer.echo(f"run_id: {result.paths.run_id}")
     typer.echo(f"run_directory: {result.paths.run_dir}")
+    typer.echo(f"model_directory: {result.paths.model_dir}")
