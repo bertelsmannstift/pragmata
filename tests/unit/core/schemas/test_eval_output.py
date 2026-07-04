@@ -7,6 +7,7 @@ from pydantic import ValidationError
 
 from pragmata.core.schemas.annotation_task import Task
 from pragmata.core.schemas.eval_output import (
+    EvalTrainMeta,
     GenerationScoreReport,
     GroundingScoreReport,
     RetrievalScoreReport,
@@ -60,6 +61,41 @@ def valid_generation_report():
         "incompleteness_rate": 0.2,
         "unsafe_content_rate": 0.0,
     }
+
+
+def test_eval_train_meta_accepts_valid_payload() -> None:
+    """EvalTrainMeta captures the Pragmata-owned run/task link."""
+    meta = EvalTrainMeta(
+        run_id="train-run-1",
+        created_at=NOW,
+        task=Task.RETRIEVAL,
+        annotation_export_id="export-1",
+    )
+
+    assert meta.run_id == "train-run-1"
+    assert meta.created_at == NOW
+    assert meta.task == Task.RETRIEVAL
+    assert meta.annotation_export_id == "export-1"
+
+
+def test_eval_train_meta_defaults_created_at_and_export_id() -> None:
+    """EvalTrainMeta supports standalone training with an internally stamped timestamp."""
+    meta = EvalTrainMeta(run_id="train-run-1", task=Task.GROUNDING)
+
+    assert meta.created_at.tzinfo is UTC
+    assert meta.annotation_export_id is None
+
+
+def test_eval_train_meta_rejects_extra_fields() -> None:
+    """EvalTrainMeta rejects accidental artifact-shape drift."""
+    with pytest.raises(ValidationError):
+        EvalTrainMeta.model_validate(
+            {
+                "run_id": "train-run-1",
+                "task": "generation",
+                "label_names": ["helpful"],
+            }
+        )
 
 
 def test_retrieval_report_constructs(valid_retrieval_report):
