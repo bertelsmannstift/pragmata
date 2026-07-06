@@ -37,6 +37,7 @@ def _retrieval(**kwargs) -> RetrievalAnnotation:
         "chunk_id": "cid",
         "doc_id": "did",
         "chunk_rank": 1,
+        "n_retrieved_chunks": 5,
         "topically_relevant": True,
         "evidence_sufficient": False,
         "misleading": False,
