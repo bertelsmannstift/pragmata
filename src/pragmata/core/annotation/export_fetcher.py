@@ -65,7 +65,11 @@ def _build_row(
             chunk_id=metadata.get("chunk_id", ""),
             doc_id=metadata.get("doc_id", ""),
             chunk_rank=metadata.get("chunk_rank", 0),
-            n_retrieved_chunks=metadata.get("n_retrieved_chunks", 0),
+            # -1 is a sentinel for "metadata absent" (pre-backfill/pre-this-PR records) —
+            # real K is always >=1 (enforced by the min=1 metadata constraint), and -1
+            # can't be confused with a real count. Downstream consumers must guard with
+            # `k > 0` before using it as a divisor.
+            n_retrieved_chunks=metadata.get("n_retrieved_chunks", -1),
             topically_relevant=_to_bool(answers.get("topically_relevant")),
             evidence_sufficient=_to_bool(answers.get("evidence_sufficient")),
             misleading=_to_bool(answers.get("misleading")),
