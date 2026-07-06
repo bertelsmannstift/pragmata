@@ -180,6 +180,60 @@ def walk_retrieval_records(client: rg.Argilla, settings: AnnotationSettings) -> 
     return snapshots
 
 
+def fetch_retrieval_from_records(
+    snapshots: list[RetrievalRecordSnapshot],
+    user_lookup: dict[UUID, str],
+    *,
+    include_discarded: bool,
+) -> list[tuple[AnnotationModel, list[LogicalConstraint]]]:
+    """Project pre-walked retrieval snapshots into typed rows.
+
+    The status filter is applied in Python (per user-response) since the
+    walk skipped the query-level filter to feed the completeness pass too.
+    Mirrors ``fetch_task``'s retrieval branch but reuses ``_build_row`` so
+    typed-row construction has one source of truth.
+    """
+    accepted = {"submitted", "discarded"} if include_discarded else {"submitted"}
+    check_constraints = CONSTRAINT_CHECKERS[Task.RETRIEVAL]
+    rows: list[tuple[AnnotationModel, list[LogicalConstraint]]] = []
+    missing_uuid_count = 0
+    for snap in snapshots:
+        if not snap.record_uuid:
+            missing_uuid_count += 1
+            # Mirror fetch_task: keep going, the row still gets emitted with
+            # an empty record_uuid (the export uses this signal too).
+        record = snap.record
+        created_at: datetime = record._model.updated_at or record._model.inserted_at
+        inserted_at: datetime = record._model.inserted_at
+        language: str | None = record.metadata.get("language")
+        record_status: str = record.status
+        for user_id, response_status, answers in snap.response_user_pairs:
+            if response_status not in accepted:
+                continue
+            base = {
+                "record_uuid": snap.record_uuid,
+                "annotator_id": user_lookup.get(user_id, str(user_id)),
+                "language": language,
+                "calibration": snap.calibration,
+                "inserted_at": inserted_at,
+                "created_at": created_at,
+                "record_status": record_status,
+                "response_status": response_status,
+                "discard_reason": answers.get("discard_reason"),
+                "discard_notes": answers.get("discard_notes"),
+                "notes": answers.get("notes") or "",
+            }
+            row = _build_row(Task.RETRIEVAL, base=base, answers=answers, fields=record.fields, metadata=record.metadata)
+            violations = check_constraints(row) if response_status == "submitted" else []
+            rows.append((row, violations))
+    if missing_uuid_count:
+        logger.warning(
+            "task=retrieval: %d record(s) missing record_uuid metadata — included with empty string",
+            missing_uuid_count,
+        )
+    return rows
+
+
 def fetch_task(
     client: rg.Argilla,
     settings: AnnotationSettings,
