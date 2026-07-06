@@ -33,7 +33,7 @@ scroll the retrieval datasets twice; standalone callers use the
 """
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import argilla as rg
 
@@ -82,13 +82,28 @@ def k_bucket(k: int) -> str:
 _BUCKET_KEYS = ("k_lt_5", "k_eq_5", "k_gt_5")
 
 
-def compute_completeness_from_records(snapshots: list[RetrievalRecordSnapshot]) -> CompletenessReport:
-    """Pure aggregator over pre-walked retrieval snapshots.
+@dataclass
+class _PanelAccumulator:
+    """Mutable per-panel tally built during the aggregation pass over snapshots."""
 
-    Shared by ``compute_completeness`` (standalone) and ``run_export`` (which
-    walks once and feeds both the row-emission and the completeness passes).
+    chunk_ids_seen: set[str] = field(default_factory=set)
+    chunk_ids_terminal: set[str] = field(default_factory=set)
+    chunk_ids_submitted: set[str] = field(default_factory=set)
+    chunk_ids_discarded: set[str] = field(default_factory=set)
+    k_max: int = 0
+    k_min: int = 0
+    n_records_with_k: int = 0  # mixed-backfill detector
+
+
+def _aggregate_snapshots(
+    snapshots: list[RetrievalRecordSnapshot],
+) -> tuple[dict[str, _PanelAccumulator], int]:
+    """Group snapshots by ``record_uuid`` into per-panel tallies.
+
+    Returns the group map plus a count of snapshots skipped for missing
+    ``record_uuid`` metadata (orphans).
     """
-    groups: dict[str, dict] = {}
+    groups: dict[str, _PanelAccumulator] = {}
     n_orphans_skipped = 0
 
     for snap in snapshots:
@@ -96,31 +111,25 @@ def compute_completeness_from_records(snapshots: list[RetrievalRecordSnapshot]) 
         if not record_uuid:
             n_orphans_skipped += 1
             continue
-        group = groups.setdefault(
-            record_uuid,
-            {
-                "chunk_ids_seen": set(),
-                "chunk_ids_terminal": set(),
-                "chunk_ids_submitted": set(),
-                "chunk_ids_discarded": set(),
-                "k_max": 0,
-                "k_min": 0,
-                "n_records_with_k": 0,  # mixed-backfill detector
-            },
-        )
-        group["chunk_ids_seen"].add(snap.chunk_id)
+        group = groups.setdefault(record_uuid, _PanelAccumulator())
+        group.chunk_ids_seen.add(snap.chunk_id)
         if snap.n_retrieved_chunks_metadata > 0:
             k_meta = snap.n_retrieved_chunks_metadata
-            group["k_max"] = max(group["k_max"], k_meta)
-            group["k_min"] = k_meta if group["k_min"] == 0 else min(group["k_min"], k_meta)
-            group["n_records_with_k"] += 1
+            group.k_max = max(group.k_max, k_meta)
+            group.k_min = k_meta if group.k_min == 0 else min(group.k_min, k_meta)
+            group.n_records_with_k += 1
         if snap.has_submitted:
-            group["chunk_ids_submitted"].add(snap.chunk_id)
+            group.chunk_ids_submitted.add(snap.chunk_id)
         if snap.has_discarded:
-            group["chunk_ids_discarded"].add(snap.chunk_id)
+            group.chunk_ids_discarded.add(snap.chunk_id)
         if snap.has_submitted or snap.has_discarded:
-            group["chunk_ids_terminal"].add(snap.chunk_id)
+            group.chunk_ids_terminal.add(snap.chunk_id)
 
+    return groups, n_orphans_skipped
+
+
+def _summarize_groups(groups: dict[str, _PanelAccumulator], n_orphans_skipped: int) -> CompletenessReport:
+    """Transform per-panel tallies into ``PanelCompleteness`` rows + the aggregate summary."""
     by_uuid: dict[str, PanelCompleteness] = {}
     n_integrity_warnings = 0
     n_panels_unknown_k = 0
@@ -128,8 +137,8 @@ def compute_completeness_from_records(snapshots: list[RetrievalRecordSnapshot]) 
     by_k: dict[int, dict[str, int]] = {}
     n_complete = 0
     for uuid, group in groups.items():
-        k_max = group["k_max"]
-        k_min = group["k_min"]
+        k_max = group.k_max
+        k_min = group.k_min
         if k_min and k_max != k_min:
             logger.warning(
                 "record_uuid=%s: inconsistent n_retrieved_chunks across records (min=%d max=%d) - using max",
@@ -138,11 +147,11 @@ def compute_completeness_from_records(snapshots: list[RetrievalRecordSnapshot]) 
                 k_max,
             )
         k = k_max
-        n_annotated = len(group["chunk_ids_terminal"])
-        n_submitted = len(group["chunk_ids_submitted"])
-        n_discarded = len(group["chunk_ids_discarded"])
-        n_seen = len(group["chunk_ids_seen"])
-        n_with_k = group["n_records_with_k"]
+        n_annotated = len(group.chunk_ids_terminal)
+        n_submitted = len(group.chunk_ids_submitted)
+        n_discarded = len(group.chunk_ids_discarded)
+        n_seen = len(group.chunk_ids_seen)
+        n_with_k = group.n_records_with_k
         # STRICT default: every chunk has a submitted response. Discards are
         # abstentions, not judgements - see module docstring.
         panel_complete = k > 0 and n_submitted == k
@@ -207,6 +216,16 @@ def compute_completeness_from_records(snapshots: list[RetrievalRecordSnapshot]) 
         n_orphans_skipped=n_orphans_skipped,
     )
     return CompletenessReport(by_uuid=by_uuid, summary=summary)
+
+
+def compute_completeness_from_records(snapshots: list[RetrievalRecordSnapshot]) -> CompletenessReport:
+    """Pure aggregator over pre-walked retrieval snapshots.
+
+    Shared by ``compute_completeness`` (standalone) and ``run_export`` (which
+    walks once and feeds both the row-emission and the completeness passes).
+    """
+    groups, n_orphans_skipped = _aggregate_snapshots(snapshots)
+    return _summarize_groups(groups, n_orphans_skipped)
 
 
 def compute_completeness(client: rg.Argilla, settings: AnnotationSettings) -> CompletenessReport:
