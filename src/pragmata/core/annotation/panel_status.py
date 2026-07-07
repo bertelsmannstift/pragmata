@@ -58,6 +58,9 @@ _TERMINAL_STATUSES = frozenset({"submitted", "discarded"})
 
 RETRIEVAL_TASK = "retrieval"
 _TASK_ORDER = {"retrieval": 0, "grounding": 1, "generation": 2}
+# Changing either of these orphans old key/value metadata already written to
+# Argilla records - nothing here renames or removes it. Manual cleanup of the
+# stale metadata would be needed on the live datasets.
 NEEDS_COMPLETION_KEY = "needs_completion"
 NEEDS_COMPLETION_VALUE = "true"
 
@@ -461,6 +464,14 @@ def _apply_tags(collected: _CollectedRecords) -> TagResult:
     response). The tag is cleared on resolved chunks and on non-partial panels
     (fully-unstarted or complete), so a fully-unstarted panel is never tagged.
     Idempotent: every run re-derives the set.
+
+    Dataset-local and overlap-indifferent: PARTIAL/UNRESOLVED are derived
+    from ``has_terminal`` (>=1 response, any status) vs ``k_records`` alone -
+    ``min_submitted`` never enters this predicate. So a calibration chunk
+    with 1-of-3 submissions already counts as resolved for tagging purposes,
+    even though it hasn't hit its overlap target; this tag means "nobody has
+    looked at this yet," not "this hasn't reached ``overlap_satisfied``" (see
+    the module docstring's PARTIAL/``overlap_satisfied`` distinction).
 
     Batches one ``dataset.records.log`` per owning dataset. Datasets are keyed
     by ``(workspace, name)`` because the same bare name (``retrieval_production``)

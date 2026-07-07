@@ -1,8 +1,8 @@
 """Shared safe metadata operations for live Argilla mutations.
 
-Used by both the ``--tag-partial-panels`` write path in ``panel_status`` and the
-one-off backfill script under ``scripts/``. Centralises the two safety
-invariants that every metadata write must respect on Argilla v2.8.0:
+Used by the ``--tag-partial-panels`` write path in ``panel_status``.
+Centralises the two safety invariants that every metadata write must respect
+on Argilla v2.8.0:
 
 1. **Argilla metadata is REPLACE, not merge.** Every ``dataset.records.log``
    call replaces the record's metadata wholesale. To avoid clobbering
