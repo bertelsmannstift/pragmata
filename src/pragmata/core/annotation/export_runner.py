@@ -6,7 +6,7 @@ import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import argilla as rg
 
@@ -177,7 +177,7 @@ def assemble_export_meta(
     calibration_enabled: dict[Task, bool],
     constraint_summary: dict[str, int],
     completeness_summary: CompletenessSummary | None = None,
-    completeness_status: str = "not_requested",
+    completeness_status: Literal["ok", "failed", "not_requested"] = "not_requested",
 ) -> AnnotationExportMeta:
     """Assemble run-level provenance metadata for an annotation export.
 
@@ -211,7 +211,7 @@ def assemble_export_meta(
         calibration_enabled=calibration_enabled,
         constraint_summary=constraint_summary,
         completeness_summary=completeness_summary,
-        completeness_status=completeness_status,  # type: ignore[arg-type]
+        completeness_status=completeness_status,
     )
 
 
@@ -266,17 +266,19 @@ def run_export(
             task_rows[task] = fetch_task(client, settings, task, user_lookup, include_discarded=include_discarded)
 
     completeness_report: CompletenessReport | None = None
-    completeness_status = "not_requested"
+    completeness_status: Literal["ok", "failed", "not_requested"] = "not_requested"
     if retrieval_snapshots is not None:
         try:
             completeness_report = compute_completeness_from_records(retrieval_snapshots)
             completeness_status = "ok"
         except Exception:
-            # Completeness is derived (a sidecar summary + extra CSV columns);
-            # an aggregation error must not lose an already-fetched export.
-            # ``completeness_status="failed"`` distinguishes this case from
-            # the "retrieval not requested" path so consumers reading the
-            # sidecar can tell them apart.
+            # Deliberately broad: completeness is a derived artifact (a sidecar
+            # summary + extra CSV columns), so any aggregation failure must not
+            # lose an already-fetched export. We catch ``Exception`` (not
+            # ``BaseException``) on purpose — KeyboardInterrupt/SystemExit still
+            # propagate and abort the run. The failure is logged with a full
+            # traceback below, and ``completeness_status="failed"`` distinguishes
+            # this from the "retrieval not requested" path for sidecar consumers.
             logger.exception("compute_completeness failed; continuing without panel-completeness sidecar")
             completeness_status = "failed"
 
