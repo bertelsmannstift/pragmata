@@ -14,6 +14,7 @@ from pragmata.core.annotation.export_runner import (
     ExportResult,
     write_export_csv,
 )
+from pragmata.core.annotation.logical_constraints import CONSTRAINT_BY_ID
 from pragmata.core.csv_io import read_csv
 from pragmata.core.paths.annotation_paths import AnnotationExportPaths
 from pragmata.core.schemas.annotation_export import (
@@ -46,6 +47,7 @@ def _retrieval(**kwargs) -> RetrievalAnnotation:
         "chunk_id": "cid",
         "doc_id": "did",
         "chunk_rank": 1,
+        "n_retrieved_chunks": 5,
         "topically_relevant": True,
         "evidence_sufficient": False,
         "misleading": False,
@@ -102,6 +104,7 @@ BASE_METADATA = {
     "chunk_id": "chunk-1",
     "doc_id": "doc-1",
     "chunk_rank": 1,
+    "n_retrieved_chunks": 5,
 }
 
 
@@ -155,24 +158,28 @@ class TestWriteExportCsv:
 
     def test_writes_row_with_violations(self, tmp_path: Path) -> None:
         row = _retrieval(topically_relevant=False, evidence_sufficient=True)
-        violations = ["retrieval: evidence_sufficient=True but topically_relevant=False"]
+        violations = [CONSTRAINT_BY_ID["evidence_requires_relevance"]]
         out = tmp_path / "out.csv"
         write_export_csv([(row, violations)], out, Task.RETRIEVAL)
         with out.open() as f:
             reader = csv.DictReader(f)
             data = list(reader)
         assert data[0]["constraint_violated"] == "true"
-        assert data[0]["constraint_details"] == violations[0]
+        assert data[0]["constraint_details"] == violations[0].violation_string()
 
     def test_multiple_violations_semicolon_joined(self, tmp_path: Path) -> None:
         row = _retrieval()
-        violations = ["violation A", "violation B"]
+        violations = [
+            CONSTRAINT_BY_ID["evidence_requires_relevance"],
+            CONSTRAINT_BY_ID["evidence_excludes_misleading"],
+        ]
         out = tmp_path / "out.csv"
         write_export_csv([(row, violations)], out, Task.RETRIEVAL)
         with out.open() as f:
             reader = csv.DictReader(f)
             data = list(reader)
-        assert data[0]["constraint_details"] == "violation A;violation B"
+        expected = ";".join(c.violation_string() for c in violations)
+        assert data[0]["constraint_details"] == expected
 
     def test_bool_values_serialised_lowercase(self, tmp_path: Path) -> None:
         row = _retrieval(topically_relevant=True, evidence_sufficient=False)
@@ -194,6 +201,7 @@ class TestWriteExportCsv:
                 "chunk_id": "cid",
                 "doc_id": "did",
                 "chunk_rank": 1,
+                "n_retrieved_chunks": 5,
                 "topically_relevant": True,
                 "evidence_sufficient": False,
                 "misleading": False,
@@ -223,6 +231,58 @@ class TestWriteExportCsv:
         for field in grounding_fields:
             assert field in header
 
+    def test_retrieval_default_completeness_columns_when_map_omitted(self, tmp_path: Path) -> None:
+        """Without a completeness map, retrieval rows fall back to schema defaults."""
+        row = _retrieval()
+        out = tmp_path / "out.csv"
+        write_export_csv([(row, [])], out, Task.RETRIEVAL)
+        with out.open() as f:
+            data = list(csv.DictReader(f))
+        assert data[0]["panel_complete"] == "false"
+        assert data[0]["n_annotated_chunks"] == "0"
+
+    def test_retrieval_completeness_columns_stamped_from_map(self, tmp_path: Path) -> None:
+        """Each retrieval row picks up its panel's completeness columns by record_uuid."""
+        from pragmata.core.annotation.completeness import PanelCompleteness
+
+        row = _retrieval()
+        completeness = {
+            row.record_uuid: PanelCompleteness(
+                record_uuid=row.record_uuid,
+                k=5,
+                n_annotated_chunks=3,
+                n_submitted_chunks=2,
+                n_discarded_chunks=1,
+                panel_complete=False,
+                n_records_seen=5,
+            )
+        }
+        out = tmp_path / "out.csv"
+        write_export_csv([(row, [])], out, Task.RETRIEVAL, completeness=completeness)
+        with out.open() as f:
+            data = list(csv.DictReader(f))
+        assert data[0]["panel_complete"] == "false"
+        assert data[0]["n_annotated_chunks"] == "3"
+        assert data[0]["n_submitted_chunks"] == "2"
+        assert data[0]["n_discarded_chunks"] == "1"
+        assert data[0]["n_records_seen"] == "5"
+
+    def test_completeness_map_ignored_for_non_retrieval_tasks(self, tmp_path: Path) -> None:
+        """Passing a completeness map for grounding/generation is a no-op (those rows lack the columns)."""
+        from pragmata.core.annotation.completeness import PanelCompleteness
+
+        row = _grounding()
+        completeness = {
+            row.record_uuid: PanelCompleteness(row.record_uuid, 5, 5, 5, 0, True, 5),
+        }
+        out = tmp_path / "out.csv"
+        # Should not raise even though grounding has no panel_complete column.
+        write_export_csv([(row, [])], out, Task.GROUNDING, completeness=completeness)
+        with out.open() as f:
+            header = next(csv.reader(f))
+        assert "panel_complete" not in header
+        assert "n_annotated_chunks" not in header
+
 
 # ---------------------------------------------------------------------------
 # Export-row schema round-trip via csv_io
@@ -239,8 +299,12 @@ class TestExportRowRoundTrip:
 
     def test_csv_roundtrips_via_read_csv(self, tmp_path: Path) -> None:
         out = tmp_path / "out.csv"
+        violations = [
+            CONSTRAINT_BY_ID["evidence_requires_relevance"],
+            CONSTRAINT_BY_ID["evidence_excludes_misleading"],
+        ]
         write_export_csv(
-            [(_retrieval(), []), (_retrieval(chunk_id="c2"), ["rule_a", "rule_b"])],
+            [(_retrieval(), []), (_retrieval(chunk_id="c2"), violations)],
             out,
             Task.RETRIEVAL,
         )
@@ -249,7 +313,7 @@ class TestExportRowRoundTrip:
         assert rows[0].constraint_violated is False
         assert rows[0].constraint_details == ""
         assert rows[1].constraint_violated is True
-        assert rows[1].constraint_details == "rule_a;rule_b"
+        assert rows[1].constraint_details == ";".join(c.violation_string() for c in violations)
 
 
 # ---------------------------------------------------------------------------
@@ -354,20 +418,30 @@ class TestYesNoConversion:
 
 class TestConstraintViolations:
     def test_constraint_violations_in_summary(self, tmp_path: Path, mock_client: MagicMock) -> None:
+        """Summary keys are stable short ids, not verbose violation strings; sidecar mirrors it."""
         from pragmata.api.annotation_export import export_annotations
 
         record = _make_record(
             fields=RETRIEVAL_FIELDS,
             metadata=BASE_METADATA,
-            responses=_retrieval_responses(_UID1, topically_relevant="no", evidence_sufficient="yes"),
+            responses=_retrieval_responses(_UID1, topically_relevant="no", evidence_sufficient="yes", misleading="yes"),
         )
         dataset = MagicMock()
         dataset.records.return_value = iter([record])
         _set_production_dataset(mock_client, dataset)
 
         result = export_annotations(base_dir=tmp_path, export_id="test-run", tasks=[Task.RETRIEVAL])
-        assert result.constraint_summary
-        assert sum(result.constraint_summary.values()) >= 1
+        # Both retrieval constraints trip on this row.
+        assert result.constraint_summary == {
+            "evidence_requires_relevance": 1,
+            "evidence_excludes_misleading": 1,
+        }
+        # Sidecar mirrors the in-memory summary.
+        payload = json.loads(result.paths.export_meta_json.read_text())
+        assert payload["constraint_summary"] == {
+            "evidence_requires_relevance": 1,
+            "evidence_excludes_misleading": 1,
+        }
 
 
 class TestNotesCoercion:
@@ -485,6 +559,105 @@ class TestExportMetaSidecar:
 
         payload = json.loads(result.paths.export_meta_json.read_text())
         assert payload["dataset_id"] is None
+
+    def test_sidecar_includes_completeness_summary_when_retrieval_exported(
+        self, tmp_path: Path, mock_client: MagicMock
+    ) -> None:
+        """Retrieval export populates ``completeness_summary`` in the meta sidecar.
+
+        Uses a side_effect-based mock so fetch_task AND compute_completeness
+        each see a fresh iterator over the same records.
+        """
+        from pragmata.api.annotation_export import export_annotations
+
+        records = [
+            _make_record(
+                fields=RETRIEVAL_FIELDS,
+                metadata={**BASE_METADATA, "chunk_id": f"chunk-{i}", "n_retrieved_chunks": 5},
+                responses=_retrieval_responses(_UID1),
+            )
+            for i in range(5)
+        ]
+        dataset = MagicMock()
+        dataset.records.side_effect = lambda *a, **kw: iter(records)
+        _set_production_dataset(mock_client, dataset)
+
+        result = export_annotations(base_dir=tmp_path, export_id="test-run", tasks=[Task.RETRIEVAL])
+
+        payload = json.loads(result.paths.export_meta_json.read_text())
+        summary = payload["completeness_summary"]
+        assert summary is not None
+        assert summary["n_panels"] == 1
+        assert summary["n_complete"] == 1
+        assert summary["fraction_complete"] == 1.0
+        assert summary["by_k_bucket"]["k_eq_5"] == {"n_panels": 1, "n_complete": 1}
+        assert result.completeness is not None
+        assert result.completeness.by_uuid[BASE_METADATA["record_uuid"]].panel_complete is True
+
+    def test_sidecar_completeness_summary_null_when_retrieval_not_exported(
+        self, tmp_path: Path, mock_client: MagicMock
+    ) -> None:
+        """No retrieval in tasks → no completeness pass, summary is null."""
+        from pragmata.api.annotation_export import export_annotations
+
+        result = export_annotations(base_dir=tmp_path, export_id="test-run", tasks=[Task.GROUNDING])
+        payload = json.loads(result.paths.export_meta_json.read_text())
+        assert payload["completeness_summary"] is None
+        assert payload["completeness_status"] == "not_requested"
+        assert result.completeness is None
+
+    def test_sidecar_completeness_status_ok_when_retrieval_succeeds(
+        self, tmp_path: Path, mock_client: MagicMock
+    ) -> None:
+        """Retrieval exported + completeness computed → completeness_status='ok'."""
+        from pragmata.api.annotation_export import export_annotations
+
+        records = [
+            _make_record(
+                fields=RETRIEVAL_FIELDS,
+                metadata={**BASE_METADATA, "chunk_id": f"chunk-{i}", "n_retrieved_chunks": 5},
+                responses=_retrieval_responses(_UID1),
+            )
+            for i in range(5)
+        ]
+        dataset = MagicMock()
+        dataset.records.side_effect = lambda *a, **kw: iter(records)
+        _set_production_dataset(mock_client, dataset)
+
+        result = export_annotations(base_dir=tmp_path, export_id="test-run", tasks=[Task.RETRIEVAL])
+
+        payload = json.loads(result.paths.export_meta_json.read_text())
+        assert payload["completeness_status"] == "ok"
+        assert payload["completeness_summary"] is not None
+
+    def test_sidecar_completeness_status_failed_when_compute_raises(
+        self, tmp_path: Path, mock_client: MagicMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Retrieval exported but compute_completeness raised → status='failed', summary=null.
+
+        Disambiguates the failure case from 'retrieval not requested' so
+        downstream consumers reading the sidecar can tell them apart.
+        """
+        import pragmata.core.annotation.export_runner as runner_mod
+        from pragmata.api.annotation_export import export_annotations
+
+        # Force compute_completeness_from_records to raise; export should still succeed.
+        def _boom(_snapshots):
+            raise RuntimeError("synthetic completeness aggregation failure")
+
+        monkeypatch.setattr(runner_mod, "compute_completeness_from_records", _boom)
+
+        dataset = MagicMock()
+        dataset.records.side_effect = lambda *a, **kw: iter([])
+        _set_production_dataset(mock_client, dataset)
+
+        result = export_annotations(base_dir=tmp_path, export_id="test-run", tasks=[Task.RETRIEVAL])
+
+        payload = json.loads(result.paths.export_meta_json.read_text())
+        assert payload["completeness_status"] == "failed"
+        assert payload["completeness_summary"] is None
+        # Primary export artifact still written (failure didn't roll it back).
+        assert result.paths.retrieval_annotation_csv.exists()
 
 
 class TestResolveCalibrationEnabled:

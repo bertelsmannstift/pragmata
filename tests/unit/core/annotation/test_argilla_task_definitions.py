@@ -8,8 +8,9 @@ from pragmata.core.annotation.argilla_task_definitions import (
     build_task_settings,
 )
 from pragmata.core.schemas.annotation_task import DiscardReason, Task
+from pragmata.core.settings.annotation_settings import AnnotationSettings
 
-_TASK_SETTINGS = build_task_settings()
+_TASK_SETTINGS = build_task_settings(AnnotationSettings())
 _RETRIEVAL = _TASK_SETTINGS[Task.RETRIEVAL]
 _GROUNDING = _TASK_SETTINGS[Task.GROUNDING]
 _GENERATION = _TASK_SETTINGS[Task.GENERATION]
@@ -198,7 +199,7 @@ class TestDiscardContract:
 class TestMetadataProperties:
     def test_retrieval_metadata(self):
         meta = [m.name for m in _RETRIEVAL.metadata]
-        assert meta == ["record_uuid", "language", "chunk_id", "doc_id", "chunk_rank"]
+        assert meta == ["record_uuid", "language", "chunk_id", "doc_id", "chunk_rank", "n_retrieved_chunks"]
 
     def test_grounding_metadata(self):
         meta = [m.name for m in _GROUNDING.metadata]
@@ -290,13 +291,104 @@ class TestCatalogDrivesRenderedOutput:
         stub = dict(CATALOGS["en"])
         stub[(Task.RETRIEVAL, "field", "query")] = sentinel
         monkeypatch.setitem(CATALOGS, "en", stub)
-        # build_task_settings is @functools.cache'd; clear so the swap takes effect
-        # and again on the way out so later tests see the unmodified catalog.
-        build_task_settings.cache_clear()
-        try:
-            rendered = build_task_settings("en")[Task.RETRIEVAL]
-            query_field = _get_field(rendered, "query")
-            assert query_field is not None
-            assert query_field.title == sentinel
-        finally:
-            build_task_settings.cache_clear()
+        rendered = build_task_settings(AnnotationSettings(), "en")[Task.RETRIEVAL]
+        query_field = _get_field(rendered, "query")
+        assert query_field is not None
+        assert query_field.title == sentinel
+
+
+class TestConstraintsField:
+    """The constraints_panel CustomField wires LOGICAL_CONSTRAINTS into the annotator UI."""
+
+    def test_present_on_every_task(self):
+        # Even Generation (no constraints) gets the field: every record carries a
+        # constraints_panel placeholder value, and Argilla rejects records
+        # whose field keys don't all exist on the dataset.
+        for settings in (_RETRIEVAL, _GROUNDING, _GENERATION):
+            assert _get_field(settings, "constraints_panel") is not None
+
+    def test_generation_widget_payload_has_no_constraints(self):
+        # Generation has no constraints — the widget should serialise an empty
+        # constraints array, so it evaluates to no hits and stays hidden.
+        template = _get_field(_GENERATION, "constraints_panel").template
+        assert "var CONSTRAINTS = [];" in template
+
+    def test_is_advanced_custom_field(self):
+        field = _get_field(_RETRIEVAL, "constraints_panel")
+        assert isinstance(field, rg.CustomField)
+        assert field.advanced_mode is True
+        assert field.required is False
+
+    def test_template_substitutions_are_resolved(self):
+        # The widget receives both placeholders — verify nothing was left
+        # unsubstituted (would be a hard-to-debug runtime JS error).
+        for settings in (_RETRIEVAL, _GROUNDING):
+            template = _get_field(settings, "constraints_panel").template
+            assert "$CONSTRAINTS_JSON" not in template
+            assert "$QUESTION_TITLES_JSON" not in template
+
+    def test_template_contains_constraint_messages(self):
+        # Constraint messages must round-trip into the widget so the annotator sees them.
+        from pragmata.core.annotation.logical_constraints import LOGICAL_CONSTRAINTS
+
+        for task, settings in ((Task.RETRIEVAL, _RETRIEVAL), (Task.GROUNDING, _GROUNDING)):
+            template = _get_field(settings, "constraints_panel").template
+            for constraint in LOGICAL_CONSTRAINTS[task]:
+                # First few words is enough — full message has punctuation/escaping noise.
+                assert constraint.message.split(".")[0][:30] in template
+
+    def test_template_carries_question_titles_used_by_constraints(self):
+        # Aria-label probing relies on these titles matching the dataset's questions.
+        from pragmata.core.annotation.logical_constraints import LOGICAL_CONSTRAINTS
+
+        for task, settings in ((Task.RETRIEVAL, _RETRIEVAL), (Task.GROUNDING, _GROUNDING)):
+            template = _get_field(settings, "constraints_panel").template
+            for constraint in LOGICAL_CONSTRAINTS[task]:
+                for qname in (constraint.when_question, constraint.then_question):
+                    title = _get_question(settings, qname).title
+                    assert title in template
+
+    def test_field_is_below_content_above_discard(self):
+        # The panel should sit right before the discard field so it's adjacent
+        # to the submit action area.
+        for settings in (_RETRIEVAL, _GROUNDING):
+            names = _field_names(settings)
+            assert names.index("constraints_panel") == names.index("discard_flow") - 1
+
+
+class TestConstraintsFieldSeverityWireUp:
+    """Widget receives the workspace-resolved severity for each constraint."""
+
+    def _payload_severities(self, template: str) -> dict[str, str]:
+        import json
+        import re
+
+        match = re.search(r"var CONSTRAINTS = (\[.*?\]);", template, re.DOTALL)
+        assert match, "CONSTRAINTS JSON not found in template"
+        return {c["constraint_id"]: c["severity"] for c in json.loads(match.group(1))}
+
+    def test_no_overrides_uses_deployment_defaults(self):
+        settings = AnnotationSettings()
+        task_settings = build_task_settings(settings)
+        # Generation has no logical constraints, so it's empty, but included here for completeness
+        for task in (Task.RETRIEVAL, Task.GROUNDING, Task.GENERATION):
+            severities = self._payload_severities(_get_field(task_settings[task], "constraints_panel").template)
+            for constraint_id, sev in severities.items():
+                assert sev == settings.constraint_severity[constraint_id]
+
+    def test_workspace_override_reaches_widget(self):
+        from pragmata.core.settings.annotation_settings import TaskSettings, WorkspaceSettings
+
+        settings = AnnotationSettings(
+            workspaces={
+                "retrieval": WorkspaceSettings(
+                    constraint_severity={"evidence_requires_relevance": "warn"},
+                    tasks={Task.RETRIEVAL: TaskSettings()},
+                ),
+                "grounding": WorkspaceSettings(tasks={Task.GROUNDING: TaskSettings()}),
+                "generation": WorkspaceSettings(tasks={Task.GENERATION: TaskSettings()}),
+            },
+        )
+        task_settings = build_task_settings(settings)
+        severities = self._payload_severities(_get_field(task_settings[Task.RETRIEVAL], "constraints_panel").template)
+        assert severities["evidence_requires_relevance"] == "warn"

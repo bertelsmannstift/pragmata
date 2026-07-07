@@ -1,6 +1,6 @@
 """Operational settings for annotation (workspace topology, distribution).
 
-Settings are organised into three scopes — deployment (``AnnotationSettings``),
+Settings are organised into three scopes: deployment (``AnnotationSettings``),
 workspace (``WorkspaceSettings``), task (``TaskSettings``). The inheritable
 fields (``production_min_submitted``, ``calibration_min_submitted``, ``locale``,
 ``calibration_fraction``) may be set at any scope; child scopes default to
@@ -9,6 +9,12 @@ fields (``production_min_submitted``, ``calibration_min_submitted``, ``locale``,
 ``model_dump()``). ``resolved_task(workspace_name, task)`` returns the
 **computed** values after walking task → workspace → deployment — the CSS
 "computed value" analogy: first non-``INHERIT`` ancestor wins.
+
+Multi-key maps (e.g. ``constraint_severity: dict[str, Severity]``) use
+**sparse-dict overlay** rather than the ``INHERIT`` sentinel: user-supplied keys
+override the deployment default for that key only; omitted keys fall through.
+This is the natural mechanism for dict-shaped fields; INHERIT is reserved for
+single-value primitives.
 """
 
 from dataclasses import dataclass, field
@@ -17,6 +23,7 @@ from typing import Annotated, Literal, Self, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, NonNegativeInt, PositiveInt, model_validator
 
+from pragmata.core.annotation.logical_constraints import CONSTRAINT_BY_ID, Severity
 from pragmata.core.schemas.annotation_task import Locale, Task
 from pragmata.core.settings.settings_base import INHERIT, Inherit, ResolveSettings
 from pragmata.core.types import SafePathSegment
@@ -25,6 +32,16 @@ T = TypeVar("T")
 
 # Inheritable calibration_fraction override: bounded [0, 1] or the INHERIT sentinel.
 CalibrationFractionOverride = Annotated[float, Field(ge=0.0, le=1.0)] | Inherit
+
+# Severity is a deployment concern (not a property of the rule itself); it's user
+# configurable. The same LogicalConstraint may b "block" in one deployment and
+# "warn" in another. so it lives here rather than as a field on LogicalConstraint.
+_DEFAULT_CONSTRAINT_SEVERITY: dict[str, Severity] = {
+    "evidence_requires_relevance": Severity.BLOCK,
+    "evidence_excludes_misleading": Severity.WARN,
+    "contradiction_requires_unsupported": Severity.BLOCK,
+    "fabricated_requires_cited": Severity.BLOCK,
+}
 
 
 class ArgillaSettings(BaseModel):
@@ -51,7 +68,9 @@ class WorkspaceSettings(BaseModel):
 
     Inherited fields default to ``INHERIT`` (use deployment value). ``None`` on
     ``calibration_min_submitted`` explicitly disables calibration for any task
-    that inherits from this workspace.
+    that inherits from this workspace. ``constraint_severity`` is a sparse
+    constraint-id to severity map: only listed constraint_ids override the
+    deployment value; omitted constraint_ids fall through to the deployment map.
     """
 
     model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
@@ -60,6 +79,7 @@ class WorkspaceSettings(BaseModel):
     calibration_min_submitted: PositiveInt | None | Inherit = INHERIT
     locale: Locale | Inherit = INHERIT
     calibration_fraction: CalibrationFractionOverride = INHERIT
+    constraint_severity: dict[str, Severity] = Field(default_factory=dict)
     tasks: dict[Task, TaskSettings]
 
 
@@ -117,6 +137,7 @@ class AnnotationSettings(ResolveSettings):
     calibration_fraction: float = Field(0.1, ge=0.0, le=1.0)
     calibration_partition_seed: NonNegativeInt = 0
     include_discarded: bool = False
+    constraint_severity: dict[str, Severity] = Field(default_factory=lambda: dict(_DEFAULT_CONSTRAINT_SEVERITY))
     workspaces: dict[str, WorkspaceSettings] = Field(
         default_factory=lambda: {
             "retrieval": WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings()}),
@@ -124,6 +145,23 @@ class AnnotationSettings(ResolveSettings):
             "generation": WorkspaceSettings(tasks={Task.GENERATION: TaskSettings()}),
         }
     )
+
+    def task_to_workspace(self) -> dict[Task, str]:
+        """Map each task to its owning workspace name (validated 1:1 by ``_validate_task_uniqueness``)."""
+        return {task: ws_name for ws_name, ws in self.workspaces.items() for task in ws.tasks}
+
+    def resolved_severity(self, workspace_name: str, constraint_id: str) -> Severity:
+        """Return the computed severity for a logical constraint: workspace then deployment.
+
+        Severity is per-constraint (not per-task), so this walks only the two
+        scopes where it can be set. Deployment defaults are guaranteed complete
+        by the merge validator on ``constraint_severity``; unknown ``constraint_id``
+        raises ``KeyError``.
+        """
+        ws = self.workspaces[workspace_name]
+        if constraint_id in ws.constraint_severity:
+            return ws.constraint_severity[constraint_id]
+        return self.constraint_severity[constraint_id]
 
     def resolved_task(self, workspace_name: str, task: Task) -> ResolvedTaskSettings:
         """Return the computed task settings: task → workspace → deployment.
@@ -145,6 +183,75 @@ class AnnotationSettings(ResolveSettings):
             locale=_inherit(ts.locale, ws.locale, self.locale),
             calibration_fraction=_inherit(ts.calibration_fraction, ws.calibration_fraction, self.calibration_fraction),
         )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _merge_constraint_severity_defaults(cls, data: object) -> object:
+        """Overlay user-provided deployment severities onto the built-in defaults.
+
+        Users supply only the constraint_ids they want to override; the rest
+        fall through to the field's default.
+        """
+        if isinstance(data, dict) and isinstance(data.get("constraint_severity"), dict):
+            return {**data, "constraint_severity": {**_DEFAULT_CONSTRAINT_SEVERITY, **data["constraint_severity"]}}
+        return data
+
+    @model_validator(mode="after")
+    def _validate_constraint_severity_keys(self) -> Self:
+        known = set(CONSTRAINT_BY_ID)
+        for scope_name, overrides in [("deployment", self.constraint_severity)] + [
+            (f"workspace {ws_name!r}", ws.constraint_severity) for ws_name, ws in self.workspaces.items()
+        ]:
+            unknown = set(overrides) - known
+            if unknown:
+                raise ValueError(
+                    f"{scope_name} constraint_severity references unknown constraint_id(s): "
+                    f"{sorted(unknown)}. Known constraint_ids: {sorted(known)}."
+                )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_constraint_severity_complete(self) -> Self:
+        """Every known constraint_id must resolve to a deployment-scope severity.
+
+        ``resolved_severity()`` falls through to ``self.constraint_severity`` for
+        any constraint_id not overridden at workspace scope. A gap here would
+        otherwise surface only as a bare ``KeyError`` deep in severity resolution
+        (e.g. mid-widget-render) rather than at construction time - typically
+        because a new ``LogicalConstraint`` was added without a matching entry
+        in ``_DEFAULT_CONSTRAINT_SEVERITY``.
+        """
+        missing = set(CONSTRAINT_BY_ID) - set(self.constraint_severity)
+        if missing:
+            raise ValueError(
+                f"deployment constraint_severity is missing entries for known constraint_id(s): "
+                f"{sorted(missing)}. Every constraint must have a deployment-scope severity "
+                f"(add it to _DEFAULT_CONSTRAINT_SEVERITY)."
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_workspace_constraint_severity_scope(self) -> Self:
+        """Reject a workspace override for a constraint_id whose task isn't served by that workspace.
+
+        ``resolved_severity()`` is only ever looked up per-task against that
+        task's own constraints, so an override for a constraint_id outside the
+        workspace's tasks would validate but silently never be read.
+        """
+        for ws_name, ws in self.workspaces.items():
+            out_of_scope = {
+                cid: CONSTRAINT_BY_ID[cid].task
+                for cid in ws.constraint_severity
+                if CONSTRAINT_BY_ID[cid].task not in ws.tasks
+            }
+            if out_of_scope:
+                detail = ", ".join(f"{cid!r} (task {task.value!r})" for cid, task in sorted(out_of_scope.items()))
+                served = sorted(t.value for t in ws.tasks)
+                raise ValueError(
+                    f"workspace {ws_name!r} constraint_severity references constraint_id(s) "
+                    f"outside its own tasks {served}: {detail}."
+                )
+        return self
 
     @model_validator(mode="after")
     def _validate_task_uniqueness(self) -> Self:

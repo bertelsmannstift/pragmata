@@ -34,7 +34,7 @@ type = [
 ]
 annotation = ["argilla>=2.0,<3.0",]
 querygen = ["sentence-transformers>=3.0,<6.0",]
-eval = ["tlmtc[full]>=0.2,<1.0",]
+eval = ["tlmtc[full]>=0.3,<1.0",]
 cohere = ["langchain-cohere>=0.5,<1.0"]
 deepseek = ["langchain-deepseek>=1.0,<2.0"]
 openai = ["langchain-openai>=1.2,<2.0"]
@@ -42,7 +42,7 @@ anthropic = ["langchain-anthropic>=1.4,<2.0"]
 google-genai = ["langchain-google-genai>=4.2,<5.0"]
 full = ["pragmata[annotation,querygen,eval]"]
 everything = ["pragmata[full,cohere,deepseek,openai,anthropic,google-genai]"]
-dev  = ["pragmata[test,lint,type,annotation,querygen]"]
+dev  = ["pragmata[test,lint,type,annotation,querygen,eval]"]
 
 [project.scripts]
 pragmata = "pragmata.cli.app:app"
@@ -57,6 +57,7 @@ markers = [
     "integration: cross-component integration tests excluded from the default test run",
     "annotation: integration tests for the annotation interface, requiring a live Docker/Argilla stack",
     "querygen: integration tests for synthetic query generation",
+    "eval: integration tests for evaluator training",
     "packaging: packaging/import-surface smoke tests excluded from the default test run",
 ]
 addopts = "-m 'not integration and not packaging'"

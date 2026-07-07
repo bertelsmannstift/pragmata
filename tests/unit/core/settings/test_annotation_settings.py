@@ -4,6 +4,7 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
+from pragmata.core.annotation.logical_constraints import CONSTRAINT_BY_ID
 from pragmata.core.schemas.annotation_task import Task
 from pragmata.core.settings.annotation_settings import (
     AnnotationSettings,
@@ -482,6 +483,196 @@ class TestYamlRoundtrip:
         )
         s = AnnotationSettings(**data)
         assert s.resolved_task("r", Task.RETRIEVAL).production_min_submitted == 4
+
+
+class TestConstraintSeverityDefaults:
+    """Out-of-the-box severity defaults live on ``AnnotationSettings.constraint_severity``."""
+
+    def test_default_factory_covers_all_known_constraint_ids(self):
+        s = AnnotationSettings()
+        assert set(s.constraint_severity) == set(CONSTRAINT_BY_ID)
+
+    def test_default_for_block_constraint(self):
+        s = AnnotationSettings()
+        assert s.constraint_severity["evidence_requires_relevance"] == "block"
+
+    def test_default_for_warn_constraint(self):
+        s = AnnotationSettings()
+        assert s.constraint_severity["evidence_excludes_misleading"] == "warn"
+
+    def test_user_subset_merges_with_defaults(self):
+        s = AnnotationSettings(constraint_severity={"evidence_requires_relevance": "warn"})
+        # user override applied
+        assert s.constraint_severity["evidence_requires_relevance"] == "warn"
+        # other defaults preserved
+        assert s.constraint_severity["evidence_excludes_misleading"] == "warn"
+        assert s.constraint_severity["contradiction_requires_unsupported"] == "block"
+        assert s.constraint_severity["fabricated_requires_cited"] == "block"
+
+    def test_unknown_constraint_id_rejected(self):
+        with pytest.raises(ValidationError, match=r"deployment constraint_severity references unknown constraint_id"):
+            AnnotationSettings(constraint_severity={"nonexistent_constraint": "warn"})
+
+    def test_input_dict_not_mutated(self):
+        """The (mode='before') validator must not mutate the caller's dict in place."""
+        user_override = {"evidence_requires_relevance": "warn"}
+        data = {"constraint_severity": user_override}
+        AnnotationSettings(**data)
+        assert data["constraint_severity"] is user_override
+        assert user_override == {"evidence_requires_relevance": "warn"}
+
+    def test_yaml_subset_override(self):
+        data = yaml.safe_load(
+            """
+            constraint_severity:
+              evidence_requires_relevance: warn
+            """
+        )
+        s = AnnotationSettings(**data)
+        assert s.constraint_severity["evidence_requires_relevance"] == "warn"
+        assert s.constraint_severity["evidence_excludes_misleading"] == "warn"
+
+    def test_missing_default_for_known_constraint_id_rejected(self, monkeypatch):
+        """A known constraint_id missing from _DEFAULT_CONSTRAINT_SEVERITY must be caught at construction.
+
+        Not surfaced later as a bare KeyError deep in resolved_severity().
+        """
+        patched = {**CONSTRAINT_BY_ID, "new_constraint": CONSTRAINT_BY_ID["evidence_requires_relevance"]}
+        monkeypatch.setattr("pragmata.core.settings.annotation_settings.CONSTRAINT_BY_ID", patched)
+        with pytest.raises(
+            ValidationError, match=r"deployment constraint_severity is missing entries for known constraint_id"
+        ):
+            AnnotationSettings()
+
+
+class TestWorkspaceConstraintSeverity:
+    """Workspace-scope overrides win over deployment defaults via ``resolved_severity()``."""
+
+    def test_workspace_override_wins(self):
+        s = AnnotationSettings(
+            workspaces={
+                "retrieval": WorkspaceSettings(
+                    constraint_severity={"evidence_requires_relevance": "warn"},
+                    tasks={Task.RETRIEVAL: TaskSettings()},
+                ),
+                "grounding": WorkspaceSettings(tasks={Task.GROUNDING: TaskSettings()}),
+                "generation": WorkspaceSettings(tasks={Task.GENERATION: TaskSettings()}),
+            },
+        )
+        # workspace override applied
+        assert s.resolved_severity("retrieval", "evidence_requires_relevance") == "warn"
+
+    def test_unlisted_constraint_falls_through_to_deployment(self):
+        s = AnnotationSettings(
+            workspaces={
+                "retrieval": WorkspaceSettings(
+                    constraint_severity={"evidence_requires_relevance": "warn"},
+                    tasks={Task.RETRIEVAL: TaskSettings()},
+                ),
+                "grounding": WorkspaceSettings(tasks={Task.GROUNDING: TaskSettings()}),
+                "generation": WorkspaceSettings(tasks={Task.GENERATION: TaskSettings()}),
+            },
+        )
+        # other constraint_ids fall through to deployment defaults
+        assert s.resolved_severity("retrieval", "evidence_excludes_misleading") == "warn"
+
+    def test_other_workspaces_unaffected(self):
+        s = AnnotationSettings(
+            workspaces={
+                "retrieval": WorkspaceSettings(
+                    constraint_severity={"evidence_excludes_misleading": "block"},
+                    tasks={Task.RETRIEVAL: TaskSettings()},
+                ),
+                "grounding": WorkspaceSettings(tasks={Task.GROUNDING: TaskSettings()}),
+                "generation": WorkspaceSettings(tasks={Task.GENERATION: TaskSettings()}),
+            },
+        )
+        # retrieval workspace has the override
+        assert s.resolved_severity("retrieval", "evidence_excludes_misleading") == "block"
+        # grounding workspace has no override, so it still sees the deployment default
+        assert s.resolved_severity("grounding", "evidence_excludes_misleading") == "warn"
+
+    def test_unknown_constraint_id_at_workspace_rejected(self):
+        with pytest.raises(
+            ValidationError, match=r"workspace 'retrieval' constraint_severity references unknown constraint_id"
+        ):
+            AnnotationSettings(
+                workspaces={
+                    "retrieval": WorkspaceSettings(
+                        constraint_severity={"nonexistent_constraint": "warn"},
+                        tasks={Task.RETRIEVAL: TaskSettings()},
+                    ),
+                    "grounding": WorkspaceSettings(tasks={Task.GROUNDING: TaskSettings()}),
+                    "generation": WorkspaceSettings(tasks={Task.GENERATION: TaskSettings()}),
+                },
+            )
+
+    def test_unknown_constraint_at_workspace_via_yaml(self):
+        data = yaml.safe_load(
+            """
+            workspaces:
+              retrieval:
+                constraint_severity:
+                  evidence_requires_relevance: warn
+                tasks:
+                  retrieval: {}
+              grounding:
+                tasks:
+                  grounding: {}
+              generation:
+                tasks:
+                  generation: {}
+            """
+        )
+        s = AnnotationSettings(**data)
+        assert s.resolved_severity("retrieval", "evidence_requires_relevance") == "warn"
+
+    def test_out_of_scope_constraint_id_at_workspace_rejected(self):
+        """A GROUNDING constraint_id on a RETRIEVAL-only workspace must be rejected at construction.
+
+        It would otherwise validate as 'known' but never be read by
+        resolved_severity() for that workspace, silently no-op-ing.
+        """
+        with pytest.raises(
+            ValidationError,
+            match=r"workspace 'retrieval' constraint_severity references constraint_id\(s\) outside its own tasks",
+        ):
+            AnnotationSettings(
+                workspaces={
+                    "retrieval": WorkspaceSettings(
+                        constraint_severity={"fabricated_requires_cited": "warn"},  # a GROUNDING constraint
+                        tasks={Task.RETRIEVAL: TaskSettings()},
+                    ),
+                    "grounding": WorkspaceSettings(tasks={Task.GROUNDING: TaskSettings()}),
+                    "generation": WorkspaceSettings(tasks={Task.GENERATION: TaskSettings()}),
+                },
+            )
+
+
+class TestTaskToWorkspace:
+    """``task_to_workspace()`` inverts the workspaces topology to a Task → name map."""
+
+    def test_default_topology(self):
+        s = AnnotationSettings()
+        assert s.task_to_workspace() == {
+            Task.RETRIEVAL: "retrieval",
+            Task.GROUNDING: "grounding",
+            Task.GENERATION: "generation",
+        }
+
+    def test_custom_workspace_name(self):
+        s = AnnotationSettings(
+            workspaces={
+                "ws_a": WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings()}),
+                "ws_b": WorkspaceSettings(tasks={Task.GROUNDING: TaskSettings()}),
+                "ws_c": WorkspaceSettings(tasks={Task.GENERATION: TaskSettings()}),
+            },
+        )
+        assert s.task_to_workspace() == {
+            Task.RETRIEVAL: "ws_a",
+            Task.GROUNDING: "ws_b",
+            Task.GENERATION: "ws_c",
+        }
 
 
 class TestArgillaSettings:
