@@ -120,6 +120,7 @@ def build_retrieval_record_for_chunk(
         "chunk_id": chunk.chunk_id,
         "doc_id": chunk.doc_id,
         "chunk_rank": chunk.chunk_rank,
+        "n_retrieved_chunks": len(pair.chunks),
     }
     if pair.language is not None:
         metadata["language"] = pair.language

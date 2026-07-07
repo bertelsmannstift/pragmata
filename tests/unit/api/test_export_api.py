@@ -97,6 +97,7 @@ BASE_METADATA = {
     "chunk_id": "chunk-1",
     "doc_id": "doc-1",
     "chunk_rank": 1,
+    "n_retrieved_chunks": 5,
 }
 
 _UID1 = UUID("00000000-0000-0000-0000-000000000001")
