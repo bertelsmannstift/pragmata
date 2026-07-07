@@ -1,5 +1,7 @@
 """CLI commands for annotation pipeline."""
 
+from collections.abc import Sequence
+
 import typer
 
 from pragmata.api import UNSET
@@ -214,7 +216,7 @@ def export_command(
         typer.echo(f"  {path}")
 
 
-def _render_table(headers: list[str], rows: list[tuple[str, ...]], aligns: str) -> list[str]:
+def _render_table(headers: list[str], rows: Sequence[tuple[str, ...]], aligns: str) -> list[str]:
     """Aligned fixed-width table as a list of lines.
 
     ``aligns`` is one char per column: 'l' (left) or 'r' (right).
@@ -263,6 +265,7 @@ def status_command(
         return f"{round(100 * done / total)}%" if total else "0%"
 
     prog = report.progress
+    assert prog is not None  # report_status always attaches the all-task progress
     g = prog.grand
     typer.echo(
         f"records: {_num(g.total)} total · {_num(g.completed)} completed "
@@ -279,7 +282,9 @@ def status_command(
         else:
             panels = ("–", "–", "–")
         task_rows.append((row.label, _num(row.total), _num(row.completed), _pct(row.completed, row.total), *panels))
-    for line in _render_table(["TASK", "TOTAL", "COMPLETED", "%", "PANELS", "COMPL", "OVERLAP"], task_rows, "lrrrrrr"):
+    for line in _render_table(
+        ["TASK", "TOTAL", "COMPLETED", "%", "PANELS", "PANEL-COMPL", "OVERLAP"], task_rows, "lrrrrrr"
+    ):
         typer.echo(line)
 
     if by_workspace:
