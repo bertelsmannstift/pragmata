@@ -6,16 +6,28 @@ import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Literal
 
 import argilla as rg
 
-from pragmata.core.annotation.export_fetcher import AnnotationModel, build_user_lookup, fetch_task
+from pragmata.core.annotation.completeness import (
+    CompletenessReport,
+    PanelCompleteness,
+    compute_completeness_from_records,
+)
+from pragmata.core.annotation.export_fetcher import (
+    AnnotationModel,
+    build_user_lookup,
+    fetch_retrieval_from_records,
+    fetch_task,
+    walk_retrieval_records,
+)
 from pragmata.core.annotation.logical_constraints import LogicalConstraint
 from pragmata.core.csv_io import _to_csv_value
 from pragmata.core.paths.annotation_paths import AnnotationExportPaths
 from pragmata.core.schemas.annotation_export import (
     AnnotationExportMeta,
+    CompletenessSummary,
     GenerationAnnotation,
     GenerationExportRow,
     GroundingAnnotation,
@@ -62,6 +74,8 @@ class ExportResult:
         constraint_summary: Violation count per ``constraint_id`` (the stable
             short identifier defined in :mod:`logical_constraints`).
         n_annotators: Count of distinct annotators per task.
+        completeness: Retrieval panel-completeness report (``None`` when
+            retrieval was not in the exported task set).
     """
 
     paths: AnnotationExportPaths
@@ -69,17 +83,21 @@ class ExportResult:
     row_counts: dict[Task, int]
     constraint_summary: dict[str, int]
     n_annotators: dict[Task, int]
+    completeness: CompletenessReport | None = None
 
 
 def write_export_csv(
     rows: list[tuple[RetrievalAnnotation | GroundingAnnotation | GenerationAnnotation, list[LogicalConstraint]]],
     path: Path,
     task: Task,
+    *,
+    completeness: dict[str, PanelCompleteness] | None = None,
 ) -> None:
     """Write annotation rows to a CSV using the task's export-row schema.
 
     The schema (``TASK_EXPORT_ROW[task]``) models the full on-disk format,
-    including ``constraint_violated`` and ``constraint_details``. Writes
+    including ``constraint_violated`` / ``constraint_details`` (all tasks)
+    and ``panel_complete`` / ``n_annotated_chunks`` (retrieval only). Writes
     atomically via a .tmp file; cleans up on failure. Always writes the
     header row even when rows is empty.
 
@@ -90,6 +108,10 @@ def write_export_csv(
             in the legacy verbose ``";"``-joined format for human readers.
         path: Final output path.
         task: Task type — determines the export-row schema.
+        completeness: Optional per-``record_uuid`` panel-completeness map.
+            Only used for retrieval; ignored otherwise. Rows whose
+            ``record_uuid`` is absent fall back to the schema defaults
+            (``False`` / ``0``).
     """
     row_cls = TASK_EXPORT_ROW[task]
     headers = list(row_cls.model_fields.keys())
@@ -99,10 +121,20 @@ def write_export_csv(
             writer = csv.DictWriter(f, fieldnames=headers)
             writer.writeheader()
             for annotation, violations in rows:
+                extras: dict[str, Any] = {}
+                if task == Task.RETRIEVAL and completeness is not None:
+                    pc = completeness.get(annotation.record_uuid)
+                    if pc is not None:
+                        extras["panel_complete"] = pc.panel_complete
+                        extras["n_annotated_chunks"] = pc.n_annotated_chunks
+                        extras["n_submitted_chunks"] = pc.n_submitted_chunks
+                        extras["n_discarded_chunks"] = pc.n_discarded_chunks
+                        extras["n_records_seen"] = pc.n_records_seen
                 export_row = row_cls(
                     **annotation.model_dump(),
                     constraint_violated=bool(violations),
                     constraint_details=";".join(c.violation_string() for c in violations),
+                    **extras,
                 )
                 raw = export_row.model_dump(mode="json")
                 writer.writerow({k: _to_csv_value(raw[k]) for k in headers})
@@ -144,6 +176,8 @@ def assemble_export_meta(
     n_annotators: dict[Task, int],
     calibration_enabled: dict[Task, bool],
     constraint_summary: dict[str, int],
+    completeness_summary: CompletenessSummary | None = None,
+    completeness_status: Literal["ok", "failed", "not_requested"] = "not_requested",
 ) -> AnnotationExportMeta:
     """Assemble run-level provenance metadata for an annotation export.
 
@@ -157,6 +191,11 @@ def assemble_export_meta(
         calibration_enabled: Whether the topology declared a calibration
             dataset for each task.
         constraint_summary: Violation count keyed by ``constraint_id``.
+        completeness_summary: Retrieval panel-completeness aggregates;
+            ``None`` unless retrieval was exported and computed successfully.
+        completeness_status: ``"ok"`` / ``"failed"`` / ``"not_requested"``.
+            Disambiguates ``completeness_summary=None`` between "retrieval
+            not in tasks" and "compute_completeness raised".
 
     Returns:
         Provenance sidecar with an internally stamped creation time.
@@ -171,6 +210,8 @@ def assemble_export_meta(
         n_annotators=n_annotators,
         calibration_enabled=calibration_enabled,
         constraint_summary=constraint_summary,
+        completeness_summary=completeness_summary,
+        completeness_status=completeness_status,
     )
 
 
@@ -203,22 +244,51 @@ def run_export(
             n_annotators={},
             calibration_enabled={},
             constraint_summary={},
+            completeness_status="not_requested",
         )
         write_export_meta(meta, paths.export_meta_json)
         return ExportResult(paths=paths, files={}, row_counts={}, constraint_summary={}, n_annotators={})
 
     user_lookup = build_user_lookup(client)
 
+    # Single retrieval walk shared between the row-emission fetch and the
+    # completeness aggregator. fetch_task for non-retrieval tasks walks
+    # their own datasets as before; only retrieval was doing two scrolls.
+    retrieval_snapshots = walk_retrieval_records(client, settings) if Task.RETRIEVAL in tasks else None
+
     task_rows: dict[Task, list[tuple[AnnotationModel, list[LogicalConstraint]]]] = {}
     for task in tasks:
-        task_rows[task] = fetch_task(client, settings, task, user_lookup, include_discarded=include_discarded)
+        if task == Task.RETRIEVAL and retrieval_snapshots is not None:
+            task_rows[task] = fetch_retrieval_from_records(
+                retrieval_snapshots, user_lookup, include_discarded=include_discarded
+            )
+        else:
+            task_rows[task] = fetch_task(client, settings, task, user_lookup, include_discarded=include_discarded)
+
+    completeness_report: CompletenessReport | None = None
+    completeness_status: Literal["ok", "failed", "not_requested"] = "not_requested"
+    if retrieval_snapshots is not None:
+        try:
+            completeness_report = compute_completeness_from_records(retrieval_snapshots)
+            completeness_status = "ok"
+        except Exception:
+            # Deliberately broad: completeness is a derived artifact (a sidecar
+            # summary + extra CSV columns), so any aggregation failure must not
+            # lose an already-fetched export. We catch ``Exception`` (not
+            # ``BaseException``) on purpose — KeyboardInterrupt/SystemExit still
+            # propagate and abort the run. The failure is logged with a full
+            # traceback below, and ``completeness_status="failed"`` distinguishes
+            # this from the "retrieval not requested" path for sidecar consumers.
+            logger.exception("compute_completeness failed; continuing without panel-completeness sidecar")
+            completeness_status = "failed"
 
     task_paths = {task: getattr(paths, TASK_CSV_ATTR[task]) for task in tasks}
 
     written: list[Path] = []
     try:
         for task in tasks:
-            write_export_csv(task_rows[task], task_paths[task], task)
+            completeness_map = completeness_report.by_uuid if (completeness_report and task == Task.RETRIEVAL) else None
+            write_export_csv(task_rows[task], task_paths[task], task, completeness=completeness_map)
             written.append(task_paths[task])
     except Exception:
         logger.error("Export failed — rolling back %d written file(s)", len(written))
@@ -245,6 +315,8 @@ def run_export(
         n_annotators=n_annotators,
         calibration_enabled=calibration_enabled,
         constraint_summary=constraint_summary,
+        completeness_summary=completeness_report.summary if completeness_report else None,
+        completeness_status=completeness_status,
     )
     write_export_meta(meta, paths.export_meta_json)
 
@@ -254,6 +326,7 @@ def run_export(
         row_counts=row_counts,
         constraint_summary=constraint_summary,
         n_annotators=n_annotators,
+        completeness=completeness_report,
     )
 
 
