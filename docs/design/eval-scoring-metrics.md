@@ -42,14 +42,6 @@ Precisely: paths, settings, and report schemas are already in place. What is mis
 - CLI: `pragmata eval score`.
 - extract shared uncertainty helpers (Wilson + percentile bootstrap) into `core/annotation/uncertainty.py`, refactor IAA to reuse them, and import them from eval.
 
-## Non-goals
-
-Boundaries that resolve likely implementation ambiguity for this scoring layer:
-
-- **evaluator label noise:** the cross-encoder is imperfect; propagating its classification error is only relevant on the predict-from-model path (human-label scoring has none) and is a materially larger design. Deferred.
-- **run-to-run comparison / significance:** we emit per-run CIs only. Comparing two runs rigorously needs a *paired* difference-CI (overlap of two independent CIs is **not** a significance test). Out of scope.
-- **bias-corrected-&-accelerated (BCa) intervals:** we chose percentile; BCa is the upgrade only if coverage proves poor.
-
 ## Design
 
 ### Grain and resampling unit
