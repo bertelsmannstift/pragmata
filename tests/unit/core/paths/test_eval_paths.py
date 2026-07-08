@@ -10,6 +10,7 @@ from pragmata.core.paths.eval_paths import (
     EvalTrainPaths,
     find_latest_annotation_export_id,
     resolve_eval_score_paths,
+    resolve_eval_train_meta_path,
     resolve_eval_train_paths,
 )
 from pragmata.core.paths.paths import WorkspacePaths
@@ -317,6 +318,18 @@ def test_resolve_eval_train_paths_uses_latest_annotation_export_when_selector_is
         training_input_csv=expected_csv,
         annotation_export_id="newer",
     )
+
+
+def test_resolve_eval_train_meta_path_returns_train_run_sidecar_path(
+    workspace: WorkspacePaths,
+) -> None:
+    """Pragmata train metadata is stored beside the tlmtc train run artifacts."""
+    path = resolve_eval_train_meta_path(
+        workspace=workspace,
+        run_id="train-run-26",
+    )
+
+    assert path == workspace.base_dir / "eval" / "train_outputs" / "train-run-26" / "pragmata_train.meta.json"
 
 
 def test_resolve_eval_score_paths_returns_expected_bundle(
