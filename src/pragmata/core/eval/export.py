@@ -16,4 +16,7 @@ def export_eval_train_meta(
         meta: Validated evaluator training metadata to persist.
         path: Destination path for the JSON sidecar.
     """
+    if not path.parent.is_dir():
+        raise FileNotFoundError(f"Eval train metadata parent directory does not exist: {path.parent}")
+
     atomic_write_json(meta.model_dump(mode="json"), path)
