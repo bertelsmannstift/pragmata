@@ -3,12 +3,14 @@
 from pathlib import Path
 from typing import Any
 
+from pragmata.core.eval.export import export_eval_train_meta
 from pragmata.core.eval.imports import import_eval_train_frame
 from pragmata.core.eval.tlmtc_adapters import run_tlmtc_train
 from pragmata.core.eval.transforms import build_tlmtc_frame
-from pragmata.core.paths.eval_paths import resolve_eval_train_paths
+from pragmata.core.paths.eval_paths import resolve_eval_train_meta_path, resolve_eval_train_paths
 from pragmata.core.paths.paths import WorkspacePaths
 from pragmata.core.schemas.annotation_task import Task
+from pragmata.core.schemas.eval_output import EvalTrainMeta
 from pragmata.core.settings.eval_settings import EvalTrainSettings
 from pragmata.core.settings.settings_base import UNSET, Unset, load_config_file
 
@@ -82,8 +84,9 @@ def train_evaluator(
             "train_kwargs": train_kwargs,
         },
     )
+    workspace = WorkspacePaths.from_base_dir(settings.base_dir)
     train_paths = resolve_eval_train_paths(
-        workspace=WorkspacePaths.from_base_dir(settings.base_dir),
+        workspace=workspace,
         task=settings.task,
         labeled_data_path=settings.labeled_data_path,
         export_id=settings.export_id,
@@ -100,7 +103,7 @@ def train_evaluator(
     )
 
     assert settings.target_name is not None
-    return run_tlmtc_train(
+    result = run_tlmtc_train(
         labeled_data=tlmtc_frame,
         work_dir=train_paths.tool_root,
         target_name=settings.target_name,
@@ -111,3 +114,16 @@ def train_evaluator(
         trust_remote_code=settings.trust_remote_code,
         train_kwargs=settings.train_kwargs,
     )
+    export_eval_train_meta(
+        meta=EvalTrainMeta(
+            run_id=result.paths.run_id,
+            task=settings.task,
+            annotation_export_id=train_paths.annotation_export_id,
+        ),
+        path=resolve_eval_train_meta_path(
+            workspace=workspace,
+            run_id=result.paths.run_id,
+        ),
+    )
+
+    return result

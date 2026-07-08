@@ -1,6 +1,6 @@
-"""Output schemas for eval score artifacts."""
+"""Output schemas for eval artifacts."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, PositiveInt
@@ -8,6 +8,17 @@ from pydantic import BaseModel, ConfigDict, Field, PositiveInt
 from pragmata.core.schemas.annotation_task import Task
 
 type Rate = Annotated[float, Field(ge=0.0, le=1.0)]
+
+
+class EvalTrainMeta(BaseModel):
+    """Pragmata-owned metadata for a completed evaluator training run."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    run_id: str
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    task: Task
+    annotation_export_id: str | None = None
 
 
 class RetrievalScoreReport(BaseModel):

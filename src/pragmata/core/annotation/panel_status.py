@@ -34,10 +34,11 @@ export-time completeness which sources K from the ``n_retrieved_chunks``
 metadata; the live K is the ground truth pre-backfill and the metadata is
 cross-checked for integrity.
 
-Pure read; safe to invoke against live datasets without side effects. The
-optional ``--tag-partial-panels`` advisory write that stamps records for
-annotator UI filtering ships in a follow-up PR (separates the read path from
-any Argilla mutation surface).
+The read path (``compute_panel_status``) is side-effect free. The optional
+``--tag-partial-panels`` advisory write (``_apply_tags``, reached via
+``report_status``) stamps partial panels' unresolved chunks for annotator UI
+filtering, sharing this same single walk - it is the only Argilla mutation
+surface here.
 """
 
 import logging
@@ -45,6 +46,8 @@ from collections.abc import Hashable, Iterator
 from dataclasses import dataclass, replace
 
 import argilla as rg
+
+from pragmata.core.annotation.metadata_ops import build_metadata_upsert, ensure_metadata_property
 
 logger = logging.getLogger(__name__)
 
@@ -55,11 +58,32 @@ _TERMINAL_STATUSES = frozenset({"submitted", "discarded"})
 
 RETRIEVAL_TASK = "retrieval"
 _TASK_ORDER = {"retrieval": 0, "grounding": 1, "generation": 2}
+# Changing either of these orphans old key/value metadata already written to
+# Argilla records - nothing here renames or removes it. Manual cleanup of the
+# stale metadata would be needed on the live datasets.
+NEEDS_COMPLETION_KEY = "needs_completion"
+NEEDS_COMPLETION_VALUE = "true"
 
 
 def _task_of(dataset_name: str) -> str:
     """Task label for a dataset = its name prefix before the first underscore."""
     return dataset_name.split("_", 1)[0]
+
+
+def _has_needs_completion_tag(record: rg.Record) -> bool:
+    """Defensive equality check for the needs_completion tag.
+
+    Argilla TermsMetadataProperty may round-trip as the bare value, a
+    1-element list, or a normalised-case string. Treat anything string-equal
+    to NEEDS_COMPLETION_VALUE (after str-coercion + lowercase) as tagged, so
+    the idempotency check survives SDK encoding differences.
+    """
+    raw = record.metadata.get(NEEDS_COMPLETION_KEY)
+    if raw is None:
+        return False
+    if isinstance(raw, (list, tuple)):
+        return any(str(v).strip().lower() == NEEDS_COMPLETION_VALUE for v in raw)
+    return str(raw).strip().lower() == NEEDS_COMPLETION_VALUE
 
 
 def _select_datasets(client: rg.Argilla, workspace: str | None, task: str | None) -> Iterator[rg.Dataset]:
@@ -134,11 +158,21 @@ class ProgressReport:
 
 
 @dataclass(frozen=True)
+class TagResult:
+    """Counts from one ``--tag-partial-panels`` pass."""
+
+    n_tagged: int  # chunks newly stamped with needs_completion
+    n_cleared: int  # chunks where the stale tag was removed
+    n_already_tagged: int  # already had the tag and still need it (no-op)
+
+
+@dataclass(frozen=True)
 class StatusReport:
     """Live per-panel status + headline aggregates.
 
     ``progress`` (all-task record counts) is attached by ``report_status``; the
-    panel fields below are retrieval-only.
+    panel fields below are retrieval-only. ``tag_result`` is None unless
+    ``--tag-partial-panels`` ran in the same pass.
     """
 
     panels: dict[tuple[str, str], PanelStatus]
@@ -149,10 +183,15 @@ class StatusReport:
     n_integrity_warnings: int
     n_orphans_skipped: int
     progress: "ProgressReport | None" = None
+    tag_result: "TagResult | None" = None
 
     def with_progress(self, progress: ProgressReport) -> "StatusReport":
         """Return a copy with the all-task ``progress`` summary attached."""
         return replace(self, progress=progress)
+
+    def with_tag_result(self, tag_result: TagResult) -> "StatusReport":
+        """Return a copy with ``tag_result`` set (the dataclass is frozen)."""
+        return replace(self, tag_result=tag_result)
 
 
 @dataclass
@@ -415,3 +454,89 @@ def compute_task_progress(client: rg.Argilla, *, workspace: str | None = None) -
         )
     ]
     return ProgressReport(grand=HeadlineTotals(**grand), by_task=task_rows, by_workspace=ws_rows, by_dataset=ds_rows)
+
+
+def _apply_tags(collected: _CollectedRecords) -> TagResult:
+    """Stamp / clear the ``needs_completion`` advisory tag on PARTIAL panels.
+
+    Tag predicate: the panel is PARTIAL (at least one chunk has a submitted
+    response but NOT all chunks do) AND this chunk is UNRESOLVED (no terminal
+    response). The tag is cleared on resolved chunks and on non-partial panels
+    (fully-unstarted or complete), so a fully-unstarted panel is never tagged.
+    Idempotent: every run re-derives the set.
+
+    Dataset-local and overlap-indifferent: PARTIAL/UNRESOLVED are derived
+    from ``has_terminal`` (>=1 response, any status) vs ``k_records`` alone -
+    ``min_submitted`` never enters this predicate. So a calibration chunk
+    with 1-of-3 submissions already counts as resolved for tagging purposes,
+    even though it hasn't hit its overlap target; this tag means "nobody has
+    looked at this yet," not "this hasn't reached ``overlap_satisfied``" (see
+    the module docstring's PARTIAL/``overlap_satisfied`` distinction).
+
+    Batches one ``dataset.records.log`` per owning dataset. Datasets are keyed
+    by ``(workspace, name)`` because the same bare name (``retrieval_production``)
+    recurs across domains, so batching by name alone would misroute payloads.
+    """
+    datasets_by_key: dict[tuple[str, str], rg.Dataset] = {}
+    for rec in collected.records:
+        datasets_by_key.setdefault((rec.workspace, rec.dataset.name), rec.dataset)
+    for dataset in datasets_by_key.values():
+        ensure_metadata_property(dataset, rg.TermsMetadataProperty(NEEDS_COMPLETION_KEY, visible_for_annotators=True))
+
+    batched: dict[tuple[str, str], list[rg.Record]] = {}
+    n_tagged = n_cleared = n_already = 0
+    for (_ws, uuid), group in _group_by_panel(collected.records).items():
+        facts = _panel_facts(uuid, group)
+        # PARTIAL: some but not all chunks have a submitted response. A panel
+        # that is fully-unstarted (0 submitted) or complete is NOT partial.
+        panel_partial = 0 < len(facts.chunk_ids_submitted) < facts.k_records
+        for rec in group:
+            should_have_tag = panel_partial and not rec.has_terminal
+            already = _has_needs_completion_tag(rec.record)
+            if should_have_tag and already:
+                n_already += 1
+                continue
+            if should_have_tag:
+                upsert = build_metadata_upsert(rec.record, {NEEDS_COMPLETION_KEY: NEEDS_COMPLETION_VALUE})
+            elif already:
+                upsert = build_metadata_upsert(rec.record, {}, remove_keys=[NEEDS_COMPLETION_KEY])
+            else:
+                continue
+            if upsert is None:
+                continue
+            key = (rec.workspace, rec.dataset.name)
+            batched.setdefault(key, []).append(upsert)
+            if should_have_tag:
+                n_tagged += 1
+            else:
+                n_cleared += 1
+
+    for key, payloads in batched.items():
+        # payloads is never empty: keys are created only on first append.
+        datasets_by_key[key].records.log(payloads)
+
+    logger.info(
+        "tag_partial_panels: tagged=%d cleared=%d already_tagged=%d (panels=%d, datasets=%d)",
+        n_tagged,
+        n_cleared,
+        n_already,
+        len({(r.workspace, r.record_uuid) for r in collected.records}),
+        len(datasets_by_key),
+    )
+    return TagResult(n_tagged=n_tagged, n_cleared=n_cleared, n_already_tagged=n_already)
+
+
+def tag_partial_panels(
+    client: rg.Argilla, *, workspace: str | None = None, task: str | None = RETRIEVAL_TASK
+) -> TagResult:
+    """Stamp / clear ``needs_completion`` advisory tags on partial retrieval panels.
+
+    Tag predicate: panel is PARTIAL and this chunk is UNRESOLVED (see
+    ``_apply_tags``). Config-free; covers every workspace in one pass.
+
+    Self-contained wrapper around ``_apply_tags``. Callers that already ran
+    ``_collect_records`` (e.g. ``report_status`` with ``tag_partial_panels=True``)
+    should call ``_apply_tags`` directly with the shared collection to avoid a
+    second walk.
+    """
+    return _apply_tags(_collect_records(client, workspace=workspace, task=task))

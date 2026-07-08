@@ -1,5 +1,7 @@
 """CLI commands for annotation pipeline."""
 
+from collections.abc import Sequence
+
 import typer
 
 from pragmata.api import UNSET
@@ -212,6 +214,122 @@ def export_command(
         typer.echo(f"{task_name}: {count} rows")
     for path in result.files.values():
         typer.echo(f"  {path}")
+
+
+def _render_table(headers: list[str], rows: Sequence[tuple[str, ...]], aligns: str) -> list[str]:
+    """Aligned fixed-width table as a list of lines.
+
+    ``aligns`` is one char per column: 'l' (left) or 'r' (right).
+    """
+    widths = [len(h) for h in headers]
+    for row in rows:
+        for i, cell in enumerate(row):
+            widths[i] = max(widths[i], len(cell))
+
+    def _fmt(cells: tuple[str, ...]) -> str:
+        return "  ".join(
+            cell.rjust(widths[i]) if aligns[i] == "r" else cell.ljust(widths[i]) for i, cell in enumerate(cells)
+        ).rstrip()
+
+    return [_fmt(tuple(headers)), *[_fmt(r) for r in rows]]
+
+
+@annotation_app.command("status")
+def status_command(
+    api_url: str | None = _api_url_opt,
+    api_key: str | None = _api_key_opt,
+    workspace: str | None = typer.Option(
+        None, "--workspace", help="Only datasets in this Argilla workspace. Default: all workspaces."
+    ),
+    by_workspace: bool = typer.Option(False, "--by-workspace", help="Add a per-workspace progress breakdown."),
+    by_dataset: bool = typer.Option(False, "--by-dataset", help="Add a per-dataset progress breakdown."),
+    tag_partial_panels: bool = typer.Option(
+        False,
+        "--tag-partial-panels",
+        help=(
+            "Live write: stamp 'needs_completion' on the unresolved chunks of PARTIAL panels "
+            "(some but not all chunks annotated) and clear stale tags, so annotators can filter "
+            "straight to them in the Argilla UI. Off by default (read-only)."
+        ),
+    ),
+) -> None:
+    """Report live annotation progress across all tasks, plus retrieval panel-completeness.
+
+    Config-free: walks every Argilla dataset. Record progress (total / completed)
+    is shown per task; the retrieval row also carries panel-completeness. Add
+    --by-workspace / --by-dataset for finer breakdowns. With --tag-partial-panels,
+    also stamps the 'needs_completion' advisory tag on partial panels' unresolved
+    chunks (a live write).
+    """
+    from pragmata import annotation
+
+    report = annotation.report_status(
+        api_url=UNSET if api_url is None else api_url,
+        api_key=UNSET if api_key is None else api_key,
+        workspace=workspace,
+        tag_partial_panels=tag_partial_panels,
+    )
+
+    def _num(n: int) -> str:
+        return f"{n:,}"
+
+    def _pct(done: int, total: int) -> str:
+        return f"{round(100 * done / total)}%" if total else "0%"
+
+    prog = report.progress
+    assert prog is not None  # report_status always attaches the all-task progress
+    g = prog.grand
+    typer.echo(
+        f"records: {_num(g.total)} total · {_num(g.completed)} completed "
+        f"({_pct(g.completed, g.total)}) · {_num(g.pending)} pending"
+    )
+    typer.echo("")
+
+    # By task (default). The retrieval row carries panel-completeness; other
+    # tasks are single-record and have no panels ("-").
+    task_rows: list[tuple[str, ...]] = []
+    for row in prog.by_task:
+        if row.task == "retrieval":
+            panels = (_num(report.n_panels), _num(report.n_complete), _num(report.n_overlap_satisfied))
+        else:
+            panels = ("–", "–", "–")
+        task_rows.append((row.label, _num(row.total), _num(row.completed), _pct(row.completed, row.total), *panels))
+    for line in _render_table(
+        ["TASK", "TOTAL", "COMPLETED", "%", "PANELS", "PANEL-COMPL", "OVERLAP"], task_rows, "lrrrrrr"
+    ):
+        typer.echo(line)
+
+    if by_workspace:
+        typer.echo("")
+        ws_rows = [
+            (row.label, row.task, _num(row.total), _num(row.completed), _pct(row.completed, row.total))
+            for row in prog.by_workspace
+        ]
+        for line in _render_table(["WORKSPACE", "TASK", "TOTAL", "COMPL", "%"], ws_rows, "llrrr"):
+            typer.echo(line)
+
+    if by_dataset:
+        typer.echo("")
+        ds_rows = [
+            (row.label, _num(row.total), _num(row.completed), _pct(row.completed, row.total)) for row in prog.by_dataset
+        ]
+        for line in _render_table(["DATASET", "TOTAL", "COMPL", "%"], ds_rows, "lrrr"):
+            typer.echo(line)
+
+    if report.n_integrity_warnings:
+        typer.echo("")
+        typer.echo(f"integrity warnings: {report.n_integrity_warnings} panel(s) (records != n_retrieved_chunks)")
+        typer.echo(
+            "  note: panel_complete uses live record-count K; the export sidecar uses the metadata K, "
+            "so flagged panels may read panel_complete=False in retrieval.csv even if shown complete above."
+        )
+    if report.n_orphans_skipped:
+        typer.echo(f"orphans skipped: {report.n_orphans_skipped} record(s) with empty record_uuid")
+    if report.tag_result is not None:
+        tr = report.tag_result
+        typer.echo(
+            f"tag-partial-panels: tagged={tr.n_tagged} cleared={tr.n_cleared} already_tagged={tr.n_already_tagged}"
+        )
 
 
 @annotation_app.command("iaa")

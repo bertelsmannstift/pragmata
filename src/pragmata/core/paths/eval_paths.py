@@ -160,6 +160,24 @@ def resolve_eval_train_paths(
     )
 
 
+def resolve_eval_train_meta_path(
+    *,
+    workspace: WorkspacePaths,
+    run_id: str,
+) -> Path:
+    """Build the Pragmata-owned metadata path for a completed eval train run.
+
+    Args:
+        workspace: Workspace path bundle.
+        run_id: tlmtc evaluator training run identifier.
+
+    Returns:
+        Path to the Pragmata train metadata sidecar under the tlmtc train-run
+        directory.
+    """
+    return workspace.tool_root("eval") / "train_outputs" / run_id / "pragmata_train.meta.json"
+
+
 @dataclass(frozen=True, slots=True)
 class EvalScorePaths:
     """Path bundle for an eval score run.

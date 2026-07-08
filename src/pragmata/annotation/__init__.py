@@ -15,30 +15,38 @@ from typing import TYPE_CHECKING
 
 __all__ = [
     "ExportResult",
+    "HeadlineTotals",
     "IaaReport",
     "ImportResult",
     "Locale",
     "SetupResult",
+    "StatusReport",
+    "TagResult",
     "Task",
     "UserSpec",
     "compute_iaa",
     "export_annotations",
     "import_records",
+    "report_status",
     "setup",
     "teardown",
 ]
 
 _LAZY: dict[str, tuple[str, str]] = {
     "ExportResult": ("pragmata.core.annotation.export_runner", "ExportResult"),
+    "HeadlineTotals": ("pragmata.core.annotation.panel_status", "HeadlineTotals"),
     "IaaReport": ("pragmata.core.schemas.iaa_report", "IaaReport"),
     "ImportResult": ("pragmata.api.annotation_import", "ImportResult"),
     "Locale": ("pragmata.core.schemas.annotation_task", "Locale"),
     "SetupResult": ("pragmata.core.annotation.setup", "SetupResult"),
+    "StatusReport": ("pragmata.core.annotation.panel_status", "StatusReport"),
+    "TagResult": ("pragmata.core.annotation.panel_status", "TagResult"),
     "Task": ("pragmata.core.schemas.annotation_task", "Task"),
     "UserSpec": ("pragmata.core.settings.annotation_settings", "UserSpec"),
     "compute_iaa": ("pragmata.api.annotation_iaa", "compute_iaa"),
     "export_annotations": ("pragmata.api.annotation_export", "export_annotations"),
     "import_records": ("pragmata.api.annotation_import", "import_records"),
+    "report_status": ("pragmata.api.annotation_status", "report_status"),
     "setup": ("pragmata.api.annotation_setup", "setup"),
     "teardown": ("pragmata.api.annotation_setup", "teardown"),
 }
@@ -65,7 +73,11 @@ if TYPE_CHECKING:
     from pragmata.api.annotation_import import import_records as import_records
     from pragmata.api.annotation_setup import setup as setup
     from pragmata.api.annotation_setup import teardown as teardown
+    from pragmata.api.annotation_status import report_status as report_status
     from pragmata.core.annotation.export_runner import ExportResult as ExportResult
+    from pragmata.core.annotation.panel_status import HeadlineTotals as HeadlineTotals
+    from pragmata.core.annotation.panel_status import StatusReport as StatusReport
+    from pragmata.core.annotation.panel_status import TagResult as TagResult
     from pragmata.core.annotation.setup import SetupResult as SetupResult
     from pragmata.core.schemas.annotation_task import Locale as Locale
     from pragmata.core.schemas.annotation_task import Task as Task

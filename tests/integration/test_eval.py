@@ -1,5 +1,6 @@
 """Integration tests for the public evaluator training surface."""
 
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -302,6 +303,23 @@ def _assert_prepared_splits(
         assert not any(str(value).startswith(f"{unexpected_marker}: ") for value in text_values)
 
 
+def _assert_pragmata_train_meta(
+    *,
+    result: Any,
+    run_id: str,
+    annotation_export_id: str | None,
+) -> None:
+    """Assert Pragmata persisted train-run metadata beside tlmtc artifacts."""
+    meta_path = result.paths.run_dir / "pragmata_train.meta.json"
+
+    assert meta_path.is_file()
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    assert meta["run_id"] == run_id
+    assert meta["task"] == "retrieval"
+    assert meta["annotation_export_id"] == annotation_export_id
+    assert isinstance(meta["created_at"], str)
+
+
 class TestTrainEvaluator:
     """Integration tests for evaluator training."""
 
@@ -327,6 +345,11 @@ class TestTrainEvaluator:
             expected_marker="direct",
         )
         assert result.paths.train_run_meta_path.is_file()
+        _assert_pragmata_train_meta(
+            result=result,
+            run_id="direct-input",
+            annotation_export_id=None,
+        )
         assert result.paths.model_dir.is_dir()
         assert any(result.paths.model_dir.iterdir())
 
@@ -362,6 +385,11 @@ class TestTrainEvaluator:
             expected_marker="selected",
             unexpected_marker="unselected",
         )
+        _assert_pragmata_train_meta(
+            result=result,
+            run_id="explicit-export",
+            annotation_export_id="export-a",
+        )
 
     def test_uses_latest_annotation_export_for_task(
         self,
@@ -393,4 +421,9 @@ class TestTrainEvaluator:
             run_id="latest-export",
             expected_marker="newer",
             unexpected_marker="older",
+        )
+        _assert_pragmata_train_meta(
+            result=result,
+            run_id="latest-export",
+            annotation_export_id="newer-export",
         )
