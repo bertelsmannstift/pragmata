@@ -27,7 +27,6 @@ def train_evaluator(
     proxy_checkpoint: str | Unset = UNSET,
     scale_learning_rate: bool | Unset = UNSET,
     sequence_length: int | Unset = UNSET,
-    trust_remote_code: bool | Unset = UNSET,
     train_kwargs: dict[str, Any] | Unset = UNSET,
 ) -> Any:
     """Train a supervised evaluator model from labeled Pragmata eval data.
@@ -47,17 +46,14 @@ def train_evaluator(
         target_name: Display name passed to tlmtc for logs and reports.
             Defaults to a task-specific evaluation label, e.g. "Retrieval evaluation".
         checkpoint: Target checkpoint used for final fine-tuning. Defaults to
-            ``"EuroBERT/EuroBERT-610m"``.
+            ``"jhu-clsp/mmBERT-base"``.
         proxy_checkpoint: Proxy checkpoint used for hyperparameter tuning.
-            Defaults to ``"EuroBERT/EuroBERT-210m"``.
+            Defaults to ``"jhu-clsp/mmBERT-small"``.
         scale_learning_rate: Whether tlmtc should scale a proxy-tuned learning
             rate for the target checkpoint. Defaults to ``True`` because the
             default proxy and target checkpoints differ.
         sequence_length: Maximum combined tokenized sequence length passed to
             tlmtc for ``text`` and ``text_pair``. Defaults to ``1024``.
-        trust_remote_code: Whether Hugging Face loading may execute custom
-            checkpoint code. Defaults to ``True`` because it is required by the
-            default checkpoint and proxy checkpoint.
         train_kwargs: Additional tlmtc-owned keyword arguments passed through to
             ``tlmtc.train_tlmtc``.
 
@@ -80,7 +76,6 @@ def train_evaluator(
             "proxy_checkpoint": proxy_checkpoint,
             "scale_learning_rate": scale_learning_rate,
             "sequence_length": sequence_length,
-            "trust_remote_code": trust_remote_code,
             "train_kwargs": train_kwargs,
         },
     )
@@ -111,7 +106,6 @@ def train_evaluator(
         proxy_checkpoint=settings.proxy_checkpoint,
         scale_learning_rate=settings.scale_learning_rate,
         sequence_length=settings.sequence_length,
-        trust_remote_code=settings.trust_remote_code,
         train_kwargs=settings.train_kwargs,
     )
     export_eval_train_meta(

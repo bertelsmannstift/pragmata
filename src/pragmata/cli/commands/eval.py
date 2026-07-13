@@ -61,11 +61,6 @@ def train_evaluator_command(
         "--sequence-length",
         help="Maximum combined tokenized sequence length for text and text_pair.",
     ),
-    trust_remote_code: bool | None = typer.Option(
-        None,
-        "--trust-remote-code/--no-trust-remote-code",
-        help="Allow or disallow Hugging Face custom checkpoint code execution.",
-    ),
     train_kwargs: str | None = typer.Option(
         None,
         "--train-kwargs",
@@ -84,7 +79,6 @@ def train_evaluator_command(
         proxy_checkpoint=UNSET if proxy_checkpoint is None else proxy_checkpoint,
         scale_learning_rate=UNSET if scale_learning_rate is None else scale_learning_rate,
         sequence_length=UNSET if sequence_length is None else sequence_length,
-        trust_remote_code=UNSET if trust_remote_code is None else trust_remote_code,
         train_kwargs=parse_cli_value(train_kwargs),
     )
 

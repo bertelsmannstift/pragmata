@@ -42,10 +42,8 @@ class EvalTrainSettings(ResolveSettings):
         scale_learning_rate: Whether tlmtc should scale a proxy-tuned learning
             rate for the target checkpoint.
         sequence_length: Maximum tokenized sequence length passed to tlmtc.
-            Defaults to 1024 for paired RAG text with long-context EuroBERT
+            Defaults to 1024 for paired RAG text with long-context mmBERT
             checkpoints.
-        trust_remote_code: Whether Hugging Face loading may execute custom remote
-            code for the selected checkpoints.
         train_kwargs: Additional `train_tlmtc`-specific keyword arguments passed
             through to the tlmtc API. Use this for tlmtc-owned options.
     """
@@ -55,11 +53,10 @@ class EvalTrainSettings(ResolveSettings):
     export_id: str | None = None
     task: Task
     target_name: str | None = Field(default=None, min_length=1)
-    checkpoint: str = Field(default="EuroBERT/EuroBERT-610m", min_length=1)
-    proxy_checkpoint: str = Field(default="EuroBERT/EuroBERT-210m", min_length=1)
+    checkpoint: str = Field(default="jhu-clsp/mmBERT-base", min_length=1)
+    proxy_checkpoint: str = Field(default="jhu-clsp/mmBERT-small", min_length=1)
     scale_learning_rate: bool = True
     sequence_length: PositiveInt = 1024
-    trust_remote_code: bool = True
     train_kwargs: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
