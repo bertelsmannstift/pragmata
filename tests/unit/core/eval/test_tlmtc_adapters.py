@@ -22,11 +22,10 @@ def _run_tlmtc_train_kwargs(
         "labeled_data": Path("train.csv"),
         "work_dir": Path("eval"),
         "target_name": "Retrieval evaluation",
-        "checkpoint": "EuroBERT/EuroBERT-610m",
-        "proxy_checkpoint": "EuroBERT/EuroBERT-210m",
+        "checkpoint": "jhu-clsp/mmBERT-base",
+        "proxy_checkpoint": "jhu-clsp/mmBERT-small",
         "scale_learning_rate": True,
         "sequence_length": 1024,
-        "trust_remote_code": True,
         "train_kwargs": train_kwargs or {},
     }
 
@@ -52,6 +51,7 @@ def test_run_tlmtc_train_merges_curated_args_and_train_kwargs(
                 "run_id": "custom-run",
                 "batch_size": 8,
                 "verbosity": "quiet",
+                "trust_remote_code": False,
             }
         )
     )
@@ -61,14 +61,14 @@ def test_run_tlmtc_train_merges_curated_args_and_train_kwargs(
         "labeled_data": Path("train.csv"),
         "work_dir": Path("eval"),
         "target_name": "Retrieval evaluation",
-        "checkpoint": "EuroBERT/EuroBERT-610m",
-        "proxy_checkpoint": "EuroBERT/EuroBERT-210m",
+        "checkpoint": "jhu-clsp/mmBERT-base",
+        "proxy_checkpoint": "jhu-clsp/mmBERT-small",
         "scale_learning_rate": True,
         "sequence_length": 1024,
-        "trust_remote_code": True,
         "run_id": "custom-run",
         "batch_size": 8,
         "verbosity": "quiet",
+        "trust_remote_code": False,
     }
 
 
@@ -94,11 +94,10 @@ def test_run_tlmtc_train_forwards_dedicated_args_when_train_kwargs_empty(
         "labeled_data": Path("train.csv"),
         "work_dir": Path("eval"),
         "target_name": "Retrieval evaluation",
-        "checkpoint": "EuroBERT/EuroBERT-610m",
-        "proxy_checkpoint": "EuroBERT/EuroBERT-210m",
+        "checkpoint": "jhu-clsp/mmBERT-base",
+        "proxy_checkpoint": "jhu-clsp/mmBERT-small",
         "scale_learning_rate": True,
         "sequence_length": 1024,
-        "trust_remote_code": True,
     }
 
 
