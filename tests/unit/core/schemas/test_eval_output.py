@@ -10,10 +10,16 @@ from pragmata.core.schemas.eval_output import (
     EvalTrainMeta,
     GenerationScoreReport,
     GroundingScoreReport,
+    MetricScore,
     RetrievalScoreReport,
 )
 
 NOW = datetime(2026, 5, 28, 13, 30, tzinfo=UTC)
+
+
+def _metric(point: float = 0.5, *, method: str = "bootstrap", n: int = 5) -> dict[str, object]:
+    """Build a valid ``MetricScore`` payload; the CI collapses to the point estimate."""
+    return {"point": point, "ci_lower": point, "ci_upper": point, "method": method, "n": n}
 
 
 @pytest.fixture()
@@ -24,12 +30,14 @@ def valid_retrieval_report():
         "created_at": NOW,
         "n_examples": 5,
         "top_k": 3,
-        "topical_precision_at_k": 0.6,
-        "sufficiency_hit_at_k": 0.8,
-        "sufficiency_rate_at_k": 0.4,
-        "misleading_context_rate_at_k": 0.0,
-        "mean_reciprocal_rank_at_k": 0.7,
-        "ndcg_at_k": 1.0,
+        "ci_level": 0.95,
+        "n_bootstrap_resamples": 1000,
+        "topical_precision_at_k": _metric(0.6, method="bootstrap"),
+        "sufficiency_hit_at_k": _metric(0.8, method="wilson"),
+        "sufficiency_rate_at_k": _metric(0.4, method="bootstrap"),
+        "misleading_context_rate_at_k": _metric(0.0, method="bootstrap"),
+        "mean_reciprocal_rank_at_k": _metric(0.7, method="bootstrap"),
+        "ndcg_at_k": _metric(1.0, method="bootstrap"),
     }
 
 
@@ -40,11 +48,13 @@ def valid_grounding_report():
         "annotation_export_id": "export-1",
         "created_at": NOW,
         "n_examples": 5,
-        "grounding_presence_rate": 0.8,
-        "unsupported_claim_rate": 0.2,
-        "contradiction_rate": 0.0,
-        "citation_presence_rate": 0.6,
-        "conditional_fabrication_rate": 0.1,
+        "ci_level": 0.95,
+        "n_bootstrap_resamples": 1000,
+        "grounding_presence_rate": _metric(0.8, method="wilson"),
+        "unsupported_claim_rate": _metric(0.2, method="wilson"),
+        "contradiction_rate": _metric(0.0, method="wilson"),
+        "citation_presence_rate": _metric(0.6, method="wilson"),
+        "conditional_fabrication_rate": _metric(0.1, method="wilson", n=3),
     }
 
 
@@ -55,12 +65,56 @@ def valid_generation_report():
         "annotation_export_id": "export-1",
         "created_at": NOW,
         "n_examples": 5,
-        "proper_action_rate": 1.0,
-        "on_topic_rate": 0.8,
-        "helpfulness_rate": 0.6,
-        "incompleteness_rate": 0.2,
-        "unsafe_content_rate": 0.0,
+        "ci_level": 0.95,
+        "n_bootstrap_resamples": 1000,
+        "proper_action_rate": _metric(1.0, method="wilson"),
+        "on_topic_rate": _metric(0.8, method="wilson"),
+        "helpfulness_rate": _metric(0.6, method="wilson"),
+        "incompleteness_rate": _metric(0.2, method="wilson"),
+        "unsafe_content_rate": _metric(0.0, method="wilson"),
     }
+
+
+class TestMetricScore:
+    """Tests for the nested per-metric score model."""
+
+    def test_constructs_and_exposes_fields(self) -> None:
+        score = MetricScore(point=0.6, ci_lower=0.5, ci_upper=0.7, method="wilson", n=10)
+
+        assert score.point == 0.6
+        assert (score.ci_lower, score.ci_upper) == (0.5, 0.7)
+        assert score.method == "wilson"
+        assert score.n == 10
+
+    @pytest.mark.parametrize("method", ["bootstrap", "wilson"])
+    def test_accepts_both_methods(self, method: str) -> None:
+        assert MetricScore(**_metric(0.5, method=method)).method == method
+
+    def test_rejects_unknown_method(self) -> None:
+        with pytest.raises(ValidationError):
+            MetricScore(**_metric(0.5, method="jackknife"))
+
+    @pytest.mark.parametrize("field", ["point", "ci_lower", "ci_upper"])
+    @pytest.mark.parametrize("bad_value", [-0.01, 1.01])
+    def test_rejects_out_of_range_rates(self, field: str, bad_value: float) -> None:
+        payload = _metric(0.5)
+        payload[field] = bad_value
+
+        with pytest.raises(ValidationError):
+            MetricScore(**payload)
+
+    def test_rejects_non_positive_n(self) -> None:
+        with pytest.raises(ValidationError):
+            MetricScore(**_metric(0.5, n=0))
+
+    def test_rejects_extra_fields(self) -> None:
+        with pytest.raises(ValidationError):
+            MetricScore(**_metric(0.5), unexpected="value")
+
+    def test_is_frozen(self) -> None:
+        score = MetricScore(**_metric(0.5))
+        with pytest.raises(ValidationError):
+            score.point = 0.9  # type: ignore[misc]
 
 
 def test_eval_train_meta_accepts_valid_payload() -> None:
@@ -104,6 +158,9 @@ def test_retrieval_report_constructs(valid_retrieval_report):
 
     assert report.task == Task.RETRIEVAL
     assert report.top_k == 3
+    assert report.ci_level == 0.95
+    assert report.n_bootstrap_resamples == 1000
+    assert report.ndcg_at_k.point == 1.0
     assert report.annotation_export_id == "export-1"
 
 
@@ -112,7 +169,8 @@ def test_grounding_report_constructs(valid_grounding_report):
     report = GroundingScoreReport(**valid_grounding_report)
 
     assert report.task == Task.GROUNDING
-    assert report.grounding_presence_rate == 0.8
+    assert report.grounding_presence_rate.point == 0.8
+    assert report.conditional_fabrication_rate.n == 3
     assert report.annotation_export_id == "export-1"
 
 
@@ -121,7 +179,7 @@ def test_generation_report_constructs(valid_generation_report):
     report = GenerationScoreReport(**valid_generation_report)
 
     assert report.task == Task.GENERATION
-    assert report.helpfulness_rate == 0.6
+    assert report.helpfulness_rate.point == 0.6
     assert report.annotation_export_id == "export-1"
 
 
@@ -207,15 +265,11 @@ def test_score_reports_reject_extra_fields(report_cls, fields_fixture, request):
         (GenerationScoreReport, "valid_generation_report", "unsafe_content_rate"),
     ],
 )
-def test_metric_fields_are_rates(report_cls, fields_fixture, metric, request):
-    """All score metrics are bounded rates in [0, 1]."""
+def test_metric_fields_require_metric_score(report_cls, fields_fixture, metric, request):
+    """Every metric field requires a MetricScore, not the bare float it used to be."""
     fields = request.getfixturevalue(fields_fixture).copy()
 
-    fields[metric] = -0.01
-    with pytest.raises(ValidationError):
-        report_cls(**fields)
-
-    fields[metric] = 1.01
+    fields[metric] = 0.5
     with pytest.raises(ValidationError):
         report_cls(**fields)
 
@@ -236,8 +290,61 @@ def test_retrieval_top_k_must_be_positive(valid_retrieval_report):
         (GenerationScoreReport, "valid_generation_report"),
     ],
 )
+@pytest.mark.parametrize("bad_ci_level", [0.0, 1.0])
+def test_ci_level_must_be_strictly_between_zero_and_one(report_cls, fields_fixture, bad_ci_level, request):
+    """ci_level is a confidence level in the open interval (0, 1)."""
+    fields = request.getfixturevalue(fields_fixture).copy()
+    fields["ci_level"] = bad_ci_level
+
+    with pytest.raises(ValidationError):
+        report_cls(**fields)
+
+
+@pytest.mark.parametrize(
+    ("report_cls", "fields_fixture"),
+    [
+        (RetrievalScoreReport, "valid_retrieval_report"),
+        (GroundingScoreReport, "valid_grounding_report"),
+        (GenerationScoreReport, "valid_generation_report"),
+    ],
+)
+def test_n_bootstrap_resamples_must_be_positive(report_cls, fields_fixture, request):
+    """The recorded bootstrap-resample count must be a positive integer."""
+    fields = request.getfixturevalue(fields_fixture).copy()
+    fields["n_bootstrap_resamples"] = 0
+
+    with pytest.raises(ValidationError):
+        report_cls(**fields)
+
+
+@pytest.mark.parametrize(
+    ("report_cls", "fields_fixture", "run_field"),
+    [
+        (RetrievalScoreReport, "valid_retrieval_report", "ci_level"),
+        (RetrievalScoreReport, "valid_retrieval_report", "n_bootstrap_resamples"),
+        (GroundingScoreReport, "valid_grounding_report", "ci_level"),
+        (GenerationScoreReport, "valid_generation_report", "n_bootstrap_resamples"),
+    ],
+)
+def test_run_level_uncertainty_fields_are_required(report_cls, fields_fixture, run_field, request):
+    """Reports must record the run-level uncertainty settings."""
+    fields = request.getfixturevalue(fields_fixture).copy()
+    fields.pop(run_field)
+
+    with pytest.raises(ValidationError):
+        report_cls(**fields)
+
+
+@pytest.mark.parametrize(
+    ("report_cls", "fields_fixture"),
+    [
+        (RetrievalScoreReport, "valid_retrieval_report"),
+        (GroundingScoreReport, "valid_grounding_report"),
+        (GenerationScoreReport, "valid_generation_report"),
+    ],
+)
 def test_score_reports_round_trip_via_json(report_cls, fields_fixture, request):
-    """Score reports round-trip through their JSON-compatible representation."""
+    """Score reports (with nested MetricScores) round-trip through JSON."""
     original = report_cls(**request.getfixturevalue(fields_fixture))
 
     restored = report_cls.model_validate(original.model_dump(mode="json"))
