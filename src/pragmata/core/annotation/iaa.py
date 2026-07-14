@@ -3,6 +3,8 @@
 import numpy as np
 from numpy.typing import NDArray
 
+from pragmata.core.annotation.uncertainty import percentile_bootstrap
+
 
 def krippendorff_alpha_nominal(data: NDArray[np.floating]) -> float:
     """Compute Krippendorff's alpha for nominal (binary/categorical) data.
@@ -129,22 +131,13 @@ def bootstrap_alpha(
     Returns:
         ``(ci_lower, ci_upper)`` tuple.
     """
-    rng = np.random.default_rng(seed)
-    n_items = data.shape[1]
-    alphas = np.empty(n_resamples)
-    for i in range(n_resamples):
-        indices = rng.integers(0, n_items, size=n_items)
-        alphas[i] = krippendorff_alpha_nominal(data[:, indices])
-
-    # Drop NaN resamples (can occur with degenerate samples).
-    alphas = alphas[~np.isnan(alphas)]
-    if len(alphas) == 0:
-        return (float("nan"), float("nan"))
-
-    tail = (1.0 - ci) / 2.0
-    lower = float(np.percentile(alphas, tail * 100))
-    upper = float(np.percentile(alphas, (1.0 - tail) * 100))
-    return lower, upper
+    return percentile_bootstrap(
+        data.shape[1],
+        lambda indices: krippendorff_alpha_nominal(data[:, indices]),
+        n_resamples=n_resamples,
+        ci=ci,
+        seed=seed,
+    )
 
 
 def percentage_agreement(data: NDArray[np.floating]) -> float:
