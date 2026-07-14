@@ -171,7 +171,7 @@ Scoring has stricter structural requirements than training, so it gets its own `
 
 - **retrieval** (`RETRIEVAL_SCORE_SCHEMA`) requires, per row:
   - `record_uuid` - group chunks into queries (the per-query unit).
-  - `rank` (1...K) - required by NDCG@K and MRR@K; without it those metrics cannot be computed.
+  - `chunk_rank` (1...K) - required by NDCG@K and MRR@K; without it those metrics cannot be computed.
   - `chunk_id` - stable identity within a query (already a dup-key in `transforms.py`).
 - **grounding / generation** (`GROUNDING_SCORE_SCHEMA`, `GENERATION_SCORE_SCHEMA`) require `record_uuid`.
 
