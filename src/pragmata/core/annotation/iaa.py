@@ -135,7 +135,7 @@ def bootstrap_alpha(
         data.shape[1],
         lambda indices: krippendorff_alpha_nominal(data[:, indices]),
         n_resamples=n_resamples,
-        ci=ci,
+        alpha=1.0 - ci,
         seed=seed,
     )
 

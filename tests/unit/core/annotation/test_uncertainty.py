@@ -73,9 +73,15 @@ class TestWilsonInterval:
         assert math.isnan(lower)
         assert math.isnan(upper)
 
-    def test_ci_level_widens_interval(self):
-        narrow = wilson_interval(8, 20, ci=0.90)
-        wide = wilson_interval(8, 20, ci=0.99)
+    @pytest.mark.parametrize("successes", [-1, 11])
+    def test_rejects_successes_out_of_range(self, successes):
+        with pytest.raises(ValueError, match="successes must be in"):
+            wilson_interval(successes, 10)
+
+    def test_smaller_alpha_widens_interval(self):
+        # Smaller alpha -> higher confidence -> wider interval.
+        wide = wilson_interval(8, 20, alpha=0.01)
+        narrow = wilson_interval(8, 20, alpha=0.10)
         assert wide[0] < narrow[0]
         assert wide[1] > narrow[1]
 
@@ -152,11 +158,16 @@ class TestBootstrapAlphaRegression:
         )
 
     def test_delegates_faithfully(self):
-        """Delegation matches a direct percentile_bootstrap call, same seed."""
+        """Delegation matches a direct percentile_bootstrap call at the same alpha/seed.
+
+        ``bootstrap_alpha`` converts its ``ci`` to ``alpha = 1 - ci``, so the
+        direct call must use the same expression for a bit-exact comparison.
+        """
         direct = percentile_bootstrap(
             REFERENCE_DATA.shape[1],
             lambda idx: krippendorff_alpha_nominal(REFERENCE_DATA[:, idx]),
             n_resamples=100,
+            alpha=1.0 - 0.95,
             seed=42,
         )
         assert bootstrap_alpha(REFERENCE_DATA, n_resamples=100, seed=42) == direct

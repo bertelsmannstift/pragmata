@@ -18,7 +18,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 
-def wilson_interval(successes: int, n: int, *, ci: float = 0.95) -> tuple[float, float]:
+def wilson_interval(successes: int, n: int, *, alpha: float = 0.05) -> tuple[float, float]:
     """Wilson score interval for a binomial proportion.
 
     Preferred over the normal approximation at small ``n`` and for extreme
@@ -29,16 +29,22 @@ def wilson_interval(successes: int, n: int, *, ci: float = 0.95) -> tuple[float,
     Args:
         successes: Number of positive outcomes (``0 <= successes <= n``).
         n: Number of trials (the effective denominator).
-        ci: Confidence level (e.g. 0.95 for a 95% interval).
+        alpha: Significance level; the interval is at confidence ``1 - alpha``
+            (e.g. ``alpha=0.05`` for a 95% interval).
 
     Returns:
         ``(ci_lower, ci_upper)`` clamped to ``[0, 1]``. Returns
         ``(nan, nan)`` when ``n <= 0``.
+
+    Raises:
+        ValueError: If ``successes`` is not in ``[0, n]``.
     """
     if n <= 0:
         return (float("nan"), float("nan"))
+    if not 0 <= successes <= n:
+        raise ValueError(f"successes must be in [0, {n}], got {successes}")
 
-    z = NormalDist().inv_cdf(1.0 - (1.0 - ci) / 2.0)
+    z = NormalDist().inv_cdf(1.0 - alpha / 2.0)
     p_hat = successes / n
     z2 = z * z
     denom = 1.0 + z2 / n
@@ -54,7 +60,7 @@ def percentile_bootstrap(
     statistic: Callable[[NDArray[np.intp]], float],
     *,
     n_resamples: int = 1000,
-    ci: float = 0.95,
+    alpha: float = 0.05,
     seed: int | None = None,
 ) -> tuple[float, float]:
     """Percentile-bootstrap confidence interval over a resampling unit.
@@ -69,7 +75,8 @@ def percentile_bootstrap(
         statistic: Maps a resample's index array to a scalar estimate; may
             return ``nan`` for a degenerate resample.
         n_resamples: Number of bootstrap iterations.
-        ci: Confidence level (e.g. 0.95 for a 95% interval).
+        alpha: Significance level; the interval is at confidence ``1 - alpha``
+            (e.g. ``alpha=0.05`` for a 95% interval).
         seed: Optional RNG seed for reproducibility.
 
     Returns:
@@ -86,6 +93,6 @@ def percentile_bootstrap(
     if len(values) == 0:
         return (float("nan"), float("nan"))
 
-    tail = (1.0 - ci) / 2.0
+    tail = alpha / 2.0
     lower, upper = np.percentile(values, [tail * 100.0, (1.0 - tail) * 100.0])
     return (float(lower), float(upper))
