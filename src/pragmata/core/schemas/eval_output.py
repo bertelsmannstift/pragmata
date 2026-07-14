@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, PositiveInt
 from pragmata.core.schemas.annotation_task import Task
 
 type Rate = Annotated[float, Field(ge=0.0, le=1.0)]
-# Confidence level in the open interval (0, 1); same semantics as the IAA report's CiLevel.
+# Confidence level in the open interval (0, 1)
 type CiLevel = Annotated[float, Field(gt=0.0, lt=1.0)]
 
 
