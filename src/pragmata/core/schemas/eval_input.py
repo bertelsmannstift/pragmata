@@ -97,8 +97,8 @@ def _identity_column_schemas(
 
     Every task needs ``record_uuid`` to group rows into the per-query unit that
     metrics average over. Retrieval additionally needs ``chunk_id`` (stable
-    per-chunk identity within a query) and ``chunk_rank`` (the 1-based rank the
-    design doc refers to as ``rank``, required by NDCG@K and MRR@K).
+    per-chunk identity within a query) and ``chunk_rank`` (the 1-based rank
+    within the query, required by NDCG@K and MRR@K).
     """
     columns: dict[str, pa.Column] = {
         "record_uuid": pa.Column(str, nullable=False, required=True, checks=_NON_BLANK_STRING),
