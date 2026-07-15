@@ -169,6 +169,15 @@ No `--top-k` (see above). Input mode follows the same three selectors as the API
 
 Scoring has stricter structural requirements than training, so it gets its own `*_SCORE_SCHEMA` definitions in `eval_input.py` rather than reusing `_TRAIN_SCHEMAS_BY_TASK`; `validate_eval_score_frame` switches to those. This keeps training inputs from being constrained by scoring-only metadata.
 
+Prediction outputs remain tlmtc-shaped: `build_tlmtc_frame(..., mode="predict")` renames the task text columns to `text` and `text_pair`, and tlmtc preserves those generic columns in `predictions.csv`. When scoring a prediction output, the score import path must restore the Pragmata column names before calling `validate_eval_score_frame`. Reuse `TEXT_COLUMNS_BY_TASK[task]` from `eval_input.py` as the single source of truth for the inverse mapping:
+
+```python
+text_column, text_pair_column = TEXT_COLUMNS_BY_TASK[task]
+frame = frame.rename(columns={"text": text_column, "text_pair": text_pair_column})
+```
+
+Identity and provenance columns pass through prediction unchanged. Do not duplicate the task-specific text columns alongside `text` and `text_pair` in prediction inputs or artifacts.
+
 - **retrieval** (`RETRIEVAL_SCORE_SCHEMA`) requires, per row:
   - `record_uuid` - group chunks into queries (the per-query unit).
   - `chunk_rank` (1...K) - required by NDCG@K and MRR@K; without it those metrics cannot be computed.
