@@ -1,4 +1,4 @@
-"""Tests for eval score run path bundle."""
+"""Tests for eval workflow path bundles."""
 
 from datetime import UTC, datetime
 from pathlib import Path
@@ -6,16 +6,21 @@ from pathlib import Path
 import pytest
 
 from pragmata.core.paths.eval_paths import (
+    EvalPredictPaths,
     EvalScorePaths,
     EvalTrainPaths,
     find_latest_annotation_export_id,
+    find_latest_eval_train_run_id,
+    resolve_eval_predict_paths,
     resolve_eval_score_paths,
     resolve_eval_train_meta_path,
     resolve_eval_train_paths,
+    resolve_eval_train_run_id,
 )
 from pragmata.core.paths.paths import WorkspacePaths
 from pragmata.core.schemas.annotation_export import AnnotationExportMeta
 from pragmata.core.schemas.annotation_task import Task
+from pragmata.core.schemas.eval_output import EvalTrainMeta
 
 
 @pytest.fixture()
@@ -64,6 +69,27 @@ def _write_annotation_export(
     )
 
     return export_dir
+
+
+def _write_eval_train_meta(
+    *,
+    workspace: WorkspacePaths,
+    run_id: str,
+    created_at: datetime,
+    task: Task,
+) -> None:
+    """Write a minimal eval train metadata sidecar for path tests."""
+    meta_path = resolve_eval_train_meta_path(
+        workspace=workspace,
+        run_id=run_id,
+    )
+    meta_path.parent.mkdir(parents=True)
+    meta = EvalTrainMeta(
+        run_id=run_id,
+        created_at=created_at,
+        task=task,
+    )
+    meta_path.write_text(meta.model_dump_json(), encoding="utf-8")
 
 
 def test_resolve_eval_train_paths_uses_direct_labeled_data_path(
@@ -330,6 +356,151 @@ def test_resolve_eval_train_meta_path_returns_train_run_sidecar_path(
     )
 
     assert path == workspace.base_dir / "eval" / "train_outputs" / "train-run-26" / "pragmata_train.meta.json"
+
+
+def test_resolve_eval_predict_paths_uses_direct_unlabeled_data_path(
+    workspace: WorkspacePaths,
+) -> None:
+    """Direct unlabeled CSV input resolves to an eval prediction path bundle."""
+    input_csv = workspace.base_dir / "standalone" / "unlabeled.csv"
+    input_csv.parent.mkdir()
+    input_csv.write_text("example_id\nexample-1\n", encoding="utf-8")
+
+    paths = resolve_eval_predict_paths(
+        workspace=workspace,
+        unlabeled_data_path=input_csv,
+    )
+
+    assert paths == EvalPredictPaths(
+        tool_root=workspace.base_dir / "eval",
+        prediction_input_csv=input_csv.resolve(),
+    )
+
+
+def test_resolve_eval_predict_paths_rejects_missing_input(
+    workspace: WorkspacePaths,
+) -> None:
+    """Prediction input must point to an existing file."""
+    with pytest.raises(FileNotFoundError, match="Unlabeled eval prediction input CSV does not exist"):
+        resolve_eval_predict_paths(
+            workspace=workspace,
+            unlabeled_data_path=workspace.base_dir / "missing.csv",
+        )
+
+
+def test_eval_predict_paths_ensure_dirs_creates_eval_tool_root(
+    workspace: WorkspacePaths,
+) -> None:
+    """EvalPredictPaths.ensure_dirs creates the eval tool root and returns self."""
+    paths = EvalPredictPaths(
+        tool_root=workspace.base_dir / "eval",
+        prediction_input_csv=workspace.base_dir / "unlabeled.csv",
+    )
+
+    returned = paths.ensure_dirs()
+
+    assert returned is paths
+    assert paths.tool_root.is_dir()
+
+
+def test_resolve_eval_train_run_id_uses_explicit_task_compatible_evaluator(
+    workspace: WorkspacePaths,
+) -> None:
+    """Explicit evaluator selection accepts metadata for the requested task."""
+    _write_eval_train_meta(
+        workspace=workspace,
+        run_id="retrieval-run",
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+        task=Task.RETRIEVAL,
+    )
+
+    run_id = resolve_eval_train_run_id(
+        workspace=workspace,
+        task=Task.RETRIEVAL,
+        evaluator_run_id="retrieval-run",
+    )
+
+    assert run_id == "retrieval-run"
+
+
+def test_resolve_eval_train_run_id_rejects_missing_metadata(
+    workspace: WorkspacePaths,
+) -> None:
+    """Explicit evaluator selection requires its Pragmata metadata sidecar."""
+    with pytest.raises(FileNotFoundError, match="pragmata_train.meta.json"):
+        resolve_eval_train_run_id(
+            workspace=workspace,
+            task=Task.RETRIEVAL,
+            evaluator_run_id="missing-run",
+        )
+
+
+def test_resolve_eval_train_run_id_rejects_task_mismatch(
+    workspace: WorkspacePaths,
+) -> None:
+    """An explicit evaluator cannot be selected for a different task."""
+    _write_eval_train_meta(
+        workspace=workspace,
+        run_id="generation-run",
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+        task=Task.GENERATION,
+    )
+
+    with pytest.raises(ValueError, match="generation.*retrieval"):
+        resolve_eval_train_run_id(
+            workspace=workspace,
+            task=Task.RETRIEVAL,
+            evaluator_run_id="generation-run",
+        )
+
+
+def test_find_latest_eval_train_run_id_selects_latest_matching_task(
+    workspace: WorkspacePaths,
+) -> None:
+    """Latest evaluator selection filters by task and creation time."""
+    _write_eval_train_meta(
+        workspace=workspace,
+        run_id="older-retrieval",
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+        task=Task.RETRIEVAL,
+    )
+    _write_eval_train_meta(
+        workspace=workspace,
+        run_id="newer-retrieval",
+        created_at=datetime(2026, 1, 2, tzinfo=UTC),
+        task=Task.RETRIEVAL,
+    )
+    _write_eval_train_meta(
+        workspace=workspace,
+        run_id="newest-generation",
+        created_at=datetime(2026, 1, 3, tzinfo=UTC),
+        task=Task.GENERATION,
+    )
+
+    run_id = find_latest_eval_train_run_id(
+        workspace=workspace,
+        task=Task.RETRIEVAL,
+    )
+
+    assert run_id == "newer-retrieval"
+
+
+def test_find_latest_eval_train_run_id_rejects_no_matching_evaluator(
+    workspace: WorkspacePaths,
+) -> None:
+    """Latest evaluator selection fails when no metadata matches the task."""
+    _write_eval_train_meta(
+        workspace=workspace,
+        run_id="generation-run",
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+        task=Task.GENERATION,
+    )
+
+    with pytest.raises(FileNotFoundError, match="task='retrieval'"):
+        find_latest_eval_train_run_id(
+            workspace=workspace,
+            task=Task.RETRIEVAL,
+        )
 
 
 def test_resolve_eval_score_paths_returns_expected_bundle(
