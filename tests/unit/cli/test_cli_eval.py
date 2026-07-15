@@ -64,8 +64,7 @@ class TestTrainEvaluatorCommand:
         assert "--scale-learning-rate" in output
         assert "--no-scale-learning-rate" in output
         assert "--sequence-length" in output
-        assert "--trust-remote-code" in output
-        assert "--no-trust-remote-code" in output
+        assert "--trust-remote-code" not in output
         assert "--train-kwargs" in output
 
     def test_maps_omitted_options_to_unset(
@@ -93,7 +92,6 @@ class TestTrainEvaluatorCommand:
             "proxy_checkpoint",
             "scale_learning_rate",
             "sequence_length",
-            "trust_remote_code",
             "train_kwargs",
         }
 
@@ -153,7 +151,6 @@ class TestTrainEvaluatorCommand:
             "proxy_checkpoint": "proxy/checkpoint",
             "scale_learning_rate": UNSET,
             "sequence_length": 2048,
-            "trust_remote_code": UNSET,
             "train_kwargs": {"run_id": "custom-run", "verbosity": "quiet"},
         }
 
@@ -173,13 +170,11 @@ class TestTrainEvaluatorCommand:
             eval_app,
             [
                 "--no-scale-learning-rate",
-                "--trust-remote-code",
             ],
         )
 
         assert result.exit_code == 0
         assert captured["scale_learning_rate"] is False
-        assert captured["trust_remote_code"] is True
 
     def test_scale_learning_rate_flag_true(
         self,
@@ -193,11 +188,10 @@ class TestTrainEvaluatorCommand:
 
         monkeypatch.setattr("pragmata.eval.train_evaluator", fake_train_evaluator)
 
-        result = runner.invoke(eval_app, ["--scale-learning-rate", "--no-trust-remote-code"])
+        result = runner.invoke(eval_app, ["--scale-learning-rate"])
 
         assert result.exit_code == 0
         assert captured["scale_learning_rate"] is True
-        assert captured["trust_remote_code"] is False
 
     def test_prints_run_summary(
         self,

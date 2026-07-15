@@ -2536,11 +2536,11 @@ dev = [
     { name = "pytest" },
     { name = "ruff" },
     { name = "sentence-transformers" },
-    { name = "tlmtc", extra = ["full"] },
+    { name = "tlmtc", extra = ["train"] },
     { name = "types-pyyaml" },
 ]
 eval = [
-    { name = "tlmtc", extra = ["full"] },
+    { name = "tlmtc", extra = ["train"] },
 ]
 everything = [
     { name = "argilla" },
@@ -2550,12 +2550,12 @@ everything = [
     { name = "langchain-google-genai" },
     { name = "langchain-openai" },
     { name = "sentence-transformers" },
-    { name = "tlmtc", extra = ["full"] },
+    { name = "tlmtc", extra = ["train"] },
 ]
 full = [
     { name = "argilla" },
     { name = "sentence-transformers" },
-    { name = "tlmtc", extra = ["full"] },
+    { name = "tlmtc", extra = ["train"] },
 ]
 google-genai = [
     { name = "langchain-google-genai" },
@@ -2601,7 +2601,7 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0,<7.0" },
     { name = "ruff", marker = "extra == 'lint'", specifier = ">=0.14,<1.0" },
     { name = "sentence-transformers", marker = "extra == 'querygen'", specifier = ">=3.0,<6.0" },
-    { name = "tlmtc", extras = ["full"], marker = "extra == 'eval'", specifier = ">=0.3,<1.0" },
+    { name = "tlmtc", extras = ["train"], marker = "extra == 'eval'", specifier = ">=0.4,<1.0" },
     { name = "typer", specifier = ">=0.9,<1.0" },
     { name = "types-pyyaml", marker = "extra == 'type'" },
 ]
@@ -3472,36 +3472,36 @@ wheels = [
 
 [[package]]
 name = "tlmtc"
-version = "0.3.0"
+version = "0.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
+    { name = "numpy" },
+    { name = "pandas" },
+    { name = "pydantic" },
+    { name = "pyyaml" },
+    { name = "typer" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/88/bb/903d11f82e311cd2045df1ee952ab5982955197ed901cc430da4329b0d7a/tlmtc-0.4.0.tar.gz", hash = "sha256:47764f454342ebff27c2f33e33477c40f44c7489831a126d85fb2df6eec8e044", size = 1291686, upload-time = "2026-07-13T13:15:07.356Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/48/e6/060d56c65705a1dfe14ec82406b8ba85ceff792caf4cf028c8a246ac865c/tlmtc-0.4.0-py3-none-any.whl", hash = "sha256:d56af3068f763cadf31bd145bb72e331bf17ec45a48bd5a7c736317d9e974081", size = 63803, upload-time = "2026-07-13T13:15:05.967Z" },
+]
+
+[package.optional-dependencies]
+train = [
+    { name = "accelerate" },
     { name = "datasets" },
     { name = "great-tables" },
     { name = "huggingface-hub" },
     { name = "iterative-stratification" },
     { name = "matplotlib" },
-    { name = "numpy" },
     { name = "optuna" },
-    { name = "pandas" },
     { name = "pandera", extra = ["pandas"] },
+    { name = "peft" },
     { name = "pyarrow" },
-    { name = "pydantic" },
-    { name = "pyyaml" },
     { name = "scikit-learn" },
     { name = "seaborn" },
-    { name = "transformers" },
-    { name = "typer" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/ca/82/eadeabad209aa1dfd0183115c83c6121276e5782178f9a3b9b119698d9d1/tlmtc-0.3.0.tar.gz", hash = "sha256:bc77ba950a8c2bb41c052e13bc083e00268add2bb5406dda0842e6c139c09b96", size = 1259235, upload-time = "2026-06-28T18:42:23.412Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/b7/6d/fe1825b1b9407ecc4386c5bec76477c95e27515e38a0dec63b112a22ddc8/tlmtc-0.3.0-py3-none-any.whl", hash = "sha256:62aecfae8c41abe50e8699ee6df6e23b3fd051b8c25df3c4a230ff93a1189a8c", size = 56503, upload-time = "2026-06-28T18:42:21.87Z" },
-]
-
-[package.optional-dependencies]
-full = [
-    { name = "accelerate" },
-    { name = "peft" },
     { name = "torch" },
+    { name = "transformers" },
 ]
 
 [[package]]

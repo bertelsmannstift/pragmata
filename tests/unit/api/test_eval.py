@@ -76,11 +76,10 @@ def test_train_evaluator_orchestrates_direct_labeled_input(
     assert {key: value for key, value in calls["train"].items() if key != "labeled_data"} == {
         "work_dir": tmp_path.resolve() / "eval",
         "target_name": "Retrieval evaluation",
-        "checkpoint": "EuroBERT/EuroBERT-610m",
-        "proxy_checkpoint": "EuroBERT/EuroBERT-210m",
+        "checkpoint": "jhu-clsp/mmBERT-base",
+        "proxy_checkpoint": "jhu-clsp/mmBERT-small",
         "scale_learning_rate": True,
         "sequence_length": 1024,
-        "trust_remote_code": True,
         "train_kwargs": {"run_id": "train-run-1", "verbosity": "quiet"},
     }
     assert calls["export"]["meta"].model_dump(exclude={"created_at"}) == {
@@ -108,9 +107,9 @@ def test_train_evaluator_combines_config_and_explicit_overrides(
             target_name: Config target
             scale_learning_rate: false
             sequence_length: 512
-            trust_remote_code: false
             train_kwargs:
               batch_size: 8
+              trust_remote_code: false
             """
         ),
         encoding="utf-8",
@@ -150,8 +149,7 @@ def test_train_evaluator_combines_config_and_explicit_overrides(
         "proxy_checkpoint": "config/proxy",
         "scale_learning_rate": False,
         "sequence_length": 2048,
-        "trust_remote_code": False,
-        "train_kwargs": {"batch_size": 16, "run_id": "override-run"},
+        "train_kwargs": {"batch_size": 16, "trust_remote_code": False, "run_id": "override-run"},
     }
 
 
