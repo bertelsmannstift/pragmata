@@ -169,7 +169,9 @@ No `--top-k` (see above). Input mode follows the same three selectors as the API
 
 Scoring has stricter structural requirements than training, so it gets its own `*_SCORE_SCHEMA` definitions in `eval_input.py` rather than reusing `_TRAIN_SCHEMAS_BY_TASK`; `validate_eval_score_frame` switches to those. This keeps training inputs from being constrained by scoring-only metadata.
 
-Prediction outputs remain tlmtc-shaped: `build_tlmtc_frame(..., mode="predict")` renames the task text columns to `text` and `text_pair`, and tlmtc preserves those generic columns in `predictions.csv`. When scoring a prediction output, the score import path must restore the Pragmata column names before calling `validate_eval_score_frame`. Reuse `TEXT_COLUMNS_BY_TASK[task]` from `eval_input.py` as the single source of truth for the inverse mapping:
+Add `import_eval_score_frame` to `core/eval/imports.py`, parallel to the existing train and predict import functions. It is the score ingestion boundary: it reads the resolved score input CSV, prepares it for the task-specific score contract, and applies `validate_eval_score_frame`. Direct labeled inputs and annotation exports are already Pragmata-shaped and pass through without text-column normalization.
+
+Prediction outputs require additional preparation because they remain tlmtc-shaped: `build_tlmtc_frame(..., mode="predict")` renames the task text columns to `text` and `text_pair`, and tlmtc preserves those generic columns in `predictions.csv`. For this input source, `import_eval_score_frame` must restore the Pragmata column names before validation. Reuse `TEXT_COLUMNS_BY_TASK[task]` from `eval_input.py` as the single source of truth for the inverse mapping:
 
 ```python
 text_column, text_pair_column = TEXT_COLUMNS_BY_TASK[task]
@@ -177,6 +179,8 @@ frame = frame.rename(columns={"text": text_column, "text_pair": text_pair_column
 ```
 
 Identity and provenance columns pass through prediction unchanged. Do not duplicate the task-specific text columns alongside `text` and `text_pair` in prediction inputs or artifacts.
+
+Input-source selection and path resolution belong in `core/paths/eval_paths.py`, mirroring `resolve_eval_train_paths`. The score path resolver must return one concrete input CSV path and retain enough source provenance to distinguish a tlmtc prediction artifact from already Pragmata-shaped input. The API then passes the resolved input to `import_eval_score_frame`. The exact path-bundle and importer signatures are implementation details for the scoring PR.
 
 - **retrieval** (`RETRIEVAL_SCORE_SCHEMA`) requires, per row:
   - `record_uuid` - group chunks into queries (the per-query unit).
