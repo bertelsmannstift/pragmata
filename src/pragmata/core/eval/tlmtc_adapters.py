@@ -15,7 +15,6 @@ _RESERVED_TRAIN_KWARGS = frozenset(
         "proxy_checkpoint",
         "scale_learning_rate",
         "sequence_length",
-        "trust_remote_code",
     }
 )
 
@@ -29,7 +28,6 @@ def run_tlmtc_train(
     proxy_checkpoint: str,
     scale_learning_rate: bool,
     sequence_length: int,
-    trust_remote_code: bool,
     train_kwargs: dict[str, Any],
 ) -> Any:
     """Train a pragmata evaluator model through tlmtc.
@@ -45,8 +43,6 @@ def run_tlmtc_train(
         scale_learning_rate: Whether to scale the proxy-tuned learning rate for
             the target checkpoint.
         sequence_length: Maximum tokenized sequence length.
-        trust_remote_code: Whether Hugging Face loading may execute custom
-            checkpoint code.
         train_kwargs: Additional tlmtc-owned keyword arguments. Keys managed by
             pragmata are rejected.
 
@@ -79,7 +75,6 @@ def run_tlmtc_train(
         "proxy_checkpoint": proxy_checkpoint,
         "scale_learning_rate": scale_learning_rate,
         "sequence_length": sequence_length,
-        "trust_remote_code": trust_remote_code,
     }
     train_args.update(train_kwargs)
 

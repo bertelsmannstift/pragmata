@@ -260,7 +260,6 @@ def _train_evaluator(
         proxy_checkpoint=_TINY_CHECKPOINT,
         scale_learning_rate=False,
         sequence_length=64,
-        trust_remote_code=False,
         train_kwargs=_fast_train_kwargs(
             run_id=run_id,
             transfer_learning=transfer_learning,
