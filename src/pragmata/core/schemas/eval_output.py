@@ -39,6 +39,26 @@ class MetricScore(BaseModel):
         return self
 
 
+class ScoreInputSource(BaseModel):
+    """Provenance of the labeled data a score report was computed from.
+
+    ``kind`` records the source category: ``direct_path`` (a path supplied
+    directly), ``annotation_export`` (resolved from a workspace annotation
+    export), or ``model_prediction`` (labels produced by ``pragmata eval
+    predict``). ``ref`` is the selector's value (the ``path``, ``export_id``, or
+    ``prediction_id``); ``resolved_path`` is the concrete CSV that was read,
+    recorded relative to the workspace (or absolute when the input lies outside
+    it). ``kind`` also drives ingestion: only ``model_prediction`` inputs are
+    tlmtc-shaped and need text-column restoration before validation.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: Literal["direct_path", "annotation_export", "model_prediction"]
+    ref: str
+    resolved_path: str
+
+
 class EvalTrainMeta(BaseModel):
     """Pragmata-owned metadata for a completed evaluator training run."""
 
@@ -56,7 +76,7 @@ class RetrievalScoreReport(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     task: Literal[Task.RETRIEVAL] = Task.RETRIEVAL
-    annotation_export_id: str | None = None
+    source: ScoreInputSource
     notes: str = ""
     created_at: datetime
     n_examples: PositiveInt
@@ -76,7 +96,7 @@ class GroundingScoreReport(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     task: Literal[Task.GROUNDING] = Task.GROUNDING
-    annotation_export_id: str | None = None
+    source: ScoreInputSource
     notes: str = ""
     created_at: datetime
     n_examples: PositiveInt
@@ -94,7 +114,7 @@ class GenerationScoreReport(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     task: Literal[Task.GENERATION] = Task.GENERATION
-    annotation_export_id: str | None = None
+    source: ScoreInputSource
     notes: str = ""
     created_at: datetime
     n_examples: PositiveInt
