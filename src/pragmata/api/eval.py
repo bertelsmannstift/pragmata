@@ -1,14 +1,23 @@
 """API orchestration for evaluation workflows."""
 
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from pragmata.api._error_log import error_log
 from pragmata.core.eval.export import export_eval_train_meta
-from pragmata.core.eval.imports import import_eval_predict_frame, import_eval_train_frame
+from pragmata.core.eval.imports import (
+    import_eval_predict_frame,
+    import_eval_score_frame,
+    import_eval_train_frame,
+)
+from pragmata.core.eval.scoring import ScoreReport, build_score_report
 from pragmata.core.eval.tlmtc_adapters import run_tlmtc_predict, run_tlmtc_train
 from pragmata.core.eval.transforms import build_tlmtc_frame
 from pragmata.core.paths.eval_paths import (
     resolve_eval_predict_paths,
+    resolve_eval_score_input,
+    resolve_eval_score_paths,
     resolve_eval_train_meta_path,
     resolve_eval_train_paths,
     resolve_eval_train_run_id,
@@ -16,7 +25,11 @@ from pragmata.core.paths.eval_paths import (
 from pragmata.core.paths.paths import WorkspacePaths
 from pragmata.core.schemas.annotation_task import Task
 from pragmata.core.schemas.eval_output import EvalTrainMeta
-from pragmata.core.settings.eval_settings import EvalPredictSettings, EvalTrainSettings
+from pragmata.core.settings.eval_settings import (
+    EvalPredictSettings,
+    EvalScoreSettings,
+    EvalTrainSettings,
+)
 from pragmata.core.settings.settings_base import UNSET, Unset, load_config_file
 
 
@@ -194,3 +207,98 @@ def predict_labels(
         evaluator_run_id=resolved_evaluator_run_id,
         predict_kwargs=settings.predict_kwargs,
     )
+
+
+def score(
+    *,
+    base_dir: str | Path | Unset = UNSET,
+    score_id: str | Unset = UNSET,
+    path: str | Path | Unset = UNSET,
+    export_id: str | Unset = UNSET,
+    prediction_id: str | Unset = UNSET,
+    task: str | Task | Unset = UNSET,
+    n_resamples: int | Unset = UNSET,
+    ci: float | Unset = UNSET,
+    seed: int | Unset = UNSET,
+    config_path: str | Path | Unset = UNSET,
+) -> ScoreReport:
+    """Score labeled eval data into corpus metrics with confidence intervals.
+
+    Reads one labeled CSV, computes the task's taxonomy metrics as corpus point
+    estimates with a confidence interval on each (Wilson for proportion metrics,
+    percentile bootstrap for the continuous retrieval metrics), and writes the
+    task's ``*_scores.json`` report. The input is selected by precedence
+    ``path`` > ``export_id`` > ``prediction_id``; with no
+    selector the latest annotation export is used. The resolved input and how it
+    was selected are recorded on the report's ``source``.
+
+    Args:
+        base_dir: Workspace base directory. Defaults to the current directory.
+        score_id: Output identifier; names ``<base_dir>/eval/scores/<score_id>/``.
+            Defaults to a generated value.
+        path: Direct path to the labeled CSV to score.
+        export_id: Annotation export identifier; resolves to the task-specific
+            exported CSV.
+        prediction_id: Pragmata prediction run identifier. Not yet supported -
+            prediction-output scoring lands with ``pragmata eval predict``.
+        task: Annotation task to score (``"retrieval"``, ``"grounding"``, or
+            ``"generation"``).
+        n_resamples: Bootstrap iterations for the continuous metrics. Defaults to 1000.
+        ci: Confidence level for every interval. Defaults to 0.95.
+        seed: Optional RNG seed for reproducible bootstrap intervals.
+        config_path: Path to a YAML configuration file.
+
+    Returns:
+        The task-specific score report, also written to ``*_scores.json``.
+
+    Raises:
+        EvalInputSchemaError: If the input violates the score contract.
+        FileNotFoundError: If the selected input CSV or annotation export is missing.
+        NotImplementedError: If ``prediction_id`` is used before predict lands.
+    """
+    settings = EvalScoreSettings.resolve(
+        config=load_config_file(config_path) if isinstance(config_path, (str, Path)) else None,
+        env=None,
+        overrides={
+            "base_dir": base_dir,
+            "score_id": score_id,
+            "path": path,
+            "export_id": export_id,
+            "prediction_id": prediction_id,
+            "task": task,
+            "n_resamples": n_resamples,
+            "ci": ci,
+            "seed": seed,
+        },
+    )
+    workspace = WorkspacePaths.from_base_dir(settings.base_dir)
+    score_paths = resolve_eval_score_paths(workspace=workspace, score_id=settings.score_id).ensure_dirs()
+
+    with error_log(score_paths.tool_root):
+        resolved = resolve_eval_score_input(
+            workspace=workspace,
+            task=settings.task,
+            path=settings.path,
+            export_id=settings.export_id,
+            prediction_id=settings.prediction_id,
+        )
+        frame = import_eval_score_frame(path=resolved.input_csv, task=settings.task, source=resolved.source)
+        report = build_score_report(
+            frame,
+            task=settings.task,
+            ci=settings.ci,
+            n_resamples=settings.n_resamples,
+            seed=settings.seed,
+            source=resolved.source,
+            created_at=datetime.now(UTC),
+        )
+        match settings.task:
+            case Task.RETRIEVAL:
+                output_json = score_paths.retrieval_scores_json
+            case Task.GROUNDING:
+                output_json = score_paths.grounding_scores_json
+            case Task.GENERATION:
+                output_json = score_paths.generation_scores_json
+        output_json.write_text(report.model_dump_json(indent=2), encoding="utf-8")
+
+    return report
