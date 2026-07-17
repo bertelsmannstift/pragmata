@@ -5,8 +5,8 @@ from typing import Any
 
 import pandas as pd
 
-# Keep this in sync with run_tlmtc_train's dedicated arguments.
-_RESERVED_TRAIN_KWARGS = frozenset(
+# Keep this in sync with the TLMTC arguments managed by run_tlmtc_train.
+_PRAGMATA_MANAGED_TLMTC_TRAIN_ARGS = frozenset(
     {
         "labeled_data",
         "work_dir",
@@ -15,6 +15,15 @@ _RESERVED_TRAIN_KWARGS = frozenset(
         "proxy_checkpoint",
         "scale_learning_rate",
         "sequence_length",
+    }
+)
+
+# Keep this in sync with the TLMTC arguments managed by run_tlmtc_predict.
+_PRAGMATA_MANAGED_TLMTC_PREDICT_ARGS = frozenset(
+    {
+        "unlabeled_data",
+        "work_dir",
+        "run_id",
     }
 )
 
@@ -54,7 +63,7 @@ def run_tlmtc_train(
         ValueError: If ``train_kwargs`` attempts to override a dedicated
             Pragmata-owned train argument.
     """
-    overlapping_keys = _RESERVED_TRAIN_KWARGS.intersection(train_kwargs)
+    overlapping_keys = _PRAGMATA_MANAGED_TLMTC_TRAIN_ARGS.intersection(train_kwargs)
     if overlapping_keys:
         overlapping = ", ".join(sorted(overlapping_keys))
         raise ValueError(
@@ -79,3 +88,55 @@ def run_tlmtc_train(
     train_args.update(train_kwargs)
 
     return train_tlmtc(**train_args)
+
+
+def run_tlmtc_predict(
+    *,
+    unlabeled_data: str | Path | pd.DataFrame,
+    work_dir: Path,
+    evaluator_run_id: str,
+    predict_kwargs: dict[str, Any],
+) -> Any:
+    """Predict evaluation labels through tlmtc.
+
+    Args:
+        unlabeled_data: Path to unlabeled prediction data, or an in-memory
+            DataFrame containing tlmtc's text input columns.
+        work_dir: Base eval work directory passed through to tlmtc.
+        evaluator_run_id: Concrete, task-compatible evaluator training run selected by pragmata.
+            This is forwarded to tlmtc as ``run_id``.
+        predict_kwargs: Additional tlmtc-owned prediction arguments, such as batch
+            size, device selection, verbosity, and inference backend. Arguments
+            managed by Pragmata are rejected.
+
+    Returns:
+        The result returned by ``tlmtc.predict_tlmtc``.
+
+    Raises:
+        ImportError: If tlmtc is not installed.
+        ValueError: If ``predict_kwargs`` attempts to override a dedicated
+            Pragmata-owned prediction argument.
+    """
+    overlapping_keys = _PRAGMATA_MANAGED_TLMTC_PREDICT_ARGS.intersection(predict_kwargs)
+    if overlapping_keys:
+        overlapping = ", ".join(sorted(overlapping_keys))
+        raise ValueError(
+            f"predict_kwargs must not override pragmata-managed predict settings: {overlapping}. "
+            "Pass these via dedicated arguments instead."
+        )
+
+    try:
+        from tlmtc import predict_tlmtc
+    except ImportError as exc:
+        raise ImportError(
+            "tlmtc is required for evaluator prediction. Install pragmata with the 'eval' extra."
+        ) from exc
+
+    predict_args: dict[str, Any] = {
+        "unlabeled_data": unlabeled_data,
+        "work_dir": work_dir,
+        "run_id": evaluator_run_id,
+    }
+    predict_args.update(predict_kwargs)
+
+    return predict_tlmtc(**predict_args)
