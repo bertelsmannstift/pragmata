@@ -9,6 +9,7 @@ from pragmata.core.paths.annotation_paths import resolve_export_paths
 from pragmata.core.paths.paths import WorkspacePaths
 from pragmata.core.schemas.annotation_export import AnnotationExportMeta
 from pragmata.core.schemas.annotation_task import Task
+from pragmata.core.schemas.eval_output import EvalTrainMeta
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,6 +32,28 @@ class EvalTrainPaths:
         self,
     ) -> Self:
         """Create the eval tool directory scaffold."""
+        self.tool_root.mkdir(parents=True, exist_ok=True)
+        return self
+
+
+@dataclass(frozen=True, slots=True)
+class EvalPredictPaths:
+    """Resolved input paths for eval prediction.
+
+    Attributes:
+        tool_root: Root directory for eval artifacts. Passed to tlmtc as
+            ``work_dir`` for prediction.
+        prediction_input_csv: Concrete unlabeled CSV path consumed by eval
+            prediction.
+    """
+
+    tool_root: Path
+    prediction_input_csv: Path
+
+    def ensure_dirs(
+        self,
+    ) -> Self:
+        """Create the eval tool root."""
         self.tool_root.mkdir(parents=True, exist_ok=True)
         return self
 
@@ -176,6 +199,112 @@ def resolve_eval_train_meta_path(
         directory.
     """
     return workspace.tool_root("eval") / "train_outputs" / run_id / "pragmata_train.meta.json"
+
+
+def resolve_eval_predict_paths(
+    *,
+    workspace: WorkspacePaths,
+    unlabeled_data_path: Path,
+) -> EvalPredictPaths:
+    """Resolve the explicit unlabeled input CSV consumed by eval predict.
+
+    Args:
+        workspace: Workspace path bundle.
+        unlabeled_data_path: Direct unlabeled CSV path.
+
+    Returns:
+        Resolved prediction-input paths.
+
+    Raises:
+        FileNotFoundError: If the input path is not an existing file.
+    """
+    prediction_input_csv = unlabeled_data_path.expanduser().resolve()
+    if not prediction_input_csv.is_file():
+        raise FileNotFoundError(f"Unlabeled eval prediction input CSV does not exist: {prediction_input_csv}")
+
+    return EvalPredictPaths(
+        tool_root=workspace.tool_root("eval"),
+        prediction_input_csv=prediction_input_csv,
+    )
+
+
+def find_latest_eval_train_run_id(
+    *,
+    workspace: WorkspacePaths,
+    task: Task,
+) -> str:
+    """Find the latest completed evaluator training run for a task.
+
+    Args:
+        workspace: Workspace path bundle.
+        task: Pragmata task the evaluator must have been trained for.
+
+    Returns:
+        Run ID selected by creation time with run ID as a deterministic
+        tie-breaker.
+
+    Raises:
+        FileNotFoundError: If no evaluator metadata matches the requested task.
+        pydantic.ValidationError: If persisted evaluator metadata is invalid.
+    """
+    train_outputs_dir = workspace.tool_root("eval") / "train_outputs"
+    compatible_runs: list[tuple[datetime, str]] = []
+
+    for meta_path in train_outputs_dir.glob("*/pragmata_train.meta.json"):
+        meta = EvalTrainMeta.model_validate_json(meta_path.read_text(encoding="utf-8"))
+        if meta.task == task:
+            compatible_runs.append((meta.created_at, meta.run_id))
+
+    if not compatible_runs:
+        raise FileNotFoundError(
+            f"No completed eval training runs found for task={task.value!r}. "
+            f"Expected matching pragmata_train.meta.json under {train_outputs_dir}."
+        )
+
+    return max(compatible_runs, key=lambda item: (item[0], item[1]))[1]
+
+
+def resolve_eval_train_run_id(
+    *,
+    workspace: WorkspacePaths,
+    task: Task,
+    evaluator_run_id: str | None = None,
+) -> str:
+    """Resolve a concrete evaluator training run ID compatible with a task.
+
+    Args:
+        workspace: Workspace path bundle.
+        task: Pragmata task the evaluator must have been trained for.
+        evaluator_run_id: Optional explicit evaluator run ID. When omitted, the
+            latest task-compatible evaluator is selected.
+
+    Returns:
+        Concrete task-compatible evaluator run ID.
+
+    Raises:
+        FileNotFoundError: If explicit evaluator metadata is missing or no
+            compatible evaluator exists.
+        ValueError: If explicit metadata identifies a different task.
+        pydantic.ValidationError: If persisted evaluator metadata is invalid.
+    """
+    if evaluator_run_id is None:
+        return find_latest_eval_train_run_id(workspace=workspace, task=task)
+
+    meta_path = resolve_eval_train_meta_path(
+        workspace=workspace,
+        run_id=evaluator_run_id,
+    )
+    if not meta_path.is_file():
+        raise FileNotFoundError(f"Eval train metadata does not exist: {meta_path}")
+
+    meta = EvalTrainMeta.model_validate_json(meta_path.read_text(encoding="utf-8"))
+    if meta.task != task:
+        raise ValueError(
+            f"Evaluator {evaluator_run_id!r} was trained for task={meta.task.value!r}, "
+            f"not requested task={task.value!r}."
+        )
+
+    return evaluator_run_id
 
 
 @dataclass(frozen=True, slots=True)
