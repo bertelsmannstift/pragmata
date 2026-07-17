@@ -62,7 +62,6 @@ class RetrievalScoreReport(BaseModel):
     n_examples: PositiveInt
     top_k: PositiveInt
     ci_level: CiLevel
-    n_bootstrap_resamples: PositiveInt
     topical_precision_at_k: MetricScore
     sufficiency_hit_at_k: MetricScore
     sufficiency_rate_at_k: MetricScore
@@ -82,7 +81,6 @@ class GroundingScoreReport(BaseModel):
     created_at: datetime
     n_examples: PositiveInt
     ci_level: CiLevel
-    n_bootstrap_resamples: PositiveInt
     grounding_presence_rate: MetricScore
     unsupported_claim_rate: MetricScore
     contradiction_rate: MetricScore
@@ -101,7 +99,6 @@ class GenerationScoreReport(BaseModel):
     created_at: datetime
     n_examples: PositiveInt
     ci_level: CiLevel
-    n_bootstrap_resamples: PositiveInt
     proper_action_rate: MetricScore
     on_topic_rate: MetricScore
     helpfulness_rate: MetricScore

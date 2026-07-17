@@ -31,7 +31,6 @@ def valid_retrieval_report():
         "n_examples": 5,
         "top_k": 3,
         "ci_level": 0.95,
-        "n_bootstrap_resamples": 1000,
         "topical_precision_at_k": _metric(0.6, method="bootstrap"),
         "sufficiency_hit_at_k": _metric(0.8, method="wilson"),
         "sufficiency_rate_at_k": _metric(0.4, method="bootstrap"),
@@ -49,7 +48,6 @@ def valid_grounding_report():
         "created_at": NOW,
         "n_examples": 5,
         "ci_level": 0.95,
-        "n_bootstrap_resamples": 1000,
         "grounding_presence_rate": _metric(0.8, method="wilson"),
         "unsupported_claim_rate": _metric(0.2, method="wilson"),
         "contradiction_rate": _metric(0.0, method="wilson"),
@@ -66,7 +64,6 @@ def valid_generation_report():
         "created_at": NOW,
         "n_examples": 5,
         "ci_level": 0.95,
-        "n_bootstrap_resamples": 1000,
         "proper_action_rate": _metric(1.0, method="wilson"),
         "on_topic_rate": _metric(0.8, method="wilson"),
         "helpfulness_rate": _metric(0.6, method="wilson"),
@@ -167,7 +164,6 @@ def test_retrieval_report_constructs(valid_retrieval_report):
     assert report.task == Task.RETRIEVAL
     assert report.top_k == 3
     assert report.ci_level == 0.95
-    assert report.n_bootstrap_resamples == 1000
     assert report.ndcg_at_k.point == 1.0
     assert report.annotation_export_id == "export-1"
 
@@ -309,29 +305,11 @@ def test_ci_level_must_be_strictly_between_zero_and_one(report_cls, fields_fixtu
 
 
 @pytest.mark.parametrize(
-    ("report_cls", "fields_fixture"),
-    [
-        (RetrievalScoreReport, "valid_retrieval_report"),
-        (GroundingScoreReport, "valid_grounding_report"),
-        (GenerationScoreReport, "valid_generation_report"),
-    ],
-)
-def test_n_bootstrap_resamples_must_be_positive(report_cls, fields_fixture, request):
-    """The recorded bootstrap-resample count must be a positive integer."""
-    fields = request.getfixturevalue(fields_fixture).copy()
-    fields["n_bootstrap_resamples"] = 0
-
-    with pytest.raises(ValidationError):
-        report_cls(**fields)
-
-
-@pytest.mark.parametrize(
     ("report_cls", "fields_fixture", "run_field"),
     [
         (RetrievalScoreReport, "valid_retrieval_report", "ci_level"),
-        (RetrievalScoreReport, "valid_retrieval_report", "n_bootstrap_resamples"),
         (GroundingScoreReport, "valid_grounding_report", "ci_level"),
-        (GenerationScoreReport, "valid_generation_report", "n_bootstrap_resamples"),
+        (GenerationScoreReport, "valid_generation_report", "ci_level"),
     ],
 )
 def test_run_level_uncertainty_fields_are_required(report_cls, fields_fixture, run_field, request):
