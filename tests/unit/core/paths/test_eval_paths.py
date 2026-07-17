@@ -485,6 +485,32 @@ def test_find_latest_eval_train_run_id_selects_latest_matching_task(
     assert run_id == "newer-retrieval"
 
 
+def test_find_latest_eval_train_run_id_tie_breaks_by_run_id(
+    workspace: WorkspacePaths,
+) -> None:
+    """Latest evaluator selection uses run ID as deterministic timestamp tie-breaker."""
+    created_at = datetime(2026, 1, 1, tzinfo=UTC)
+    _write_eval_train_meta(
+        workspace=workspace,
+        run_id="run-a",
+        created_at=created_at,
+        task=Task.RETRIEVAL,
+    )
+    _write_eval_train_meta(
+        workspace=workspace,
+        run_id="run-b",
+        created_at=created_at,
+        task=Task.RETRIEVAL,
+    )
+
+    run_id = find_latest_eval_train_run_id(
+        workspace=workspace,
+        task=Task.RETRIEVAL,
+    )
+
+    assert run_id == "run-b"
+
+
 def test_find_latest_eval_train_run_id_rejects_no_matching_evaluator(
     workspace: WorkspacePaths,
 ) -> None:
