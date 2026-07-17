@@ -9,7 +9,7 @@ from pragmata.core.paths.annotation_paths import resolve_export_paths
 from pragmata.core.paths.paths import WorkspacePaths
 from pragmata.core.schemas.annotation_export import AnnotationExportMeta
 from pragmata.core.schemas.annotation_task import Task
-from pragmata.core.schemas.eval_output import EvalTrainMeta
+from pragmata.core.schemas.eval_output import EvalTrainMeta, ScoreInputSource
 
 
 @dataclass(frozen=True, slots=True)
@@ -317,7 +317,6 @@ class EvalScorePaths:
         retrieval_scores_json: Output path for retrieval score metrics.
         grounding_scores_json: Output path for grounding score metrics.
         generation_scores_json: Output path for generation score metrics.
-        scores_meta_json: Output path for score run metadata.
     """
 
     tool_root: Path
@@ -325,7 +324,6 @@ class EvalScorePaths:
     retrieval_scores_json: Path
     grounding_scores_json: Path
     generation_scores_json: Path
-    scores_meta_json: Path
 
     def ensure_dirs(
         self,
@@ -358,5 +356,120 @@ def resolve_eval_score_paths(
         retrieval_scores_json=score_dir / "retrieval_scores.json",
         grounding_scores_json=score_dir / "grounding_scores.json",
         generation_scores_json=score_dir / "generation_scores.json",
-        scores_meta_json=score_dir / "scores.meta.json",
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class EvalScoreInput:
+    """Resolved score input CSV and its provenance.
+
+    Attributes:
+        input_csv: Concrete labeled CSV path to read and score.
+        source: Provenance of the input (selector kind, its value, and the
+            resolved path), recorded on the score report.
+    """
+
+    input_csv: Path
+    source: ScoreInputSource
+
+
+def provenance_path(*, input_csv: Path, base_dir: Path) -> str:
+    """Record a scored input relative to the workspace, or absolute if outside it."""
+    resolved_base = base_dir.expanduser().resolve()
+    try:
+        return str(input_csv.relative_to(resolved_base))
+    except ValueError:
+        return str(input_csv)
+
+
+def resolve_eval_score_input(
+    *,
+    workspace: WorkspacePaths,
+    task: Task,
+    path: Path | None = None,
+    export_id: str | None = None,
+    prediction_id: str | None = None,
+) -> EvalScoreInput:
+    """Resolve the labeled CSV consumed by eval score and its provenance.
+
+    Selection follows a fixed precedence: a direct ``path`` wins,
+    then an ``export_id``, then a ``prediction_id``. With no selector, the
+    latest valid annotation export for the task is used, mirroring
+    ``resolve_eval_train_paths``.
+
+    Direct paths and annotation exports are already Pragmata-shaped and score
+    without further preparation. Scoring a prediction run is not yet supported:
+    the ``pragmata eval predict`` output layout does not exist yet, so both an
+    explicit ``prediction_id`` and the eventual "latest prediction run"
+    no-selector fallback that ``docs/design/eval-scoring-metrics.md`` proposes
+    are deferred until predict lands; the interim no-selector fallback is the
+    latest annotation export.
+
+    Args:
+        workspace: Workspace path bundle.
+        task: Annotation task that determines which exported task CSV is required.
+        path: Direct labeled CSV path.
+        export_id: Annotation export identifier.
+        prediction_id: Pragmata prediction run identifier.
+
+    Returns:
+        The resolved input CSV and its ``ScoreInputSource`` provenance. The
+        provenance's ``kind`` and ``ref`` let the caller (and the report) record
+        how the input was selected without re-running selection.
+
+    Raises:
+        FileNotFoundError: If the selected input CSV or annotation export is missing.
+        NotImplementedError: If a prediction run is the only selector; prediction-output
+            scoring lands with ``pragmata eval predict``.
+    """
+    if path is not None:
+        input_csv = path.expanduser().resolve()
+        if not input_csv.is_file():
+            raise FileNotFoundError(f"Scoring input CSV does not exist: {input_csv}")
+        return EvalScoreInput(
+            input_csv=input_csv,
+            source=ScoreInputSource(
+                kind="direct_path",
+                ref=str(path),
+                resolved_path=provenance_path(input_csv=input_csv, base_dir=workspace.base_dir),
+            ),
+        )
+
+    if export_id is not None:
+        resolved_export_id = export_id
+    elif prediction_id is not None:
+        raise NotImplementedError(
+            "Scoring a prediction run is not yet supported: `pragmata eval predict` and its "
+            "output layout are not implemented. Pass path or export_id instead."
+        )
+    else:
+        resolved_export_id = find_latest_annotation_export_id(workspace=workspace, task=task)
+
+    export_paths = resolve_export_paths(workspace=workspace, export_id=resolved_export_id)
+    if not export_paths.export_meta_json.is_file():
+        raise FileNotFoundError(
+            "Annotation export metadata does not exist. "
+            f"Expected annotation_export.meta.json at {export_paths.export_meta_json}."
+        )
+
+    match task:
+        case Task.RETRIEVAL:
+            input_csv = export_paths.retrieval_annotation_csv
+        case Task.GROUNDING:
+            input_csv = export_paths.grounding_annotation_csv
+        case Task.GENERATION:
+            input_csv = export_paths.generation_annotation_csv
+
+    if not input_csv.is_file():
+        raise FileNotFoundError(
+            f"Annotation export {resolved_export_id!r} does not contain the requested {task.value} CSV. "
+            f"Expected {input_csv}."
+        )
+    return EvalScoreInput(
+        input_csv=input_csv,
+        source=ScoreInputSource(
+            kind="annotation_export",
+            ref=resolved_export_id,
+            resolved_path=provenance_path(input_csv=input_csv, base_dir=workspace.base_dir),
+        ),
     )
