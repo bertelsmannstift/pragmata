@@ -219,3 +219,153 @@ def test_train_evaluator_resolves_annotation_export_for_selected_task(
         "task": Task.GENERATION,
         "annotation_export_id": "export-1",
     }
+
+
+def test_predict_labels_orchestrates_direct_unlabeled_input(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """predict_labels selects an evaluator, transforms input, and predicts."""
+    input_csv = tmp_path / "unlabeled.csv"
+    input_csv.write_text("placeholder\nvalue\n", encoding="utf-8")
+    eval_frame = pd.DataFrame({"source": ["eval"]})
+    tlmtc_frame = pd.DataFrame({"text": ["query"], "text_pair": ["chunk"]})
+    expected_result = object()
+    calls: dict[str, Any] = {}
+
+    def resolve_eval_train_run_id(
+        *,
+        workspace: WorkspacePaths,
+        task: Task,
+        evaluator_run_id: str | None = None,
+    ) -> str:
+        calls["select"] = {
+            "workspace_base_dir": workspace.base_dir,
+            "task": task,
+            "evaluator_run_id": evaluator_run_id,
+        }
+        return "evaluator-1"
+
+    def import_eval_predict_frame(
+        *,
+        path: Path,
+        task: Task,
+    ) -> pd.DataFrame:
+        calls["import"] = {"path": path, "task": task}
+        return eval_frame
+
+    def build_tlmtc_frame(
+        frame: pd.DataFrame,
+        *,
+        task: Task,
+        mode: str,
+    ) -> pd.DataFrame:
+        calls["transform"] = {"frame": frame, "task": task, "mode": mode}
+        return tlmtc_frame
+
+    def run_tlmtc_predict(
+        **kwargs: Any,
+    ) -> object:
+        calls["predict"] = kwargs
+        return expected_result
+
+    monkeypatch.setattr(eval_api, "resolve_eval_train_run_id", resolve_eval_train_run_id)
+    monkeypatch.setattr(eval_api, "import_eval_predict_frame", import_eval_predict_frame)
+    monkeypatch.setattr(eval_api, "build_tlmtc_frame", build_tlmtc_frame)
+    monkeypatch.setattr(eval_api, "run_tlmtc_predict", run_tlmtc_predict)
+
+    result = eval_api.predict_labels(
+        unlabeled_data_path=input_csv,
+        evaluator_run_id="evaluator-1",
+        task="retrieval",
+        base_dir=tmp_path,
+        predict_kwargs={"batch_size": 8, "use_cpu": True},
+    )
+
+    assert result is expected_result
+    assert calls["select"] == {
+        "workspace_base_dir": tmp_path.resolve(),
+        "task": Task.RETRIEVAL,
+        "evaluator_run_id": "evaluator-1",
+    }
+    assert calls["import"] == {"path": input_csv.resolve(), "task": Task.RETRIEVAL}
+    assert calls["transform"] == {"frame": eval_frame, "task": Task.RETRIEVAL, "mode": "predict"}
+    assert calls["predict"]["unlabeled_data"] is tlmtc_frame
+    assert {key: value for key, value in calls["predict"].items() if key != "unlabeled_data"} == {
+        "work_dir": tmp_path.resolve() / "eval",
+        "evaluator_run_id": "evaluator-1",
+        "predict_kwargs": {"batch_size": 8, "use_cpu": True},
+    }
+    assert (tmp_path / "eval").is_dir()
+
+
+def test_predict_labels_combines_config_and_explicit_overrides(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Explicit predict args override config before automatic evaluator selection."""
+    config_input_csv = tmp_path / "config-unlabeled.csv"
+    override_input_csv = tmp_path / "override-unlabeled.csv"
+    override_input_csv.write_text("placeholder\nvalue\n", encoding="utf-8")
+    config_path = tmp_path / "eval.yml"
+    config_path.write_text(
+        dedent(
+            f"""\
+            base_dir: {tmp_path / "config-workspace"}
+            unlabeled_data_path: {config_input_csv}
+            task: grounding
+            predict_kwargs:
+              batch_size: 8
+              use_cpu: false
+            """
+        ),
+        encoding="utf-8",
+    )
+    tlmtc_frame = pd.DataFrame({"text": ["query"], "text_pair": ["answer"]})
+    expected_result = object()
+    calls: dict[str, Any] = {}
+
+    def resolve_eval_train_run_id(
+        *,
+        workspace: WorkspacePaths,
+        task: Task,
+        evaluator_run_id: str | None = None,
+    ) -> str:
+        calls["select"] = {
+            "workspace_base_dir": workspace.base_dir,
+            "task": task,
+            "evaluator_run_id": evaluator_run_id,
+        }
+        return "latest-generation-evaluator"
+
+    def run_tlmtc_predict(
+        **kwargs: Any,
+    ) -> object:
+        calls["predict"] = kwargs
+        return expected_result
+
+    monkeypatch.setattr(eval_api, "resolve_eval_train_run_id", resolve_eval_train_run_id)
+    monkeypatch.setattr(eval_api, "import_eval_predict_frame", lambda *, path, task: pd.DataFrame({"path": [path]}))
+    monkeypatch.setattr(eval_api, "build_tlmtc_frame", lambda frame, *, task, mode: tlmtc_frame)
+    monkeypatch.setattr(eval_api, "run_tlmtc_predict", run_tlmtc_predict)
+
+    result = eval_api.predict_labels(
+        unlabeled_data_path=override_input_csv,
+        task="generation",
+        base_dir=tmp_path,
+        config_path=config_path,
+        predict_kwargs={"batch_size": 16},
+    )
+
+    assert result is expected_result
+    assert calls["select"] == {
+        "workspace_base_dir": tmp_path.resolve(),
+        "task": Task.GENERATION,
+        "evaluator_run_id": None,
+    }
+    assert calls["predict"]["unlabeled_data"] is tlmtc_frame
+    assert {key: value for key, value in calls["predict"].items() if key != "unlabeled_data"} == {
+        "work_dir": tmp_path.resolve() / "eval",
+        "evaluator_run_id": "latest-generation-evaluator",
+        "predict_kwargs": {"batch_size": 16, "use_cpu": False},
+    }
