@@ -123,15 +123,17 @@ Lives in `api/eval.py` alongside `train_evaluator` (no separate `api/eval_score.
 ```python
 def score(
     *, base_dir: str | Path | Unset = UNSET,
-    score_id: str | None = None,               # OUTPUT identifier (see below)
-    labeled_input_path: str | Path | None = None,
-    export_id: str | None = None,
-    prediction_run_id: str | None = None,
-    task: Task,
-    n_resamples: int = 1000, ci: float = 0.95, seed: int | None = None,
+    score_id: str | Unset = UNSET,             # OUTPUT identifier (see below)
+    path: str | Path | Unset = UNSET,
+    export_id: str | Unset = UNSET,
+    prediction_id: str | Unset = UNSET,
+    task: str | Task | Unset = UNSET,
+    n_resamples: int | Unset = UNSET, ci: float | Unset = UNSET, seed: int | Unset = UNSET,
     config_path: str | Path | Unset = UNSET,
 ) -> RetrievalScoreReport | GroundingScoreReport | GenerationScoreReport: ...
 ```
+
+All optional params use the `UNSET` sentinel (matching `train_evaluator`), so `EvalScoreSettings.resolve(...)` can tell "caller omitted this" from an explicit value and apply config/env/default fallback. Defaults (`n_resamples=1000`, `ci=0.95`, ...) live on `EvalScoreSettings`, not the signature.
 
 Reuses `EvalScoreSettings` (`settings/eval_settings.py`), `resolve_eval_score_paths` (`paths/eval_paths.py`), `validate_eval_score_frame` (`eval_input.py`), `error_log`.
 
@@ -139,17 +141,20 @@ Reuses `EvalScoreSettings` (`settings/eval_settings.py`), `resolve_eval_score_pa
 
 #### Input selection - three modes
 
-The input is selected by exactly one of three mutually-exclusive selectors:
+The input is selected by one of three selectors, resolved by fixed precedence
+(`path` > `export_id` > `prediction_id`) in `resolve_eval_score_input`. With no
+selector, the latest annotation export for the task is used. Each selector maps to
+a provenance `kind` recorded on the report's `source` (`ScoreInputSource`):
 
-| Selector | Mode | Notes |
-|---|---|---|
-| `labeled_input_path` | direct labeled data | human-annotated or externally-prepared labeled records that score without going through prediction |
-| `export_id` | annotation export | convenience selector; resolves to the task-specific CSV (mirrors `find_latest_annotation_export_id`) |
-| `prediction_run_id` | prediction output | labels produced by `pragmata eval predict`; a **pragmata** prediction run, even though the underlying output is tlmtc-managed |
+| Selector | Mode | Provenance `kind` | Notes |
+|---|---|---|---|
+| `path` | direct labeled data | `direct_path` | human-annotated or externally-prepared labeled records that score without going through prediction |
+| `export_id` | annotation export | `annotation_export` | convenience selector; resolves to the task-specific CSV (mirrors `find_latest_annotation_export_id`) |
+| `prediction_id` | prediction output | `model_prediction` | labels produced by `pragmata eval predict`; a **pragmata** prediction run, even though the underlying output is tlmtc-managed |
 
 `score_id` is an **output** identifier, not an input selector: it names where score artifacts are written (`eval/scores/<score_id>/`) and defaults to the generated value from `EvalScoreSettings`. `export_id` is never reused for output naming.
 
-`EvalScoreSettings` already carries `labeled_input_path`, `prediction_run_id`, and `score_id`; `export_id` needs adding. Precedence and fallback are an open decision (below); a `find_latest_prediction_run` resolver still needs writing in `eval_paths.py`.
+`EvalScoreSettings` carries `path`, `export_id`, `prediction_id`, `score_id`, and the uncertainty params (`n_resamples`, `ci`, `seed`). `prediction_id` scoring is **not yet implemented** - the `eval predict` output layout does not exist yet, so `resolve_eval_score_input` raises for it and the no-selector fallback is the latest annotation export (interim), pending a `find_latest_prediction_run` resolver.
 
 ### CLI - `pragmata eval score`
 
@@ -157,7 +162,7 @@ Extend the existing `eval_app` Typer group with a `score` subcommand. The CLI is
 
 ```
 pragmata eval score --task retrieval \
-  [--labeled-input-path PATH | --export-id ID | --prediction-run-id ID] \
+  [--path PATH | --export-id ID | --prediction-id ID] \
   [--score-id ID] [--base-dir DIR] \
   [--n-resamples 1000] [--ci 0.95] [--seed N] [--config FILE]
 ```
@@ -189,6 +194,6 @@ Input-source selection and path resolution belong in `core/paths/eval_paths.py`,
 
 ### Open decisions
 
-1. **Input selection semantics.** Define which of `labeled_input_path` / `export_id` / `prediction_run_id` are mutually exclusive, which (if any) is required, and the precedence/fallback when more than one - or none - is supplied. Proposed: precedence `labeled_input_path` > `export_id` > `prediction_run_id`, with "latest prediction run" as the no-selector fallback (per the `EvalScoreSettings` docstring). Confirm.
+1. **Input selection semantics.** *(Resolved.)* Selectors are resolved by fixed precedence `path` > `export_id` > `prediction_id` in `resolve_eval_score_input` (not mutually exclusive; the highest-precedence supplied selector wins). With no selector, the fallback is the latest annotation export for the task. The eventual "latest prediction run" fallback and `prediction_id` scoring land with `eval predict`; until then `prediction_id` raises `NotImplementedError`.
 2. **Incomplete and degenerate scoring data.** Retrieval metrics assume complete ranked chunk labels per query. If some chunks are unlabeled we need a deliberate policy: fail with an informative message, skip affected queries, or compute a caveated fallback. Similarly, all-0/all-1 or otherwise degenerate labels can make some estimates uninformative and should be handled explicitly. Ideally the validation/guard logic is reusable between `eval train` and `eval score` where the constraints overlap.
-3. **`find_latest_prediction_run` resolver** to be added in `eval_paths.py`, mirroring `find_latest_annotation_export_id`.
+3. **`find_latest_prediction_run` resolver** *(deferred)* - to be added in `eval_paths.py`, mirroring `find_latest_annotation_export_id`, when `eval predict` and its output layout land.

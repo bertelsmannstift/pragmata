@@ -89,6 +89,17 @@ class RetrievalScoreReport(BaseModel):
     mean_reciprocal_rank_at_k: MetricScore
     ndcg_at_k: MetricScore
 
+    def metric_scores(self) -> list[tuple[str, MetricScore | None]]:
+        """The report's metrics in display order, each paired with its field name."""
+        return [
+            ("topical_precision_at_k", self.topical_precision_at_k),
+            ("sufficiency_hit_at_k", self.sufficiency_hit_at_k),
+            ("sufficiency_rate_at_k", self.sufficiency_rate_at_k),
+            ("misleading_context_rate_at_k", self.misleading_context_rate_at_k),
+            ("mean_reciprocal_rank_at_k", self.mean_reciprocal_rank_at_k),
+            ("ndcg_at_k", self.ndcg_at_k),
+        ]
+
 
 class GroundingScoreReport(BaseModel):
     """Schema for grounding_scores.json."""
@@ -107,6 +118,16 @@ class GroundingScoreReport(BaseModel):
     citation_presence_rate: MetricScore
     conditional_fabrication_rate: MetricScore | None = None
 
+    def metric_scores(self) -> list[tuple[str, MetricScore | None]]:
+        """The report's metrics in display order, each paired with its field name."""
+        return [
+            ("grounding_presence_rate", self.grounding_presence_rate),
+            ("unsupported_claim_rate", self.unsupported_claim_rate),
+            ("contradiction_rate", self.contradiction_rate),
+            ("citation_presence_rate", self.citation_presence_rate),
+            ("conditional_fabrication_rate", self.conditional_fabrication_rate),
+        ]
+
 
 class GenerationScoreReport(BaseModel):
     """Schema for generation_scores.json."""
@@ -124,3 +145,13 @@ class GenerationScoreReport(BaseModel):
     helpfulness_rate: MetricScore
     incompleteness_rate: MetricScore
     unsafe_content_rate: MetricScore
+
+    def metric_scores(self) -> list[tuple[str, MetricScore | None]]:
+        """The report's metrics in display order, each paired with its field name."""
+        return [
+            ("proper_action_rate", self.proper_action_rate),
+            ("on_topic_rate", self.on_topic_rate),
+            ("helpfulness_rate", self.helpfulness_rate),
+            ("incompleteness_rate", self.incompleteness_rate),
+            ("unsafe_content_rate", self.unsafe_content_rate),
+        ]
