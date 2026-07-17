@@ -80,12 +80,13 @@ class EvalPredictSettings(ResolveSettings):
             predicted evaluation labels. Prediction input is intentionally explicit;
             it is not inferred from prior tool outputs.
         evaluator_run_id: Optional trained evaluator run identifier. This selects
-            the tlmtc training run to load. If omitted, tlmtc's default latest-run
-            lookup is used.
+            the tlmtc training run to load. If omitted, Pragmata selects the latest
+            evaluator compatible with the requested task.
         task: Annotation task to predict labels for. The task determines the
             Pragmata-owned task mapping, serialization, labels, and output contract.
         predict_kwargs: Additional `predict_tlmtc`-specific keyword arguments passed
-            through to the tlmtc API. Use this for tlmtc-owned options.
+            through to the tlmtc API. Use this for tlmtc-owned options such as batch
+            size, device selection, verbosity, and inference backend.
     """
 
     base_dir: Path = Field(default_factory=Path.cwd)
