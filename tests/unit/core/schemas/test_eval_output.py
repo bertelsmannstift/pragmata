@@ -107,6 +107,14 @@ class TestMetricScore:
         with pytest.raises(ValidationError):
             MetricScore(**_metric(0.5, n=0))
 
+    def test_accepts_degenerate_interval(self) -> None:
+        # A zero-width CI (lower == upper) is valid: bootstrap on a constant metric.
+        assert MetricScore(point=0.0, ci_lower=0.0, ci_upper=0.0, method="bootstrap", n=5).ci_lower == 0.0
+
+    def test_rejects_inverted_interval(self) -> None:
+        with pytest.raises(ValidationError):
+            MetricScore(point=0.5, ci_lower=0.7, ci_upper=0.3, method="wilson", n=10)
+
     def test_rejects_extra_fields(self) -> None:
         with pytest.raises(ValidationError):
             MetricScore(**_metric(0.5), unexpected="value")

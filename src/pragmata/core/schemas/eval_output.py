@@ -3,7 +3,7 @@
 from datetime import UTC, datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, PositiveInt
+from pydantic import BaseModel, ConfigDict, Field, PositiveInt, model_validator
 
 from pragmata.core.schemas.annotation_task import Task
 
@@ -29,6 +29,14 @@ class MetricScore(BaseModel):
     ci_upper: Rate
     method: Literal["wilson", "bootstrap"]
     n: PositiveInt
+
+    @model_validator(mode="after")
+    def _check_ci_ordering(self) -> "MetricScore":
+        # A degenerate interval (lower == upper) is valid: a bootstrap CI on a
+        # constant metric collapses to the point estimate. Only inversion is wrong.
+        if self.ci_lower > self.ci_upper:
+            raise ValueError(f"ci_lower ({self.ci_lower}) must not exceed ci_upper ({self.ci_upper})")
+        return self
 
 
 class EvalTrainMeta(BaseModel):
