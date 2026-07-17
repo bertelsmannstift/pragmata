@@ -102,10 +102,9 @@ class MetricScore(BaseModel):
 
 Each metric field changes from `Rate` -> `MetricScore`.
 
-The report schemas also record the run-level uncertainty settings so the JSON artifacts are self-describing. Added to `RetrievalScoreReport`, `GroundingScoreReport`, and `GenerationScoreReport`:
+The report schemas also record `ci_level` (the confidence level, which applies uniformly to every interval) so the JSON artifacts are self-describing. It is added to `RetrievalScoreReport`, `GroundingScoreReport`, and `GenerationScoreReport`.
 
-- `ci_level` - applies to every metric.
-- `n_bootstrap_resamples` - applies to metrics with `method == "bootstrap"`.
+The bootstrap resample count is intentionally *not* stored at the report level: it is meaningful only for metrics with `method == "bootstrap"` (none, in the all-Wilson grounding and generation reports), and `MetricScore.method` already records per metric how each interval was derived.
 
 ### Compute and decomposition
 
