@@ -99,25 +99,36 @@ class EvalPredictSettings(ResolveSettings):
 class EvalScoreSettings(ResolveSettings):
     """Evaluation scoring settings.
 
+    Input selection follows a fixed precedence applied by
+    ``resolve_eval_score_input``: ``path`` > ``export_id`` >
+    ``prediction_id``. With no selector, the latest annotation export for the
+    task is used (interim, until ``eval predict`` and its output layout land).
+
     Attributes:
         base_dir: Workspace base directory. Pragmata resolves score artifacts under
             `<base_dir>/eval/scores/<score_id>/`.
-        score_id: Unique identifier for the score run. Used to name the
-            Pragmata-owned score artifact directory.
-        labeled_input_path: Optional direct path to labeled data to score. Use this
+        score_id: Unique identifier for the score run. Names the Pragmata-owned
+            score artifact directory. An output identifier, never an input selector.
+        path: Optional direct path to labeled data to score. Use this
             for standalone scoring, including human-labeled datasets or externally
-            prepared labeled records. If provided, it takes precedence over
-            `prediction_run_id`.
-        prediction_run_id: Optional Pragmata prediction run identifier. Use this to
-            score labels produced by `pragmata eval predict`. If omitted together
-            with `labeled_input_path`, the scoring workflow selects the latest
-            available prediction run.
+            prepared labeled records.
+        export_id: Optional annotation export identifier; resolves to the
+            task-specific exported CSV.
+        prediction_id: Optional Pragmata prediction run identifier for labels
+            produced by `pragmata eval predict`. Not yet supported.
         task: Annotation task to score. The task determines which task-specific
             label contract and score metrics are applied.
+        n_resamples: Bootstrap iterations for the continuous metrics' CIs.
+        ci: Confidence level for every reported interval (e.g. 0.95 for 95%).
+        seed: Optional RNG seed for reproducible bootstrap intervals.
     """
 
     base_dir: Path = Field(default_factory=Path.cwd)
     score_id: str = Field(default_factory=lambda: uuid4().hex)
-    labeled_input_path: Path | None = None
-    prediction_run_id: str | None = None
+    path: Path | None = None
+    export_id: str | None = None
+    prediction_id: str | None = None
     task: Task
+    n_resamples: PositiveInt = 1000
+    ci: float = Field(default=0.95, gt=0.0, lt=1.0)
+    seed: int | None = None
