@@ -1,4 +1,4 @@
-"""Integration tests for the public evaluator training surface."""
+"""Integration tests for public evaluator workflows."""
 
 import json
 from datetime import UTC, datetime
@@ -10,9 +10,11 @@ import pytest
 
 from pragmata import eval
 from pragmata.core.paths.annotation_paths import resolve_export_paths
+from pragmata.core.paths.eval_paths import resolve_eval_train_meta_path
 from pragmata.core.paths.paths import WorkspacePaths
 from pragmata.core.schemas.annotation_export import AnnotationExportMeta
 from pragmata.core.schemas.annotation_task import Task
+from pragmata.core.schemas.eval_output import EvalTrainMeta
 
 pytestmark = [pytest.mark.integration, pytest.mark.eval]
 
@@ -184,6 +186,29 @@ def _write_retrieval_csv(
     pd.DataFrame(_retrieval_rows(marker=marker)).to_csv(path, index=False)
 
 
+def _write_retrieval_predict_csv(
+    path: Path,
+    *,
+    marker: str,
+) -> None:
+    """Write valid unlabeled retrieval data with identity and provenance columns."""
+    label_columns = {"topically_relevant", "evidence_sufficient", "misleading"}
+    rows = []
+
+    for rank, training_row in enumerate(_retrieval_rows(marker=marker, n_rows=4), start=1):
+        row = {key: value for key, value in training_row.items() if key not in label_columns}
+        row.update(
+            {
+                "chunk_rank": rank,
+                "source": f"{marker}-source",
+            }
+        )
+        rows.append(row)
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(rows).to_csv(path, index=False)
+
+
 def _write_retrieval_export(
     *,
     workspace: WorkspacePaths,
@@ -268,6 +293,54 @@ def _train_evaluator(
     )
 
 
+def _predict_labels(
+    *,
+    base_dir: Path,
+    unlabeled_data_path: Path,
+    evaluator_run_id: str | None = None,
+) -> Any:
+    """Call the public eval API with fast integration-test prediction settings."""
+    kwargs: dict[str, Any] = {}
+    if evaluator_run_id is not None:
+        kwargs["evaluator_run_id"] = evaluator_run_id
+
+    return eval.predict_labels(
+        base_dir=base_dir,
+        task=Task.RETRIEVAL,
+        unlabeled_data_path=unlabeled_data_path,
+        predict_kwargs={
+            "batch_size": 2,
+            "trust_remote_code": False,
+            "use_cpu": True,
+            "verbosity": "quiet",
+        },
+        **kwargs,
+    )
+
+
+def _write_pragmata_train_meta(
+    *,
+    workspace: WorkspacePaths,
+    run_id: str,
+    task: Task,
+    created_at: datetime,
+) -> None:
+    """Write task metadata used by Pragmata's evaluator selector."""
+    meta_path = resolve_eval_train_meta_path(
+        workspace=workspace,
+        run_id=run_id,
+    )
+    meta_path.parent.mkdir(parents=True, exist_ok=True)
+    meta_path.write_text(
+        EvalTrainMeta(
+            run_id=run_id,
+            created_at=created_at,
+            task=task,
+        ).model_dump_json(),
+        encoding="utf-8",
+    )
+
+
 def _assert_prepared_splits(
     *,
     result: Any,
@@ -317,6 +390,67 @@ def _assert_pragmata_train_meta(
     assert meta["task"] == "retrieval"
     assert meta["annotation_export_id"] == annotation_export_id
     assert isinstance(meta["created_at"], str)
+
+
+def _assert_prediction_artifacts(
+    *,
+    result: Any,
+    base_dir: Path,
+    run_id: str,
+    unlabeled_data_path: Path,
+) -> None:
+    """Assert tlmtc persisted predictions while preserving transformed inputs."""
+    paths = result.paths
+    expected_run_dir = (base_dir / "eval" / "prediction_outputs" / run_id).resolve()
+
+    assert paths.work_dir == (base_dir / "eval").resolve()
+    assert paths.run_id == run_id
+    assert paths.unlabeled_data_path is None
+    assert paths.prediction_run_dir == expected_run_dir
+    assert paths.probabilities_path == expected_run_dir / "probabilities.csv"
+    assert paths.predictions_path == expected_run_dir / "predictions.csv"
+    assert paths.probabilities_path.is_file()
+    assert paths.predictions_path.is_file()
+
+    input_frame = pd.read_csv(unlabeled_data_path)
+    probabilities = pd.read_csv(paths.probabilities_path)
+    predictions = pd.read_csv(paths.predictions_path)
+    expected_label_columns = {"topically_relevant", "evidence_sufficient", "misleading"}
+    expected_input_columns = {"record_uuid", "chunk_id", "chunk_rank", "source", "text", "text_pair"}
+
+    assert len(probabilities) == len(input_frame)
+    assert len(predictions) == len(input_frame)
+    assert expected_input_columns | expected_label_columns <= set(probabilities.columns)
+    assert expected_input_columns | expected_label_columns <= set(predictions.columns)
+    assert {"query", "chunk"}.isdisjoint(probabilities.columns)
+    assert {"query", "chunk"}.isdisjoint(predictions.columns)
+    assert predictions["text"].tolist() == input_frame["query"].tolist()
+    assert predictions["text_pair"].tolist() == input_frame["chunk"].tolist()
+    assert predictions["record_uuid"].tolist() == input_frame["record_uuid"].tolist()
+    assert predictions["chunk_id"].tolist() == input_frame["chunk_id"].tolist()
+    assert predictions["chunk_rank"].tolist() == input_frame["chunk_rank"].tolist()
+    assert predictions["source"].tolist() == input_frame["source"].tolist()
+    assert predictions[list(expected_label_columns)].isin([0, 1]).all().all()
+    assert probabilities[list(expected_label_columns)].ge(0).all().all()
+    assert probabilities[list(expected_label_columns)].le(1).all().all()
+
+
+@pytest.fixture(scope="module")
+def trained_prediction_evaluator(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> tuple[Path, str]:
+    """Train one reusable tiny evaluator for prediction tests."""
+    base_dir = tmp_path_factory.mktemp("predict-labels")
+    run_id = "prediction-evaluator"
+    labeled_data_path = base_dir / "inputs" / "retrieval-train.csv"
+    _write_retrieval_csv(labeled_data_path, marker="prediction-train")
+    _train_evaluator(
+        base_dir=base_dir,
+        run_id=run_id,
+        transfer_learning=True,
+        labeled_data_path=labeled_data_path,
+    )
+    return base_dir, run_id
 
 
 class TestTrainEvaluator:
@@ -426,3 +560,97 @@ class TestTrainEvaluator:
             run_id="latest-export",
             annotation_export_id="newer-export",
         )
+
+
+class TestPredictLabels:
+    """Integration tests for evaluator prediction."""
+
+    def test_predicts_with_explicit_evaluator(
+        self,
+        trained_prediction_evaluator: tuple[Path, str],
+    ) -> None:
+        """An explicit compatible evaluator produces both prediction artifacts."""
+        base_dir, run_id = trained_prediction_evaluator
+        unlabeled_data_path = base_dir / "inputs" / "retrieval-predict-explicit.csv"
+        _write_retrieval_predict_csv(unlabeled_data_path, marker="explicit-predict")
+
+        result = _predict_labels(
+            base_dir=base_dir,
+            unlabeled_data_path=unlabeled_data_path,
+            evaluator_run_id=run_id,
+        )
+
+        _assert_prediction_artifacts(
+            result=result,
+            base_dir=base_dir,
+            run_id=run_id,
+            unlabeled_data_path=unlabeled_data_path,
+        )
+
+    def test_selects_latest_task_compatible_evaluator(
+        self,
+        trained_prediction_evaluator: tuple[Path, str],
+    ) -> None:
+        """Automatic selection ignores a globally newer evaluator for another task."""
+        base_dir, run_id = trained_prediction_evaluator
+        workspace = WorkspacePaths.from_base_dir(base_dir)
+        _write_pragmata_train_meta(
+            workspace=workspace,
+            run_id="older-retrieval-evaluator",
+            task=Task.RETRIEVAL,
+            created_at=datetime(2026, 1, 1, tzinfo=UTC),
+        )
+        _write_pragmata_train_meta(
+            workspace=workspace,
+            run_id=run_id,
+            task=Task.RETRIEVAL,
+            created_at=datetime(2026, 1, 2, tzinfo=UTC),
+        )
+        _write_pragmata_train_meta(
+            workspace=workspace,
+            run_id="newer-grounding-evaluator",
+            task=Task.GROUNDING,
+            created_at=datetime(2026, 1, 3, tzinfo=UTC),
+        )
+        unlabeled_data_path = base_dir / "inputs" / "retrieval-predict-latest.csv"
+        _write_retrieval_predict_csv(unlabeled_data_path, marker="latest-predict")
+
+        result = _predict_labels(
+            base_dir=base_dir,
+            unlabeled_data_path=unlabeled_data_path,
+        )
+
+        _assert_prediction_artifacts(
+            result=result,
+            base_dir=base_dir,
+            run_id=run_id,
+            unlabeled_data_path=unlabeled_data_path,
+        )
+
+    def test_rejects_explicit_task_mismatch_before_prediction(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Task mismatch fails at Pragmata selection before tlmtc inference."""
+        workspace = WorkspacePaths.from_base_dir(tmp_path)
+        run_id = "grounding-evaluator"
+        _write_pragmata_train_meta(
+            workspace=workspace,
+            run_id=run_id,
+            task=Task.GROUNDING,
+            created_at=datetime(2026, 1, 1, tzinfo=UTC),
+        )
+        unlabeled_data_path = tmp_path / "inputs" / "retrieval-predict.csv"
+        _write_retrieval_predict_csv(unlabeled_data_path, marker="mismatch")
+
+        with pytest.raises(
+            ValueError,
+            match="was trained for task='grounding', not requested task='retrieval'",
+        ):
+            _predict_labels(
+                base_dir=tmp_path,
+                unlabeled_data_path=unlabeled_data_path,
+                evaluator_run_id=run_id,
+            )
+
+        assert not (tmp_path / "eval" / "prediction_outputs").exists()
