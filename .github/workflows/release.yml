@@ -1,37 +1,178 @@
-name: Release (Build Only)
+name: Release
 
 on:
+  workflow_dispatch:
+    inputs:
+      build_package:
+        description: "Run full release preflight including package build"
+        required: false
+        type: boolean
+        default: false
+
   push:
     tags:
       - "v*.*.*"
+
+permissions:
+  contents: read
 
 env:
   UV_VERSION: "0.9.30"
   PYTHON_VERSION: "3.12"
 
 jobs:
-  build:
-    name: Build Python package
+  integration-tests:
+    name: Run ${{ matrix.suite.name }} integration tests
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    strategy:
+      fail-fast: false
+      matrix:
+        suite:
+          - name: annotation
+            marker: annotation
+            extra: annotation
+            start_stack: true
+          - name: query generation
+            marker: querygen
+            extra: querygen
+            start_stack: false
+          - name: evaluation
+            marker: eval
+            extra: eval
+            start_stack: false
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v7
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
-    - name: Set up uv
-      uses: astral-sh/setup-uv@v7
-      with:
-        version: ${{ env.UV_VERSION }}
-        enable-cache: true
-        cache-dependency-glob: "uv.lock"
+      - name: Check release tag is on main
+        if: github.event_name == 'push'
+        run: |
+          git fetch origin main
+          git merge-base --is-ancestor HEAD origin/main
 
-    - name: Set up Python
-      run: uv python install ${{ env.PYTHON_VERSION }}
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v8.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
 
-    - name: Build package
-      run: uv build
+      - name: Set up Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
 
-    - name: Check build artifacts
-      run: |
-        echo "Built files:"
-        ls -l dist/
+      - name: Check lockfile is current
+        run: uv lock --check
+
+      - name: Install integration-test dependencies
+        run: uv sync --python ${{ env.PYTHON_VERSION }} --frozen --extra test --extra ${{ matrix.suite.extra }}
+
+      - name: Start annotation stack
+        if: matrix.suite.start_stack
+        run: |
+          docker compose \
+            --project-name pragmata-release-${{ github.run_id }}-${{ strategy.job-index }} \
+            --file deploy/annotation/docker-compose.dev.yml \
+            --env-file deploy/annotation/.env.dev.example \
+            --profile all-bundled \
+            up --detach --pull always --wait --remove-orphans
+
+      - name: Run integration tests
+        run: uv run --python ${{ env.PYTHON_VERSION }} --frozen pytest -o addopts= -m "integration and ${{ matrix.suite.marker }}" -q
+
+      - name: Stop annotation stack
+        if: always() && matrix.suite.start_stack
+        run: |
+          docker compose \
+            --project-name pragmata-release-${{ github.run_id }}-${{ strategy.job-index }} \
+            --file deploy/annotation/docker-compose.dev.yml \
+            --env-file deploy/annotation/.env.dev.example \
+            --profile all-bundled \
+            down --volumes --remove-orphans
+
+  build:
+    name: Build package
+    runs-on: ubuntu-latest
+    needs: integration-tests
+    if: github.event_name == 'push' || inputs.build_package
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v8.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Check tag matches package version
+        if: github.event_name == 'push'
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PACKAGE_VERSION="$(uv run --no-sync python - <<'PY'
+          import tomllib
+          from pathlib import Path
+
+          pyproject = tomllib.loads(Path("pyproject.toml").read_text())
+          print(pyproject["project"]["version"])
+          PY
+          )"
+
+          echo "Tag version:     ${TAG_VERSION}"
+          echo "Package version: ${PACKAGE_VERSION}"
+
+          test "${TAG_VERSION}" = "${PACKAGE_VERSION}"
+
+      - name: Check lockfile is current
+        run: uv lock --check
+
+      - name: Build package
+        run: uv build
+
+      - name: Check build artifacts
+        run: |
+          echo "Built files:"
+          ls -l dist/
+
+      - name: Check package metadata
+        run: uvx --from twine twine check dist/*
+
+      - name: Upload package distributions
+        uses: actions/upload-artifact@v7
+        with:
+          name: python-package-distributions
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    name: Publish package to PyPI
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+
+    environment:
+      name: pypi
+      url: https://pypi.org/p/pragmata
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Download package distributions
+        uses: actions/download-artifact@v8
+        with:
+          name: python-package-distributions
+          path: dist/
+
+      - name: Publish package distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@v1.14.0
