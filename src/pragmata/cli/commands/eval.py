@@ -86,3 +86,53 @@ def train_evaluator_command(
     typer.echo(f"run_id: {result.paths.run_id}")
     typer.echo(f"run_directory: {result.paths.run_dir}")
     typer.echo(f"model_directory: {result.paths.model_dir}")
+
+
+@eval_app.command("predict-labels")
+def predict_command(
+    unlabeled_data_path: str | None = typer.Option(
+        None,
+        "--unlabeled-data-path",
+        help="Path to the task-specific unlabeled eval prediction CSV.",
+    ),
+    evaluator_run_id: str | None = typer.Option(
+        None,
+        "--evaluator-run-id",
+        help="Evaluator training run identifier. If omitted, the latest task-compatible evaluator is used.",
+    ),
+    task: str | None = typer.Option(
+        None,
+        "--task",
+        help="Eval task to predict for: retrieval, grounding, or generation.",
+    ),
+    base_dir: str | None = typer.Option(
+        None,
+        "--base-dir",
+        help="Workspace base directory. Defaults to current working directory.",
+    ),
+    config_path: str | None = typer.Option(
+        None,
+        "--config",
+        help="Path to the config file.",
+    ),
+    predict_kwargs: str | None = typer.Option(
+        None,
+        "--predict-kwargs",
+        help="Additional tlmtc predict_tlmtc keyword arguments. Accepts a JSON object.",
+    ),
+) -> None:
+    """Predict evaluation labels with a trained evaluator."""
+    result = eval.predict_labels(
+        unlabeled_data_path=UNSET if unlabeled_data_path is None else unlabeled_data_path,
+        evaluator_run_id=UNSET if evaluator_run_id is None else evaluator_run_id,
+        task=UNSET if task is None else task,
+        base_dir=UNSET if base_dir is None else base_dir,
+        config_path=UNSET if config_path is None else config_path,
+        predict_kwargs=parse_cli_value(predict_kwargs),
+    )
+
+    typer.echo("Evaluator prediction run complete.")
+    typer.echo(f"evaluator_run_id: {result.paths.run_id}")
+    typer.echo(f"prediction_directory: {result.paths.prediction_run_dir}")
+    typer.echo(f"probabilities: {result.paths.probabilities_path}")
+    typer.echo(f"predictions: {result.paths.predictions_path}")
