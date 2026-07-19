@@ -415,3 +415,33 @@ def test_build_tlmtc_frame_rejects_unknown_mode() -> None:
 
     with pytest.raises(ValueError, match="Unsupported eval transform mode"):
         build_tlmtc_frame(frame, task=Task.RETRIEVAL, mode="score")  # type: ignore[arg-type]
+
+
+def test_build_tlmtc_frame_casts_bool_labels_before_majority_consolidation(
+    retrieval_train_frame: FrameFactory,
+) -> None:
+    """Regression test: bool-typed label columns must not raise dtype errors.
+
+    Real annotation exports produce bool label columns. Majority-vote
+    consolidation computes int64 override vectors internally, and assigning
+    those back into bool columns (or vice versa) raised pandas
+    LossySetitemError before labels were cast to int64 up front.
+    """
+    frame = retrieval_train_frame(
+        query=["query", "query", "query"],
+        chunk=["chunk", "chunk", "chunk"],
+        chunk_id=["chunk-1", "chunk-1", "chunk-1"],
+        record_uuid=["record-1", "record-1", "record-1"],
+        doc_id=["doc-1", "doc-1", "doc-1"],
+        topically_relevant=pd.array([True, True, False], dtype="boolean"),
+        evidence_sufficient=pd.array([True, False, False], dtype="boolean"),
+        misleading=pd.array([False, False, False], dtype="boolean"),
+    )
+
+    transformed = build_tlmtc_frame(frame, task=Task.RETRIEVAL, mode="train")
+
+    assert transformed["label_topically_relevant"].dtype == "int64"
+    assert transformed["label_evidence_sufficient"].dtype == "int64"
+    assert transformed["label_misleading"].dtype == "int64"
+    assert transformed["label_topically_relevant"].tolist() == [1]
+    assert transformed["label_evidence_sufficient"].tolist() == [0]
