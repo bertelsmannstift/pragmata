@@ -86,6 +86,8 @@ def build_score_report(
             source=source,
             created_at=created_at,
             n_examples=len(values["topical_precision_at_k"]),
+            # chunk_rank is 1-based (enforced by Field(ge=1) on import), so its max is the
+            # number of retrieved chunks.
             top_k=int(frame["chunk_rank"].max()),
             ci_level=ci,
             topical_precision_at_k=bootstrap(values["topical_precision_at_k"]),
