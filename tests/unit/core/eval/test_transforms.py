@@ -415,3 +415,67 @@ def test_build_tlmtc_frame_rejects_unknown_mode() -> None:
 
     with pytest.raises(ValueError, match="Unsupported eval transform mode"):
         build_tlmtc_frame(frame, task=Task.RETRIEVAL, mode="score")  # type: ignore[arg-type]
+
+
+def test_build_tlmtc_frame_casts_bool_labels_before_majority_consolidation(
+    retrieval_train_frame: FrameFactory,
+) -> None:
+    """Bool-typed labels are cast to int64 before majority-vote consolidation."""
+    frame = retrieval_train_frame(
+        query=["query", "query", "query"],
+        chunk=["chunk", "chunk", "chunk"],
+        chunk_id=["chunk-1", "chunk-1", "chunk-1"],
+        record_uuid=["record-1", "record-1", "record-1"],
+        doc_id=["doc-1", "doc-1", "doc-1"],
+        topically_relevant=pd.array([True, True, False], dtype="boolean"),
+        evidence_sufficient=pd.array([True, False, False], dtype="boolean"),
+        misleading=pd.array([False, False, False], dtype="boolean"),
+    )
+
+    transformed = build_tlmtc_frame(frame, task=Task.RETRIEVAL, mode="train")
+
+    expected = pd.DataFrame(
+        {
+            "text": ["query"],
+            "text_pair": ["chunk"],
+            "chunk_id": ["chunk-1"],
+            "split_group": ["record-1"],
+            "label_topically_relevant": [1],
+            "label_evidence_sufficient": [0],
+            "label_misleading": [0],
+            "doc_id": ["doc-1"],
+        }
+    )
+    pd.testing.assert_frame_equal(transformed, expected)
+
+
+def test_build_tlmtc_frame_casts_bool_labels_without_consolidation(
+    retrieval_train_frame: FrameFactory,
+) -> None:
+    """Bool-typed labels are cast to int64 even when no duplicates trigger consolidation."""
+    frame = retrieval_train_frame(
+        query=["query"],
+        chunk=["chunk"],
+        chunk_id=["chunk-1"],
+        record_uuid=["record-1"],
+        doc_id=["doc-1"],
+        topically_relevant=pd.array([True], dtype="boolean"),
+        evidence_sufficient=pd.array([False], dtype="boolean"),
+        misleading=pd.array([True], dtype="boolean"),
+    )
+
+    transformed = build_tlmtc_frame(frame, task=Task.RETRIEVAL, mode="train")
+
+    expected = pd.DataFrame(
+        {
+            "text": ["query"],
+            "text_pair": ["chunk"],
+            "chunk_id": ["chunk-1"],
+            "split_group": ["record-1"],
+            "label_topically_relevant": [1],
+            "label_evidence_sufficient": [0],
+            "label_misleading": [1],
+            "doc_id": ["doc-1"],
+        }
+    )
+    pd.testing.assert_frame_equal(transformed, expected)
