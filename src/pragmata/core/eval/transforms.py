@@ -50,7 +50,7 @@ def build_tlmtc_frame(
 
     if mode == "train":
         frame = frame.astype({column: "int64" for column in LABEL_COLUMNS_BY_TASK[task]})
-        consolidated_frame = _consolidate_training_rows(frame, task=task)
+        consolidated_frame = consolidate_labels_by_majority(frame, task=task)
     else:
         consolidated_frame = frame
 
@@ -74,17 +74,20 @@ def build_tlmtc_frame(
     return consolidated_frame.reset_index(drop=True).rename(columns=rename_map)
 
 
-def _consolidate_training_rows(
+def consolidate_labels_by_majority(
     frame: pd.DataFrame,
     *,
     task: Task,
 ) -> pd.DataFrame:
-    """Deduplicate repeated annotation units with per-label majority consensus.
+    """Collapse repeated annotation units to one row via per-label majority consensus.
 
-    For duplicate rows, labels with a strict majority are consolidated independently.
-    Tied labels fall back to the selected source row. When an observed row matches
-    all strict-majority labels, that row is selected to preserve non-label metadata
-    deterministically.
+    Shared by eval train and score ingestion: multiple annotator rows for the same
+    scoring unit (retrieval ``(record_uuid, chunk_id)``; grounding/generation
+    ``record_uuid``) are reduced to a single row. Each label with a strict majority
+    (> half positive) is set independently; a tied label (exact 50/50 on an even
+    number of annotators) falls back to the selected source row's value. When an
+    observed row matches all strict-majority labels, that row is selected to preserve
+    non-label metadata deterministically. A no-op when no unit is duplicated.
     """
     key_columns = _DUPLICATE_KEY_COLUMNS_BY_TASK[task]
     label_columns = LABEL_COLUMNS_BY_TASK[task]
@@ -154,7 +157,7 @@ def _consolidate_training_rows(
         consolidated.loc[target_position, label_override.index] = label_override
 
     logger.info(
-        "Consolidated duplicate eval training rows for %s: input_rows=%d output_rows=%d "
+        "Consolidated duplicate eval rows by majority for %s: input_rows=%d output_rows=%d "
         "collapsed_rows=%d duplicate_units=%d key_columns=%s",
         task.value,
         len(frame),
