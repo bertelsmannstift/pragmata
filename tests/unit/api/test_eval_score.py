@@ -285,28 +285,30 @@ class TestScoreInput:
             score(base_dir=tmp_path, prediction_id="predict-001", task="retrieval")
 
 
-class TestScoreDuplicateGuard:
-    def test_rejects_duplicate_chunk(self, tmp_path: Path):
+class TestScoreConsolidationAndGuard:
+    def test_consolidates_duplicate_chunk(self, tmp_path: Path):
         rows = _retrieval_rows()
-        rows.append({**rows[0]})  # duplicate (record_uuid, chunk_id)
+        rows.append({**rows[0]})  # a second annotator row for (r1, c1) - collapsed by majority
         csv = _write(tmp_path / "ret.csv", rows)
 
-        with pytest.raises(EvalInputSchemaError, match="duplicate"):
-            score(base_dir=tmp_path, path=csv, task="retrieval")
+        report = score(base_dir=tmp_path, path=csv, task="retrieval", seed=1)
 
-    def test_rejects_duplicate_chunk_rank(self, tmp_path: Path):
+        assert report.n_examples == 2  # two queries; the duplicate chunk was consolidated
+
+    def test_rejects_non_collapsible_duplicate_chunk_rank(self, tmp_path: Path):
         rows = _retrieval_rows()
-        # distinct chunk_id but a duplicate (record_uuid, chunk_rank) -> ambiguous ordering
+        # distinct chunk_id sharing (record_uuid, chunk_rank) -> not collapsible, guard still errors
         rows.append({**rows[0], "chunk_id": "c1b"})
         csv = _write(tmp_path / "ret.csv", rows)
 
         with pytest.raises(EvalInputSchemaError, match="chunk rank"):
             score(base_dir=tmp_path, path=csv, task="retrieval")
 
-    def test_rejects_duplicate_record_uuid_grounding(self, tmp_path: Path):
+    def test_consolidates_duplicate_record_uuid_grounding(self, tmp_path: Path):
         rows = _grounding_rows()
-        rows.append({**rows[0]})  # duplicate record_uuid
+        rows.append({**rows[0]})  # a second annotator row for r1 - collapsed by majority
         csv = _write(tmp_path / "g.csv", rows)
 
-        with pytest.raises(EvalInputSchemaError, match="duplicate"):
-            score(base_dir=tmp_path, path=csv, task="grounding")
+        report = score(base_dir=tmp_path, path=csv, task="grounding")
+
+        assert report.n_examples == 2  # two records; the duplicate was consolidated

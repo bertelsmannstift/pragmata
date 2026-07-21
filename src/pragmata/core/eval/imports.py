@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from pragmata.core.eval.transforms import consolidate_labels_by_majority
 from pragmata.core.schemas.annotation_task import Task
 from pragmata.core.schemas.eval_input import (
     TEXT_COLUMNS_BY_TASK,
@@ -65,12 +66,15 @@ def import_eval_score_frame(
     mapping back to the task-specific column names (via ``TEXT_COLUMNS_BY_TASK``)
     before validation; identity and label columns pass through unchanged.
 
-    Beyond the schema contract, scoring requires each resampling unit to be
-    unique: retrieval rows are keyed by ``(record_uuid, chunk_id)`` and their
-    ``chunk_rank`` must be unique within a query; grounding/generation are one
-    row per ``record_uuid``. Scoring does no consensus consolidation (unlike
-    training), so a duplicated unit would double-count in the metric denominators
-    - hence a hard error rather than a silent skew.
+    Each scoring unit must be unique so it is not double-counted in the metric
+    denominators: retrieval rows are keyed by ``(record_uuid, chunk_id)`` (with
+    ``chunk_rank`` unique within a query); grounding/generation are one row per
+    ``record_uuid``. Multiple annotator rows for the same unit are consolidated to
+    a single row by per-label majority (``consolidate_labels_by_majority``, shared
+    with train ingestion) - a no-op when units are already unique.
+    ``_guard_unique_scoring_units`` then runs as a post-collapse invariant: it still
+    hard-errors on a residual duplicate the majority collapse cannot resolve, e.g.
+    two distinct ``chunk_id``s sharing a ``chunk_rank``.
 
     Args:
         path: Resolved CSV path to read.
@@ -79,18 +83,19 @@ def import_eval_score_frame(
             frame needs tlmtc text-column restoration.
 
     Returns:
-        Validated dataframe with Pragmata task columns.
+        Validated dataframe with Pragmata task columns, one row per scoring unit.
 
     Raises:
-        EvalInputSchemaError: If the frame violates the score contract or contains
-            duplicate scoring units.
+        EvalInputSchemaError: If the frame violates the score contract or retains a
+            duplicate scoring unit after majority consolidation.
     """
     frame = pd.read_csv(path, encoding="utf-8")
     if source.kind == "model_prediction":
         frame = _restore_pragmata_text_columns(frame, task=task)
     validated = validate_eval_score_frame(frame, task=task)
-    _guard_unique_scoring_units(validated, task=task)
-    return validated
+    consolidated = consolidate_labels_by_majority(validated, task=task)
+    _guard_unique_scoring_units(consolidated, task=task)
+    return consolidated
 
 
 def _restore_pragmata_text_columns(frame: pd.DataFrame, *, task: Task) -> pd.DataFrame:
