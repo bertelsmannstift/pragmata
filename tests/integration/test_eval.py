@@ -594,38 +594,53 @@ class TestPredictLabels:
         """Automatic selection ignores a globally newer evaluator for another task."""
         base_dir, run_id = trained_prediction_evaluator
         workspace = WorkspacePaths.from_base_dir(base_dir)
-        _write_pragmata_train_meta(
-            workspace=workspace,
-            run_id="older-retrieval-evaluator",
-            task=Task.RETRIEVAL,
-            created_at=datetime(2026, 1, 1, tzinfo=UTC),
+        temporary_run_ids = (
+            "older-retrieval-evaluator",
+            "newer-grounding-evaluator",
         )
-        _write_pragmata_train_meta(
-            workspace=workspace,
-            run_id=run_id,
-            task=Task.RETRIEVAL,
-            created_at=datetime(2026, 1, 2, tzinfo=UTC),
-        )
-        _write_pragmata_train_meta(
-            workspace=workspace,
-            run_id="newer-grounding-evaluator",
-            task=Task.GROUNDING,
-            created_at=datetime(2026, 1, 3, tzinfo=UTC),
-        )
-        unlabeled_data_path = base_dir / "inputs" / "retrieval-predict-latest.csv"
-        _write_retrieval_predict_csv(unlabeled_data_path, marker="latest-predict")
+        temporary_meta_paths = [
+            resolve_eval_train_meta_path(workspace=workspace, run_id=temporary_run_id)
+            for temporary_run_id in temporary_run_ids
+        ]
 
-        result = _predict_labels(
-            base_dir=base_dir,
-            unlabeled_data_path=unlabeled_data_path,
-        )
+        try:
+            _write_pragmata_train_meta(
+                workspace=workspace,
+                run_id="older-retrieval-evaluator",
+                task=Task.RETRIEVAL,
+                created_at=datetime(2026, 1, 1, tzinfo=UTC),
+            )
+            _write_pragmata_train_meta(
+                workspace=workspace,
+                run_id=run_id,
+                task=Task.RETRIEVAL,
+                created_at=datetime(2026, 1, 2, tzinfo=UTC),
+            )
+            _write_pragmata_train_meta(
+                workspace=workspace,
+                run_id="newer-grounding-evaluator",
+                task=Task.GROUNDING,
+                created_at=datetime(2026, 1, 3, tzinfo=UTC),
+            )
+            unlabeled_data_path = base_dir / "inputs" / "retrieval-predict-latest.csv"
+            _write_retrieval_predict_csv(unlabeled_data_path, marker="latest-predict")
 
-        _assert_prediction_artifacts(
-            result=result,
-            base_dir=base_dir,
-            run_id=run_id,
-            unlabeled_data_path=unlabeled_data_path,
-        )
+            result = _predict_labels(
+                base_dir=base_dir,
+                unlabeled_data_path=unlabeled_data_path,
+            )
+
+            _assert_prediction_artifacts(
+                result=result,
+                base_dir=base_dir,
+                run_id=run_id,
+                unlabeled_data_path=unlabeled_data_path,
+            )
+        finally:
+            # These metadata-only candidates have no backing models and must not
+            # affect later selector tests that reuse this module-scoped workspace.
+            for meta_path in temporary_meta_paths:
+                meta_path.unlink(missing_ok=True)
 
     def test_rejects_explicit_task_mismatch_before_prediction(
         self,
