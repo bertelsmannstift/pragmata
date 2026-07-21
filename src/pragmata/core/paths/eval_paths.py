@@ -134,9 +134,8 @@ def resolve_eval_train_paths(
     """Resolve the labeled input CSV consumed by eval train.
 
     At most one input selector may be given: a direct ``labeled_data_path`` or an
-    ``export_id``. Passing both is an error - there is no precedence between them.
-    If neither is provided, the latest valid annotation export containing the
-    requested task CSV is selected.
+    ``export_id``. If neither is provided, the latest valid annotation export
+    containing the requested task CSV is selected.
 
     Args:
         workspace: Workspace path bundle.
@@ -411,8 +410,7 @@ def resolve_eval_score_input(
     """Resolve the labeled CSV consumed by eval score and its provenance.
 
     At most one input selector may be given: a direct ``path``, an ``export_id``,
-    or a ``prediction_id``. Passing more than one is an error - there is no
-    precedence between them. With no selector, the latest valid annotation export
+    or a ``prediction_id``. With no selector, the latest valid annotation export
     for the task is used, mirroring ``resolve_eval_train_paths``.
 
     Direct paths and annotation exports are already Pragmata-shaped and score
