@@ -109,15 +109,18 @@ def build_score_report(
             ),
         )
 
-    values = grouping.generation_per_query_values(frame)
-    return GenerationScoreReport(
-        source=source,
-        created_at=created_at,
-        n_examples=len(frame),
-        ci_level=ci,
-        proper_action_rate=wilson(values["proper_action_rate"]),
-        on_topic_rate=wilson(values["on_topic_rate"]),
-        helpfulness_rate=wilson(values["helpfulness_rate"]),
-        incompleteness_rate=wilson(values["incompleteness_rate"]),
-        unsafe_content_rate=wilson(values["unsafe_content_rate"]),
-    )
+    if task == Task.GENERATION:
+        values = grouping.generation_per_query_values(frame)
+        return GenerationScoreReport(
+            source=source,
+            created_at=created_at,
+            n_examples=len(frame),
+            ci_level=ci,
+            proper_action_rate=wilson(values["proper_action_rate"]),
+            on_topic_rate=wilson(values["on_topic_rate"]),
+            helpfulness_rate=wilson(values["helpfulness_rate"]),
+            incompleteness_rate=wilson(values["incompleteness_rate"]),
+            unsafe_content_rate=wilson(values["unsafe_content_rate"]),
+        )
+
+    raise ValueError(f"Unsupported task type: {task!r}")
