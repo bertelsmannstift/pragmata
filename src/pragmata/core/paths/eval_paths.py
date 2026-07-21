@@ -392,10 +392,10 @@ def resolve_eval_score_input(
 ) -> EvalScoreInput:
     """Resolve the labeled CSV consumed by eval score and its provenance.
 
-    Selection follows a fixed precedence: a direct ``path`` wins,
-    then an ``export_id``, then a ``prediction_id``. With no selector, the
-    latest valid annotation export for the task is used, mirroring
-    ``resolve_eval_train_paths``.
+    At most one input selector may be given: a direct ``path``, an ``export_id``,
+    or a ``prediction_id``. Passing more than one is an error - there is no
+    precedence between them. With no selector, the latest valid annotation export
+    for the task is used, mirroring ``resolve_eval_train_paths``.
 
     Direct paths and annotation exports are already Pragmata-shaped and score
     without further preparation. Scoring a prediction run is not yet supported:
@@ -418,10 +418,23 @@ def resolve_eval_score_input(
         how the input was selected without re-running selection.
 
     Raises:
+        ValueError: If more than one of ``path`` / ``export_id`` / ``prediction_id`` is given.
         FileNotFoundError: If the selected input CSV or annotation export is missing.
-        NotImplementedError: If a prediction run is the only selector; prediction-output
+        NotImplementedError: If a prediction run is selected; prediction-output
             scoring lands with ``pragmata eval predict``.
     """
+    selectors = {
+        "path": path is not None,
+        "export_id": export_id is not None,
+        "prediction_id": prediction_id is not None,
+    }
+    if sum(selectors.values()) > 1:
+        chosen = ", ".join(name for name, is_set in selectors.items() if is_set)
+        raise ValueError(
+            f"At most one scoring-input selector may be given, got {chosen}. "
+            "Pass one of path / export_id / prediction_id, or none to use the latest annotation export."
+        )
+
     if path is not None:
         input_csv = path.expanduser().resolve()
         if not input_csv.is_file():

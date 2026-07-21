@@ -668,43 +668,24 @@ def test_resolve_eval_score_input_prediction_run_not_supported(
         resolve_eval_score_input(workspace=workspace, task=Task.RETRIEVAL, prediction_id="run-1")
 
 
-def test_resolve_eval_score_input_export_takes_precedence_over_prediction(
+def test_resolve_eval_score_input_rejects_export_and_prediction_together(
     workspace: WorkspacePaths,
 ) -> None:
-    """Export id outranks a prediction run, so a supported input is chosen without erroring."""
-    _write_annotation_export(
-        workspace=workspace,
-        export_id="export-a",
-        created_at=datetime(2026, 1, 1, tzinfo=UTC),
-        tasks=[Task.RETRIEVAL],
-    )
-
-    resolved = resolve_eval_score_input(
-        workspace=workspace, task=Task.RETRIEVAL, export_id="export-a", prediction_id="run-1"
-    )
-
-    assert resolved.input_csv == workspace.base_dir / "annotation" / "exports" / "export-a" / "retrieval.csv"
-    assert resolved.source.ref == "export-a"
+    """More than one selector is ambiguous and raises rather than picking one."""
+    with pytest.raises(ValueError, match="At most one scoring-input selector"):
+        resolve_eval_score_input(workspace=workspace, task=Task.RETRIEVAL, export_id="export-a", prediction_id="run-1")
 
 
-def test_resolve_eval_score_input_direct_path_takes_precedence(
+def test_resolve_eval_score_input_rejects_path_and_export_together(
     workspace: WorkspacePaths,
     tmp_path: Path,
 ) -> None:
-    """A direct path outranks an export id."""
+    """A direct path and an export id together is an error - there is no precedence."""
     csv = tmp_path / "labeled.csv"
     csv.write_text("example_id\nexample-1\n", encoding="utf-8")
-    _write_annotation_export(
-        workspace=workspace,
-        export_id="export-a",
-        created_at=datetime(2026, 1, 1, tzinfo=UTC),
-        tasks=[Task.RETRIEVAL],
-    )
 
-    resolved = resolve_eval_score_input(workspace=workspace, task=Task.RETRIEVAL, path=csv, export_id="export-a")
-
-    assert resolved.input_csv == csv.resolve()
-    assert resolved.source.kind == "direct_path"
+    with pytest.raises(ValueError, match="path, export_id"):
+        resolve_eval_score_input(workspace=workspace, task=Task.RETRIEVAL, path=csv, export_id="export-a")
 
 
 def test_resolve_eval_score_input_rejects_missing_export_metadata(
