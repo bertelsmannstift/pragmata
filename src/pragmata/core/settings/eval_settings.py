@@ -99,10 +99,11 @@ class EvalPredictSettings(ResolveSettings):
 class EvalScoreSettings(ResolveSettings):
     """Evaluation scoring settings.
 
-    Input selection follows a fixed precedence applied by
-    ``resolve_eval_score_input``: ``path`` > ``export_id`` >
-    ``prediction_id``. With no selector, the latest annotation export for the
-    task is used (interim, until ``eval predict`` and its output layout land).
+    Input selectors are mutually exclusive (enforced by
+    ``resolve_eval_score_input``): at most one of ``path`` / ``export_id`` /
+    ``prediction_id`` may be given, and more than one raises. With no selector,
+    the latest annotation export for the task is used (interim, until
+    ``eval predict`` and its output layout land).
 
     Attributes:
         base_dir: Workspace base directory. Pragmata resolves score artifacts under

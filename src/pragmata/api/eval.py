@@ -227,8 +227,8 @@ def score(
     Reads one labeled CSV, computes the task's taxonomy metrics as corpus point
     estimates with a confidence interval on each (Wilson for proportion metrics,
     percentile bootstrap for the continuous retrieval metrics), and writes the
-    task's ``*_scores.json`` report. The input is selected by precedence
-    ``path`` > ``export_id`` > ``prediction_id``; with no
+    task's ``*_scores.json`` report. The input is selected by a single mutually
+    exclusive selector (``path``, ``export_id``, or ``prediction_id``); with no
     selector the latest annotation export is used. The resolved input and how it
     was selected are recorded on the report's ``source``.
 
