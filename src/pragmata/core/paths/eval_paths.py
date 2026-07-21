@@ -109,6 +109,21 @@ def find_latest_annotation_export_id(
     return latest_export_id
 
 
+def _require_at_most_one_selector(**selectors: object | None) -> None:
+    """Reject ambiguous input selection: at most one selector may be set.
+
+    Eval input selectors (a direct path, an export id, a prediction id) are
+    mutually exclusive - there is no precedence between them. Passing more than
+    one raises; passing none is allowed (callers fall back to the latest export).
+    """
+    given = [name for name, value in selectors.items() if value is not None]
+    if len(given) > 1:
+        raise ValueError(
+            f"At most one input selector may be given, got {', '.join(given)}. "
+            "Pass a single selector, or none to use the latest annotation export."
+        )
+
+
 def resolve_eval_train_paths(
     *,
     workspace: WorkspacePaths,
@@ -383,21 +398,6 @@ def provenance_path(*, input_csv: Path, base_dir: Path) -> str:
         return str(input_csv.relative_to(resolved_base))
     except ValueError:
         return str(input_csv)
-
-
-def _require_at_most_one_selector(**selectors: object | None) -> None:
-    """Reject ambiguous input selection: at most one selector may be set.
-
-    Eval input selectors (a direct path, an export id, a prediction id) are
-    mutually exclusive - there is no precedence between them. Passing more than
-    one raises; passing none is allowed (callers fall back to the latest export).
-    """
-    given = [name for name, value in selectors.items() if value is not None]
-    if len(given) > 1:
-        raise ValueError(
-            f"At most one input selector may be given, got {', '.join(given)}. "
-            "Pass a single selector, or none to use the latest annotation export."
-        )
 
 
 def resolve_eval_score_input(
