@@ -109,7 +109,7 @@ class EvalScoreSettings(ResolveSettings):
         base_dir: Workspace base directory. Pragmata resolves score artifacts under
             `<base_dir>/eval/scores/<score_id>/`.
         score_id: Unique identifier for the score run. Names the Pragmata-owned
-            score artifact directory. An output identifier, never an input selector.
+            score artifact directory.
         path: Optional direct path to labeled data to score. Use this
             for standalone scoring, including human-labeled datasets or externally
             prepared labeled records.
