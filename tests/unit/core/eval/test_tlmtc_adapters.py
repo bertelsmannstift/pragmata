@@ -13,7 +13,11 @@ import pytest
 from pragmata.core.eval.tlmtc_adapters import run_tlmtc_predict, run_tlmtc_train
 
 _DEDICATED_RUN_TLMTC_TRAIN_ARGS = [name for name in signature(run_tlmtc_train).parameters if name != "train_kwargs"]
-_RESERVED_RUN_TLMTC_PREDICT_KWARGS = ["unlabeled_data", "work_dir", "run_id"]
+_RESERVED_RUN_TLMTC_PREDICT_KWARGS = [
+    "run_id" if name == "evaluator_run_id" else name
+    for name in signature(run_tlmtc_predict).parameters
+    if name != "predict_kwargs"
+]
 
 
 def _run_tlmtc_train_kwargs(
