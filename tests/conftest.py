@@ -6,7 +6,6 @@ import socket
 import subprocess
 import urllib.error
 import urllib.request
-import warnings
 from dataclasses import dataclass
 from urllib.parse import urlsplit
 
@@ -129,37 +128,33 @@ def pytest_configure(config: pytest.Config) -> None:
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
     """Fail-closed guard for destructive annotation integration tests.
 
-    Runs ``trylast`` so pytest's own ``-m`` marker filtering happens first: on a
-    unit run the annotation items are already gone and this is a silent no-op;
-    only a run that actually selects them (e.g. ``-m integration``) triggers the
-    deselection + warning below.
-
     The annotation integration suite runs destructive setup/teardown (workspace
     and user deletion) against whatever ``argilla_api_url()`` resolves to, which
-    defaults to the shared dev stack on :6900. To make it impossible to wipe a
-    live or shared stack by accident, these tests are *deselected at collection
-    time* unless ``PRAGMATA_TEST_ARGILLA_URL`` is explicitly set.
+    defaults to the shared dev stack on :6900. Running it must be a deliberate
+    act pointed at a disposable stack, never an accident against a live one.
 
-    ``make test-integration`` sets it to a throwaway isolated stack; a bare
-    ``pytest`` run without it collects zero annotation tests, so no fixture at
-    any scope is instantiated and no teardown ever fires. Deselection — rather
-    than a skip marker — is what guarantees the module-scoped ``clean_environment``
-    fixtures never run.
+    Runs ``trylast`` so pytest's own ``-m`` filtering happens first. If any
+    ``annotation`` item survives to here, the run *explicitly selected* it — so
+    when ``PRAGMATA_TEST_ARGILLA_URL`` is unset we abort the whole session with
+    a clear error rather than silently dropping those tests (a green-but-vacuous
+    run is worse than a loud failure — a CI gate would pass having tested
+    nothing). On an ordinary unit run the ``-m 'not integration'`` default has
+    already removed every annotation item, so this hook is a no-op.
+
+    ``UsageError`` raised at collection time aborts before any fixture is
+    instantiated, so the module-scoped ``clean_environment`` teardown never
+    fires — this is what makes the guard safe as well as loud. ``make
+    test-integration`` sets the env var to a throwaway isolated stack.
     """
     if os.environ.get("PRAGMATA_TEST_ARGILLA_URL"):
         return
-    selected, deselected = [], []
-    for item in items:
-        (deselected if item.get_closest_marker("annotation") else selected).append(item)
-    if deselected:
-        config.hook.pytest_deselected(items=deselected)
-        items[:] = selected
-        warnings.warn(
-            f"Deselected {len(deselected)} annotation integration test(s): PRAGMATA_TEST_ARGILLA_URL "
-            "is unset, so they will not run against the default Argilla stack on :6900. Use "
-            "`make test-integration` (ephemeral isolated stack) or set PRAGMATA_TEST_ARGILLA_URL "
-            "to a disposable target.",
-            stacklevel=2,
+    annotation_items = [item for item in items if item.get_closest_marker("annotation")]
+    if annotation_items:
+        raise pytest.UsageError(
+            f"{len(annotation_items)} annotation integration test(s) selected but "
+            "PRAGMATA_TEST_ARGILLA_URL is unset. These run destructive setup/teardown and "
+            "default to the Argilla stack on :6900. Run `make test-integration` (ephemeral "
+            "isolated stack), or set PRAGMATA_TEST_ARGILLA_URL to a disposable target."
         )
 
 
