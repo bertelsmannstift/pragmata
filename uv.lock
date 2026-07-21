@@ -2601,7 +2601,7 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0,<7.0" },
     { name = "ruff", marker = "extra == 'lint'", specifier = ">=0.14,<1.0" },
     { name = "sentence-transformers", marker = "extra == 'querygen'", specifier = ">=3.0,<6.0" },
-    { name = "tlmtc", extras = ["train"], marker = "extra == 'eval'", specifier = ">=0.4,<1.0" },
+    { name = "tlmtc", extras = ["train"], marker = "extra == 'eval'", specifier = ">=0.4.2,<1.0" },
     { name = "typer", specifier = ">=0.9,<1.0" },
     { name = "types-pyyaml", marker = "extra == 'type'" },
 ]
@@ -3472,7 +3472,7 @@ wheels = [
 
 [[package]]
 name = "tlmtc"
-version = "0.4.0"
+version = "0.4.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy" },
@@ -3481,9 +3481,9 @@ dependencies = [
     { name = "pyyaml" },
     { name = "typer" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/88/bb/903d11f82e311cd2045df1ee952ab5982955197ed901cc430da4329b0d7a/tlmtc-0.4.0.tar.gz", hash = "sha256:47764f454342ebff27c2f33e33477c40f44c7489831a126d85fb2df6eec8e044", size = 1291686, upload-time = "2026-07-13T13:15:07.356Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/92/b7/291c88225f909fe5e7119883425ac4ad7f64bcc9cae0894c8523a59346b1/tlmtc-0.4.2.tar.gz", hash = "sha256:ce7347bd7d58c65081573a21e8baa8a52c670e6e86d19301169eb085349a3b74", size = 1292566, upload-time = "2026-07-17T20:19:18.631Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/48/e6/060d56c65705a1dfe14ec82406b8ba85ceff792caf4cf028c8a246ac865c/tlmtc-0.4.0-py3-none-any.whl", hash = "sha256:d56af3068f763cadf31bd145bb72e331bf17ec45a48bd5a7c736317d9e974081", size = 63803, upload-time = "2026-07-13T13:15:05.967Z" },
+    { url = "https://files.pythonhosted.org/packages/dd/c5/1d6d206089992501e5c103df82a2fbaf4bec0c132d03fa0c26f05448f286/tlmtc-0.4.2-py3-none-any.whl", hash = "sha256:d571f5ee16fd37b97cdfae7077fe27326b34b517a08fa558e71e5d201dcc2df5", size = 63988, upload-time = "2026-07-17T20:19:17.011Z" },
 ]
 
 [package.optional-dependencies]
