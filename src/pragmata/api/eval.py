@@ -65,8 +65,7 @@ def train_evaluator(
     Returns:
         Result metadata containing resolved filesystem paths for a single tlmtc
         training run, including the run ID, run directory, model directory,
-        prepared split artifacts, metadata sidecar, and evaluation artifacts
-        under ``<base_dir>/eval/train_outputs/<run_id>/``.
+        prepared split artifacts, metadata sidecar, and evaluation artifacts.
     """
     settings = EvalTrainSettings.resolve(
         config=load_config_file(config_path) if isinstance(config_path, (str, Path)) else None,
@@ -155,8 +154,7 @@ def predict_labels(
     Returns:
         Result metadata for the completed tlmtc prediction run. Its ``paths``
         attribute contains the resolved prediction filesystem layout, including
-        the generated probabilities and predictions CSV artifacts under
-        ``<base_dir>/eval/prediction_outputs/<evaluator_run_id>/``.
+        the generated probabilities and predictions CSV artifacts.
     """
     settings = EvalPredictSettings.resolve(
         config=load_config_file(config_path) if isinstance(config_path, (str, Path)) else None,
