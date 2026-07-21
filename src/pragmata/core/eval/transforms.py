@@ -49,8 +49,9 @@ def build_tlmtc_frame(
         raise ValueError(f"Unsupported eval transform mode: {mode!r}.")
 
     if mode == "train":
-        label_source_columns = LABEL_COLUMNS_BY_TASK[task]
-        frame = frame.astype({column: "int64" for column in label_source_columns})
+        frame = frame.astype(
+            {column: "int64" for column in LABEL_COLUMNS_BY_TASK[task]}
+        )
         consolidated_frame = _consolidate_training_rows(frame, task=task)
     else:
         consolidated_frame = frame
