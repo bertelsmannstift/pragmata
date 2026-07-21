@@ -118,10 +118,10 @@ def resolve_eval_train_paths(
 ) -> EvalTrainPaths:
     """Resolve the labeled input CSV consumed by eval train.
 
-    Direct labeled CSV input takes precedence over annotation export selection.
-    If no direct input path is provided, ``export_id`` selects an annotation
-    export. If neither is provided, the latest valid annotation export containing
-    the requested task CSV is selected.
+    At most one input selector may be given: a direct ``labeled_data_path`` or an
+    ``export_id``. Passing both is an error - there is no precedence between them.
+    If neither is provided, the latest valid annotation export containing the
+    requested task CSV is selected.
 
     Args:
         workspace: Workspace path bundle.
@@ -133,9 +133,12 @@ def resolve_eval_train_paths(
         Resolved train-input paths and annotation export provenance.
 
     Raises:
+        ValueError: If both ``labeled_data_path`` and ``export_id`` are given.
         FileNotFoundError: If the selected input CSV or annotation export cannot
             be found.
     """
+    _require_at_most_one_selector(labeled_data_path=labeled_data_path, export_id=export_id)
+
     if labeled_data_path is not None:
         training_input_csv = labeled_data_path.expanduser().resolve()
         if not training_input_csv.is_file():
@@ -382,6 +385,21 @@ def provenance_path(*, input_csv: Path, base_dir: Path) -> str:
         return str(input_csv)
 
 
+def _require_at_most_one_selector(**selectors: object | None) -> None:
+    """Reject ambiguous input selection: at most one selector may be set.
+
+    Eval input selectors (a direct path, an export id, a prediction id) are
+    mutually exclusive - there is no precedence between them. Passing more than
+    one raises; passing none is allowed (callers fall back to the latest export).
+    """
+    given = [name for name, value in selectors.items() if value is not None]
+    if len(given) > 1:
+        raise ValueError(
+            f"At most one input selector may be given, got {', '.join(given)}. "
+            "Pass a single selector, or none to use the latest annotation export."
+        )
+
+
 def resolve_eval_score_input(
     *,
     workspace: WorkspacePaths,
@@ -423,17 +441,7 @@ def resolve_eval_score_input(
         NotImplementedError: If a prediction run is selected; prediction-output
             scoring lands with ``pragmata eval predict``.
     """
-    selectors = {
-        "path": path is not None,
-        "export_id": export_id is not None,
-        "prediction_id": prediction_id is not None,
-    }
-    if sum(selectors.values()) > 1:
-        chosen = ", ".join(name for name, is_set in selectors.items() if is_set)
-        raise ValueError(
-            f"At most one scoring-input selector may be given, got {chosen}. "
-            "Pass one of path / export_id / prediction_id, or none to use the latest annotation export."
-        )
+    _require_at_most_one_selector(path=path, export_id=export_id, prediction_id=prediction_id)
 
     if path is not None:
         input_csv = path.expanduser().resolve()

@@ -106,7 +106,6 @@ def test_resolve_eval_train_paths_uses_direct_labeled_data_path(
         workspace=workspace,
         task=Task.RETRIEVAL,
         labeled_data_path=input_csv,
-        export_id="ignored-export",
     )
 
     assert paths == EvalTrainPaths(
@@ -114,6 +113,23 @@ def test_resolve_eval_train_paths_uses_direct_labeled_data_path(
         training_input_csv=input_csv.resolve(),
         annotation_export_id=None,
     )
+
+
+def test_resolve_eval_train_paths_rejects_path_and_export_together(
+    workspace: WorkspacePaths,
+) -> None:
+    """A direct path and an export id together is an error - there is no precedence."""
+    input_csv = workspace.base_dir / "standalone" / "labeled.csv"
+    input_csv.parent.mkdir()
+    input_csv.write_text("example_id\nexample-1\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="At most one input selector"):
+        resolve_eval_train_paths(
+            workspace=workspace,
+            task=Task.RETRIEVAL,
+            labeled_data_path=input_csv,
+            export_id="export-a",
+        )
 
 
 def test_eval_train_paths_ensure_dirs_creates_eval_tool_root(
@@ -666,14 +682,6 @@ def test_resolve_eval_score_input_prediction_run_not_supported(
     """A prediction run as the only selector is deferred until eval predict lands."""
     with pytest.raises(NotImplementedError, match="prediction run is not yet supported"):
         resolve_eval_score_input(workspace=workspace, task=Task.RETRIEVAL, prediction_id="run-1")
-
-
-def test_resolve_eval_score_input_rejects_export_and_prediction_together(
-    workspace: WorkspacePaths,
-) -> None:
-    """More than one selector is ambiguous and raises rather than picking one."""
-    with pytest.raises(ValueError, match="At most one scoring-input selector"):
-        resolve_eval_score_input(workspace=workspace, task=Task.RETRIEVAL, export_id="export-a", prediction_id="run-1")
 
 
 def test_resolve_eval_score_input_rejects_path_and_export_together(
