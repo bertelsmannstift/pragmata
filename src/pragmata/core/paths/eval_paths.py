@@ -417,11 +417,10 @@ def resolve_eval_score_input(
 
     Direct paths and annotation exports are already Pragmata-shaped and score
     without further preparation. Scoring a prediction run is not yet supported:
-    the ``pragmata eval predict`` output layout does not exist yet, so both an
-    explicit ``prediction_id`` and the eventual "latest prediction run"
-    no-selector fallback that ``docs/design/eval-scoring-metrics.md`` proposes
-    are deferred until predict lands; the interim no-selector fallback is the
-    latest annotation export.
+    ``pragmata eval predict`` has landed, but it has no run-addressable output
+    layout and the prediction-run path resolver (``find_latest_prediction_run``)
+    is not implemented, so ``prediction_id`` is deferred. The no-selector
+    fallback is the latest annotation export.
 
     Args:
         workspace: Workspace path bundle.
@@ -460,8 +459,9 @@ def resolve_eval_score_input(
         resolved_export_id = export_id
     elif prediction_id is not None:
         raise NotImplementedError(
-            "Scoring a prediction run is not yet supported: `pragmata eval predict` and its "
-            "output layout are not implemented. Pass path or export_id instead."
+            "Scoring a prediction run is not yet supported: `pragmata eval predict` has landed, "
+            "but it has no run-addressable output layout and the prediction-run path resolver "
+            "is not implemented. Pass path or export_id instead."
         )
     else:
         resolved_export_id = find_latest_annotation_export_id(workspace=workspace, task=task)
