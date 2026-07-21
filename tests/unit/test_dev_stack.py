@@ -22,7 +22,7 @@ EXPECTED_MAKE_TARGETS = {
     "docker-logs",
     "docker-status",
     "test-stack",
-    "test",
+    "test-unit",
     "test-integration",
     "test-all",
 }
