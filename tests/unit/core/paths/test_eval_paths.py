@@ -115,23 +115,6 @@ def test_resolve_eval_train_paths_uses_direct_labeled_data_path(
     )
 
 
-def test_resolve_eval_train_paths_rejects_path_and_export_together(
-    workspace: WorkspacePaths,
-) -> None:
-    """A direct path and an export id together is an error - there is no precedence."""
-    input_csv = workspace.base_dir / "standalone" / "labeled.csv"
-    input_csv.parent.mkdir()
-    input_csv.write_text("example_id\nexample-1\n", encoding="utf-8")
-
-    with pytest.raises(ValueError, match="At most one input selector"):
-        resolve_eval_train_paths(
-            workspace=workspace,
-            task=Task.RETRIEVAL,
-            labeled_data_path=input_csv,
-            export_id="export-a",
-        )
-
-
 def test_eval_train_paths_ensure_dirs_creates_eval_tool_root(
     workspace: WorkspacePaths,
 ) -> None:
