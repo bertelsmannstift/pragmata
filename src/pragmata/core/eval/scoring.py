@@ -72,6 +72,9 @@ def build_score_report(
     alpha = 1.0 - ci
 
     def bootstrap(values: list[float]) -> MetricScore:
+        # The same seed is reused for every metric's bootstrap. Each marginal CI stays
+        # valid (given large enough n_resamples) and we never use the joint distribution
+        # across metrics, so the shared seed is harmless. Flagged here in case that changes.
         return _bootstrap_metric(values, alpha=alpha, n_resamples=n_resamples, seed=seed)
 
     def wilson(values: list[float]) -> MetricScore:
