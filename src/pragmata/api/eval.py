@@ -252,6 +252,8 @@ def score(
         The task-specific score report, also written to ``*_scores.json``.
 
     Raises:
+        ValueError: If more than one input selector (``path`` / ``export_id`` /
+            ``prediction_id``) is given.
         EvalInputSchemaError: If the input violates the score contract.
         FileNotFoundError: If the selected input CSV or annotation export is missing.
         NotImplementedError: If ``prediction_id`` is used before predict lands.
@@ -274,7 +276,7 @@ def score(
     workspace = WorkspacePaths.from_base_dir(settings.base_dir)
     score_paths = resolve_eval_score_paths(workspace=workspace, score_id=settings.score_id).ensure_dirs()
 
-    with error_log(score_paths.tool_root):
+    with error_log(score_paths.score_dir):
         resolved = resolve_eval_score_input(
             workspace=workspace,
             task=settings.task,
@@ -299,6 +301,8 @@ def score(
                 output_json = score_paths.grounding_scores_json
             case Task.GENERATION:
                 output_json = score_paths.generation_scores_json
+            case _:
+                raise ValueError(f"Unsupported eval task: {settings.task!r}")
         output_json.write_text(report.model_dump_json(indent=2), encoding="utf-8")
 
     return report
