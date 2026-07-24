@@ -8,8 +8,29 @@ authors =[
   { name = "Luis Fernando Ramírez Ruiz" },
 ]
 readme = "README.md"
-license = { file = "LICENSE.md" }
+license = "MIT"
+license-files = ["LICENSE.md"]
 requires-python = ">=3.12"
+keywords = [
+    "rag",
+    "retrieval-augmented generation",
+    "evaluation",
+    "query generation",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
 
 dependencies = [
     "typer>=0.9,<1.0",
@@ -21,6 +42,13 @@ dependencies = [
     "langchain-mistralai>=1.1,<2.0",
     "numpy>=2.3,<3.0",
 ]
+
+[project.urls]
+Homepage = "https://bertelsmannstift.github.io/pragmata/"
+Documentation = "https://bertelsmannstift.github.io/pragmata/docs/introduction"
+Repository = "https://github.com/bertelsmannstift/pragmata"
+Issues = "https://github.com/bertelsmannstift/pragmata/issues"
+"Release Notes" = "https://github.com/bertelsmannstift/pragmata/releases"
 
 [project.optional-dependencies]
 test = [
@@ -48,7 +76,7 @@ dev  = ["pragmata[test,lint,type,annotation,querygen,eval]"]
 pragmata = "pragmata.cli.app:app"
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [tool.pytest.ini_options]
