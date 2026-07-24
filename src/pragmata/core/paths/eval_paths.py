@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Self
 
-from pragmata.core.paths.annotation_paths import resolve_export_paths
+from pragmata.core.paths.annotation_paths import AnnotationExportPaths, resolve_export_paths
 from pragmata.core.paths.paths import WorkspacePaths
 from pragmata.core.schemas.annotation_export import AnnotationExportMeta
 from pragmata.core.schemas.annotation_task import Task
@@ -58,6 +58,19 @@ class EvalPredictPaths:
         return self
 
 
+def _task_annotation_csv(export_paths: AnnotationExportPaths, task: Task) -> Path:
+    """Select the per-task annotation CSV from a resolved annotation export."""
+    match task:
+        case Task.RETRIEVAL:
+            return export_paths.retrieval_annotation_csv
+        case Task.GROUNDING:
+            return export_paths.grounding_annotation_csv
+        case Task.GENERATION:
+            return export_paths.generation_annotation_csv
+        case _:
+            raise ValueError(f"Unsupported eval task: {task!r}")
+
+
 def find_latest_annotation_export_id(
     *,
     workspace: WorkspacePaths,
@@ -82,13 +95,7 @@ def find_latest_annotation_export_id(
             export_id=meta.export_id,
         )
 
-        match task:
-            case Task.RETRIEVAL:
-                task_csv = export_paths.retrieval_annotation_csv
-            case Task.GROUNDING:
-                task_csv = export_paths.grounding_annotation_csv
-            case Task.GENERATION:
-                task_csv = export_paths.generation_annotation_csv
+        task_csv = _task_annotation_csv(export_paths, task)
 
         if not task_csv.is_file():
             continue
@@ -179,13 +186,7 @@ def resolve_eval_train_paths(
             f"Expected annotation_export.meta.json at {export_paths.export_meta_json}."
         )
 
-    match task:
-        case Task.RETRIEVAL:
-            training_input_csv = export_paths.retrieval_annotation_csv
-        case Task.GROUNDING:
-            training_input_csv = export_paths.grounding_annotation_csv
-        case Task.GENERATION:
-            training_input_csv = export_paths.generation_annotation_csv
+    training_input_csv = _task_annotation_csv(export_paths, task)
 
     if not training_input_csv.is_file():
         raise FileNotFoundError(
@@ -471,13 +472,7 @@ def resolve_eval_score_input(
             f"Expected annotation_export.meta.json at {export_paths.export_meta_json}."
         )
 
-    match task:
-        case Task.RETRIEVAL:
-            input_csv = export_paths.retrieval_annotation_csv
-        case Task.GROUNDING:
-            input_csv = export_paths.grounding_annotation_csv
-        case Task.GENERATION:
-            input_csv = export_paths.generation_annotation_csv
+    input_csv = _task_annotation_csv(export_paths, task)
 
     if not input_csv.is_file():
         raise FileNotFoundError(
