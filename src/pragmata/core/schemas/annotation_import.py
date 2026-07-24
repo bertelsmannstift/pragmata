@@ -78,6 +78,8 @@ class PartitionManifestEntry(BaseModel):
         import_id: Identifier of the import call that produced this assignment.
         calibration_fraction_at_import: Per-task fraction in force at that
             import call.
+        calibration_max_items_at_import: Per-task absolute cap in force at
+            that import call (``None`` = uncapped).
         assigned_at: When the assignment was made.
     """
 
@@ -87,6 +89,7 @@ class PartitionManifestEntry(BaseModel):
     retrieval_chunk_calibration: dict[str, bool] = Field(default_factory=dict)
     import_id: NonEmptyStr
     calibration_fraction_at_import: dict[Task, Annotated[float, Field(ge=0.0, le=1.0)]]
+    calibration_max_items_at_import: dict[Task, Annotated[int, Field(ge=1)] | None] = Field(default_factory=dict)
     assigned_at: datetime
 
 

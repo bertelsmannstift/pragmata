@@ -420,6 +420,55 @@ class TestCalibrationFractionInheritance:
         assert s.resolved_task("g", Task.GROUNDING).calibration_fraction == 0.1
 
 
+class TestCalibrationMaxRecordsInheritance:
+    """``calibration_max_items`` is inheritable across deployment / workspace / task."""
+
+    def test_deployment_default_is_uncapped(self):
+        s = AnnotationSettings(
+            workspaces={"r": WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings()})},
+        )
+        assert s.resolved_task("r", Task.RETRIEVAL).calibration_max_items is None
+
+    def test_deployment_cap_flows_to_task(self):
+        s = AnnotationSettings(
+            calibration_max_items=200,
+            workspaces={"r": WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings()})},
+        )
+        assert s.resolved_task("r", Task.RETRIEVAL).calibration_max_items == 200
+
+    def test_workspace_cap_overrides_deployment(self):
+        s = AnnotationSettings(
+            calibration_max_items=200,
+            workspaces={
+                "r": WorkspaceSettings(
+                    calibration_max_items=50,
+                    tasks={Task.RETRIEVAL: TaskSettings()},
+                ),
+            },
+        )
+        assert s.resolved_task("r", Task.RETRIEVAL).calibration_max_items == 50
+
+    def test_task_cap_overrides_workspace_and_deployment(self):
+        s = AnnotationSettings(
+            calibration_max_items=200,
+            workspaces={
+                "r": WorkspaceSettings(
+                    calibration_max_items=100,
+                    tasks={Task.RETRIEVAL: TaskSettings(calibration_max_items=20)},
+                ),
+            },
+        )
+        assert s.resolved_task("r", Task.RETRIEVAL).calibration_max_items == 20
+
+    def test_zero_cap_rejected(self):
+        with pytest.raises(ValidationError):
+            AnnotationSettings(calibration_max_items=0)
+
+    def test_negative_cap_rejected(self):
+        with pytest.raises(ValidationError):
+            AnnotationSettings(calibration_max_items=-1)
+
+
 class TestPerTaskTopologyValidator:
     """``_check_calibration_topology`` walks per-(workspace, task) using resolved values."""
 
