@@ -703,4 +703,5 @@ class TestPredictLabels:
         assert report.source.kind == "model_prediction"
         assert report.source.ref == run_id
         assert report.source.resolved_path == f"eval/prediction_outputs/{run_id}/predictions.csv"
-        assert report.n_examples == len(pd.read_csv(unlabeled_data_path))
+        # n_examples counts scoring units (queries), not chunk rows.
+        assert report.n_examples == pd.read_csv(unlabeled_data_path)["record_uuid"].nunique()
