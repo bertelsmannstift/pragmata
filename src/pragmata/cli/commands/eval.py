@@ -163,7 +163,7 @@ def score_command(
     typer.echo(f"\n{report.task.value} scores (n={report.n_examples}, {report.ci_level:.0%} CI):")
     for name, metric in report.metric_scores():
         if metric is None:
-            typer.echo(f"  {name}: n/a (no cited examples)")
+            typer.echo(f"  {name}: n/a (not computed)")
         else:
             typer.echo(
                 f"  {name}: {metric.point:.3f} "
