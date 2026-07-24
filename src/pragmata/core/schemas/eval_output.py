@@ -73,11 +73,9 @@ class EvalTrainMeta(BaseModel):
 class EvalPredictMeta(BaseModel):
     """Pragmata-owned metadata for a completed evaluator prediction run.
 
-    Persisted beside tlmtc's prediction artifacts so a prediction run is
-    discoverable and task-checkable when scored. ``run_id`` is the evaluator
-    training run id: tlmtc keys prediction output by the same ``run_id`` it
-    loads the evaluator from (``prediction_outputs/<run_id>/``), so a prediction
-    run is identified by which evaluator produced it.
+    ``run_id`` is the evaluator training run id: tlmtc keys prediction output by
+    the same ``run_id`` it loads the evaluator from, so a run is identified by
+    which evaluator produced it.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)

@@ -2,38 +2,22 @@
 
 from pathlib import Path
 
+from pydantic import BaseModel
+
 from pragmata.core.atomic_io import atomic_write_json
-from pragmata.core.schemas.eval_output import EvalPredictMeta, EvalTrainMeta
 
 
-def export_eval_train_meta(
-    meta: EvalTrainMeta,
-    path: Path,
-) -> None:
-    """Write Pragmata-owned evaluator training metadata to disk as JSON.
+def export_eval_meta(meta: BaseModel, path: Path) -> None:
+    """Write Pragmata-owned evaluator run metadata to disk as JSON.
+
+    Shared by train and predict runs (``EvalTrainMeta`` / ``EvalPredictMeta``);
+    the sidecar is written beside the run's tlmtc artifacts.
 
     Args:
-        meta: Validated evaluator training metadata to persist.
+        meta: Validated evaluator run metadata to persist.
         path: Destination path for the JSON sidecar.
     """
     if not path.parent.is_dir():
-        raise FileNotFoundError(f"Eval train metadata parent directory does not exist: {path.parent}")
-
-    atomic_write_json(meta.model_dump(mode="json"), path)
-
-
-def export_eval_predict_meta(
-    meta: EvalPredictMeta,
-    path: Path,
-) -> None:
-    """Write Pragmata-owned evaluator prediction metadata to disk as JSON.
-
-    Args:
-        meta: Validated evaluator prediction metadata to persist.
-        path: Destination path for the JSON sidecar, under the tlmtc
-            prediction-run directory.
-    """
-    if not path.parent.is_dir():
-        raise FileNotFoundError(f"Eval predict metadata parent directory does not exist: {path.parent}")
+        raise FileNotFoundError(f"Eval metadata parent directory does not exist: {path.parent}")
 
     atomic_write_json(meta.model_dump(mode="json"), path)

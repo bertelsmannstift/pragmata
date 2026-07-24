@@ -58,7 +58,7 @@ def test_train_evaluator_orchestrates_direct_labeled_input(
     monkeypatch.setattr(eval_api, "import_eval_train_frame", import_eval_train_frame)
     monkeypatch.setattr(eval_api, "build_tlmtc_frame", build_tlmtc_frame)
     monkeypatch.setattr(eval_api, "run_tlmtc_train", run_tlmtc_train)
-    monkeypatch.setattr(eval_api, "export_eval_train_meta", lambda **kwargs: calls.setdefault("export", kwargs))
+    monkeypatch.setattr(eval_api, "export_eval_meta", lambda **kwargs: calls.setdefault("export", kwargs))
 
     result = eval_api.train_evaluator(
         labeled_data_path=input_csv,
@@ -120,7 +120,7 @@ def test_train_evaluator_combines_config_and_explicit_overrides(
 
     monkeypatch.setattr(eval_api, "import_eval_train_frame", lambda *, path, task: pd.DataFrame({"path": [path]}))
     monkeypatch.setattr(eval_api, "build_tlmtc_frame", lambda frame, *, task, mode: tlmtc_frame)
-    monkeypatch.setattr(eval_api, "export_eval_train_meta", lambda **kwargs: None)
+    monkeypatch.setattr(eval_api, "export_eval_meta", lambda **kwargs: None)
 
     def run_tlmtc_train(
         **kwargs: Any,
@@ -196,7 +196,7 @@ def test_train_evaluator_resolves_annotation_export_for_selected_task(
     monkeypatch.setattr(eval_api, "import_eval_train_frame", lambda *, path, task: pd.DataFrame({"path": [path]}))
     monkeypatch.setattr(eval_api, "build_tlmtc_frame", lambda frame, *, task, mode: tlmtc_frame)
     monkeypatch.setattr(eval_api, "run_tlmtc_train", lambda **kwargs: expected_result)
-    monkeypatch.setattr(eval_api, "export_eval_train_meta", lambda **kwargs: export_call.update(kwargs))
+    monkeypatch.setattr(eval_api, "export_eval_meta", lambda **kwargs: export_call.update(kwargs))
 
     result = eval_api.train_evaluator(
         export_id="export-1",
@@ -273,7 +273,7 @@ def test_predict_labels_orchestrates_direct_unlabeled_input(
     monkeypatch.setattr(eval_api, "import_eval_predict_frame", import_eval_predict_frame)
     monkeypatch.setattr(eval_api, "build_tlmtc_frame", build_tlmtc_frame)
     monkeypatch.setattr(eval_api, "run_tlmtc_predict", run_tlmtc_predict)
-    monkeypatch.setattr(eval_api, "export_eval_predict_meta", lambda **kwargs: calls.setdefault("export", kwargs))
+    monkeypatch.setattr(eval_api, "export_eval_meta", lambda **kwargs: calls.setdefault("export", kwargs))
 
     result = eval_api.predict_labels(
         unlabeled_data_path=input_csv,
@@ -353,7 +353,7 @@ def test_predict_labels_combines_config_and_explicit_overrides(
     monkeypatch.setattr(eval_api, "import_eval_predict_frame", lambda *, path, task: pd.DataFrame({"path": [path]}))
     monkeypatch.setattr(eval_api, "build_tlmtc_frame", lambda frame, *, task, mode: tlmtc_frame)
     monkeypatch.setattr(eval_api, "run_tlmtc_predict", run_tlmtc_predict)
-    monkeypatch.setattr(eval_api, "export_eval_predict_meta", lambda **kwargs: None)
+    monkeypatch.setattr(eval_api, "export_eval_meta", lambda **kwargs: None)
 
     result = eval_api.predict_labels(
         unlabeled_data_path=override_input_csv,

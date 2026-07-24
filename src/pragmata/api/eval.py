@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from pragmata.api._error_log import error_log
-from pragmata.core.eval.export import export_eval_predict_meta, export_eval_train_meta
+from pragmata.core.eval.export import export_eval_meta
 from pragmata.core.eval.imports import (
     import_eval_predict_frame,
     import_eval_score_frame,
@@ -126,7 +126,7 @@ def train_evaluator(
         sequence_length=settings.sequence_length,
         train_kwargs=settings.train_kwargs,
     )
-    export_eval_train_meta(
+    export_eval_meta(
         meta=EvalTrainMeta(
             run_id=result.paths.run_id,
             task=settings.task,
@@ -211,7 +211,7 @@ def predict_labels(
         evaluator_run_id=resolved_evaluator_run_id,
         predict_kwargs=settings.predict_kwargs,
     )
-    export_eval_predict_meta(
+    export_eval_meta(
         meta=EvalPredictMeta(
             run_id=result.paths.run_id,
             task=settings.task,
@@ -256,8 +256,8 @@ def score(
         path: Direct path to the labeled CSV to score.
         export_id: Annotation export identifier; resolves to the task-specific
             exported CSV.
-        prediction_id: Pragmata prediction run identifier. Not yet supported -
-            prediction-output scoring lands with ``pragmata eval predict``.
+        prediction_id: Pragmata prediction run identifier (the evaluator run id
+            that produced it); scores that run's ``predictions.csv``.
         task: Annotation task to score (``"retrieval"``, ``"grounding"``, or
             ``"generation"``).
         n_resamples: Bootstrap iterations for the continuous metrics. Defaults to 1000.

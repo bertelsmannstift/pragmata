@@ -4,7 +4,7 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
-from pragmata.core.eval.export import export_eval_predict_meta, export_eval_train_meta
+from pragmata.core.eval.export import export_eval_meta
 from pragmata.core.schemas.annotation_task import Task
 from pragmata.core.schemas.eval_output import EvalPredictMeta, EvalTrainMeta
 
@@ -21,7 +21,7 @@ def test_export_eval_train_meta_serializes_metadata_json_values(
     )
     meta_path = tmp_path / "pragmata_train.meta.json"
 
-    export_eval_train_meta(meta=meta, path=meta_path)
+    export_eval_meta(meta=meta, path=meta_path)
 
     assert json.loads(meta_path.read_text(encoding="utf-8")) == {
         "run_id": "train-run-1",
@@ -43,7 +43,7 @@ def test_export_eval_predict_meta_serializes_metadata_json_values(
     )
     meta_path = tmp_path / "pragmata_predict.meta.json"
 
-    export_eval_predict_meta(meta=meta, path=meta_path)
+    export_eval_meta(meta=meta, path=meta_path)
 
     assert json.loads(meta_path.read_text(encoding="utf-8")) == {
         "run_id": "prediction-evaluator",
