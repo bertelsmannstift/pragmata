@@ -124,9 +124,9 @@ Lives in `api/eval.py` alongside `train_evaluator` (no separate `api/eval_score.
 def score(
     *, base_dir: str | Path | Unset = UNSET,
     score_id: str | None = None,               # OUTPUT identifier (see below)
-    labeled_input_path: str | Path | None = None,
-    export_id: str | None = None,
-    prediction_run_id: str | None = None,
+    path: str | Path | Unset = UNSET,
+    export_id: str | Unset = UNSET,
+    prediction_id: str | Unset = UNSET,
     task: Task,
     n_resamples: int = 1000, ci: float = 0.95, seed: int | None = None,
     config_path: str | Path | Unset = UNSET,
@@ -143,13 +143,13 @@ The input is selected by exactly one of three mutually-exclusive selectors:
 
 | Selector | Mode | Notes |
 |---|---|---|
-| `labeled_input_path` | direct labeled data | human-annotated or externally-prepared labeled records that score without going through prediction |
+| `path` | direct labeled data | human-annotated or externally-prepared labeled records that score without going through prediction |
 | `export_id` | annotation export | convenience selector; resolves to the task-specific CSV (mirrors `find_latest_annotation_export_id`) |
-| `prediction_run_id` | prediction output | labels produced by `pragmata eval predict`; a **pragmata** prediction run, even though the underlying output is tlmtc-managed |
+| `prediction_id` | prediction output | labels produced by `pragmata eval predict`; a **pragmata** prediction run, even though the underlying output is tlmtc-managed |
 
 `score_id` is an **output** identifier, not an input selector: it names where score artifacts are written (`eval/scores/<score_id>/`) and defaults to the generated value from `EvalScoreSettings`. `export_id` is never reused for output naming.
 
-`EvalScoreSettings` already carries `labeled_input_path`, `prediction_run_id`, and `score_id`; `export_id` needs adding. Precedence and fallback are an open decision (below); a `find_latest_prediction_run` resolver still needs writing in `eval_paths.py`.
+`EvalScoreSettings` carries `path`, `export_id`, `prediction_id`, and `score_id`. The selectors are mutually exclusive, with the latest annotation export as the no-selector fallback (resolved; see below). `prediction_id` is not yet wired - a `find_latest_prediction_run` resolver still needs writing in `eval_paths.py` (deferred, tracked in #303).
 
 ### CLI - `pragmata eval score`
 
@@ -157,7 +157,7 @@ Extend the existing `eval_app` Typer group with a `score` subcommand. The CLI is
 
 ```
 pragmata eval score --task retrieval \
-  [--labeled-input-path PATH | --export-id ID | --prediction-run-id ID] \
+  [--path PATH | --export-id ID | --prediction-id ID] \
   [--score-id ID] [--base-dir DIR] \
   [--n-resamples 1000] [--ci 0.95] [--seed N] [--config FILE]
 ```
@@ -189,6 +189,6 @@ Input-source selection and path resolution belong in `core/paths/eval_paths.py`,
 
 ### Open decisions
 
-1. **Input selection semantics.** Define which of `labeled_input_path` / `export_id` / `prediction_run_id` are mutually exclusive, which (if any) is required, and the precedence/fallback when more than one - or none - is supplied. Proposed: precedence `labeled_input_path` > `export_id` > `prediction_run_id`, with "latest prediction run" as the no-selector fallback (per the `EvalScoreSettings` docstring). Confirm.
+1. ~~**Input selection semantics.**~~ **Resolved.** `path` / `export_id` / `prediction_id` are mutually exclusive with no precedence - passing more than one raises `ValueError` (`_require_at_most_one_selector` in `eval_paths.py`). None is required; with no selector the latest annotation export is used. (The earlier proposal of a precedence order was dropped in favour of mutual exclusivity.)
 2. **Incomplete and degenerate scoring data.** Retrieval metrics assume complete ranked chunk labels per query. If some chunks are unlabeled we need a deliberate policy: fail with an informative message, skip affected queries, or compute a caveated fallback. Similarly, all-0/all-1 or otherwise degenerate labels can make some estimates uninformative and should be handled explicitly. Ideally the validation/guard logic is reusable between `eval train` and `eval score` where the constraints overlap.
-3. **`find_latest_prediction_run` resolver** to be added in `eval_paths.py`, mirroring `find_latest_annotation_export_id`.
+3. **`find_latest_prediction_run` resolver** to be added in `eval_paths.py`, mirroring `find_latest_annotation_export_id`. Deferred alongside `prediction_id` scoring - tracked in #303.
