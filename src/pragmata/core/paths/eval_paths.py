@@ -416,10 +416,13 @@ def resolve_eval_score_input(
 
     Direct paths and annotation exports are already Pragmata-shaped and score
     without further preparation. Scoring a prediction run is not yet supported:
-    ``pragmata eval predict`` has landed, but it has no run-addressable output
-    layout and the prediction-run path resolver (``find_latest_prediction_run``)
-    is not implemented, so ``prediction_id`` is deferred. The no-selector
-    fallback is the latest annotation export.
+    ``pragmata eval predict`` persists ``prediction_outputs/<evaluator_run_id>/
+    predictions.csv``, but there is no prediction-run resolver yet - no
+    ``find_latest_prediction_run`` (cf. ``find_latest_eval_train_run_id``) and no
+    resolver mapping a ``prediction_id`` to that output CSV. Prediction outputs
+    are keyed by evaluator run id rather than a distinct prediction-run id, so the
+    selector's identity is unsettled. ``prediction_id`` is therefore deferred. The
+    no-selector fallback is the latest annotation export.
 
     Args:
         workspace: Workspace path bundle.
@@ -437,7 +440,7 @@ def resolve_eval_score_input(
         ValueError: If more than one of ``path`` / ``export_id`` / ``prediction_id`` is given.
         FileNotFoundError: If the selected input CSV or annotation export is missing.
         NotImplementedError: If a prediction run is selected; prediction-output
-            scoring lands with ``pragmata eval predict``.
+            scoring awaits a prediction-run resolver (see above).
     """
     _require_at_most_one_selector(path=path, export_id=export_id, prediction_id=prediction_id)
 
@@ -458,9 +461,9 @@ def resolve_eval_score_input(
         resolved_export_id = export_id
     elif prediction_id is not None:
         raise NotImplementedError(
-            "Scoring a prediction run is not yet supported: `pragmata eval predict` has landed, "
-            "but it has no run-addressable output layout and the prediction-run path resolver "
-            "is not implemented. Pass path or export_id instead."
+            "Scoring a prediction run is not yet supported: `pragmata eval predict` persists "
+            "prediction_outputs/<evaluator_run_id>/predictions.csv, but there is no prediction-run "
+            "resolver mapping a prediction_id to that output CSV yet. Pass path or export_id instead."
         )
     else:
         resolved_export_id = find_latest_annotation_export_id(workspace=workspace, task=task)
