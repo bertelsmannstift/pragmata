@@ -48,7 +48,11 @@ def build_tlmtc_frame(
     if mode not in {"train", "predict"}:
         raise ValueError(f"Unsupported eval transform mode: {mode!r}.")
 
-    consolidated_frame = _consolidate_training_rows(frame, task=task) if mode == "train" else frame
+    if mode == "train":
+        frame = frame.astype({column: "int64" for column in LABEL_COLUMNS_BY_TASK[task]})
+        consolidated_frame = _consolidate_training_rows(frame, task=task)
+    else:
+        consolidated_frame = frame
 
     text_column, text_pair_column = TEXT_COLUMNS_BY_TASK[task]
     rename_map = {
