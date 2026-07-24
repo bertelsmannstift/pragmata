@@ -410,8 +410,8 @@ class TestScoreCommand:
         assert "retrieval scores" in strip_ansi(result.output)
         assert next((tmp_path / "eval" / "scores").glob("*/retrieval_scores.json")).is_file()
 
-    def test_prediction_id_exits_nonzero(self, tmp_path: Path) -> None:
-        # Prediction-run scoring is not yet supported; it must fail rather than silently no-op.
+    def test_missing_prediction_id_exits_nonzero(self, tmp_path: Path) -> None:
+        # A prediction id with no persisted run must fail rather than silently no-op.
         result = runner.invoke(
             eval_app, ["score", "--task", "retrieval", "--prediction-id", "p1", "--base-dir", str(tmp_path)]
         )

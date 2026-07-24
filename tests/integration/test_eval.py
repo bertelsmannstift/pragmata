@@ -434,6 +434,14 @@ def _assert_prediction_artifacts(
     assert probabilities[list(expected_label_columns)].ge(0).all().all()
     assert probabilities[list(expected_label_columns)].le(1).all().all()
 
+    predict_meta_path = expected_run_dir / "pragmata_predict.meta.json"
+    assert predict_meta_path.is_file()
+    predict_meta = json.loads(predict_meta_path.read_text(encoding="utf-8"))
+    assert predict_meta["run_id"] == run_id
+    assert predict_meta["task"] == "retrieval"
+    assert predict_meta["unlabeled_data_path"] == str(unlabeled_data_path.expanduser().resolve())
+    assert isinstance(predict_meta["created_at"], str)
+
 
 @pytest.fixture(scope="module")
 def trained_prediction_evaluator(
@@ -669,3 +677,30 @@ class TestPredictLabels:
             )
 
         assert not (tmp_path / "eval" / "prediction_outputs").exists()
+
+    def test_score_round_trip_from_prediction_run(
+        self,
+        trained_prediction_evaluator: tuple[Path, str],
+    ) -> None:
+        """A prediction run's output scores end-to-end via prediction_id (predict -> score)."""
+        base_dir, run_id = trained_prediction_evaluator
+        unlabeled_data_path = base_dir / "inputs" / "retrieval-predict-roundtrip.csv"
+        _write_retrieval_predict_csv(unlabeled_data_path, marker="roundtrip-predict")
+
+        _predict_labels(
+            base_dir=base_dir,
+            unlabeled_data_path=unlabeled_data_path,
+            evaluator_run_id=run_id,
+        )
+
+        report = eval.score(
+            base_dir=base_dir,
+            task=Task.RETRIEVAL,
+            prediction_id=run_id,
+        )
+
+        assert report.task == Task.RETRIEVAL
+        assert report.source.kind == "model_prediction"
+        assert report.source.ref == run_id
+        assert report.source.resolved_path == f"eval/prediction_outputs/{run_id}/predictions.csv"
+        assert report.n_examples == len(pd.read_csv(unlabeled_data_path))

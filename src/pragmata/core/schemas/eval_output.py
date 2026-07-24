@@ -70,6 +70,24 @@ class EvalTrainMeta(BaseModel):
     annotation_export_id: str | None = None
 
 
+class EvalPredictMeta(BaseModel):
+    """Pragmata-owned metadata for a completed evaluator prediction run.
+
+    Persisted beside tlmtc's prediction artifacts so a prediction run is
+    discoverable and task-checkable when scored. ``run_id`` is the evaluator
+    training run id: tlmtc keys prediction output by the same ``run_id`` it
+    loads the evaluator from (``prediction_outputs/<run_id>/``), so a prediction
+    run is identified by which evaluator produced it.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    run_id: str
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    task: Task
+    unlabeled_data_path: str | None = None
+
+
 class RetrievalScoreReport(BaseModel):
     """Schema for retrieval_scores.json."""
 

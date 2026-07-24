@@ -230,7 +230,7 @@ def test_predict_labels_orchestrates_direct_unlabeled_input(
     input_csv.write_text("placeholder\nvalue\n", encoding="utf-8")
     eval_frame = pd.DataFrame({"source": ["eval"]})
     tlmtc_frame = pd.DataFrame({"text": ["query"], "text_pair": ["chunk"]})
-    expected_result = object()
+    expected_result = SimpleNamespace(paths=SimpleNamespace(run_id="evaluator-1"))
     calls: dict[str, Any] = {}
 
     def resolve_eval_train_run_id(
@@ -273,6 +273,7 @@ def test_predict_labels_orchestrates_direct_unlabeled_input(
     monkeypatch.setattr(eval_api, "import_eval_predict_frame", import_eval_predict_frame)
     monkeypatch.setattr(eval_api, "build_tlmtc_frame", build_tlmtc_frame)
     monkeypatch.setattr(eval_api, "run_tlmtc_predict", run_tlmtc_predict)
+    monkeypatch.setattr(eval_api, "export_eval_predict_meta", lambda **kwargs: calls.setdefault("export", kwargs))
 
     result = eval_api.predict_labels(
         unlabeled_data_path=input_csv,
@@ -283,6 +284,10 @@ def test_predict_labels_orchestrates_direct_unlabeled_input(
     )
 
     assert result is expected_result
+    predict_meta = calls["export"]["meta"]
+    assert predict_meta.run_id == "evaluator-1"
+    assert predict_meta.task == Task.RETRIEVAL
+    assert predict_meta.unlabeled_data_path == str(input_csv.resolve())
     assert calls["select"] == {
         "workspace_base_dir": tmp_path.resolve(),
         "task": Task.RETRIEVAL,
@@ -322,7 +327,7 @@ def test_predict_labels_combines_config_and_explicit_overrides(
         encoding="utf-8",
     )
     tlmtc_frame = pd.DataFrame({"text": ["query"], "text_pair": ["answer"]})
-    expected_result = object()
+    expected_result = SimpleNamespace(paths=SimpleNamespace(run_id="latest-generation-evaluator"))
     calls: dict[str, Any] = {}
 
     def resolve_eval_train_run_id(
@@ -348,6 +353,7 @@ def test_predict_labels_combines_config_and_explicit_overrides(
     monkeypatch.setattr(eval_api, "import_eval_predict_frame", lambda *, path, task: pd.DataFrame({"path": [path]}))
     monkeypatch.setattr(eval_api, "build_tlmtc_frame", lambda frame, *, task, mode: tlmtc_frame)
     monkeypatch.setattr(eval_api, "run_tlmtc_predict", run_tlmtc_predict)
+    monkeypatch.setattr(eval_api, "export_eval_predict_meta", lambda **kwargs: None)
 
     result = eval_api.predict_labels(
         unlabeled_data_path=override_input_csv,

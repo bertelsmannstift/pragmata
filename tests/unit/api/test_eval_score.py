@@ -11,6 +11,7 @@ from pragmata.core.schemas.annotation_export import AnnotationExportMeta
 from pragmata.core.schemas.annotation_task import Task
 from pragmata.core.schemas.eval_input import EvalInputSchemaError
 from pragmata.core.schemas.eval_output import (
+    EvalPredictMeta,
     GenerationScoreReport,
     GroundingScoreReport,
     MetricScore,
@@ -126,6 +127,26 @@ def _write_retrieval_export(base_dir: Path, export_id: str) -> None:
         constraint_summary={},
     )
     (export_dir / "annotation_export.meta.json").write_text(meta.model_dump_json(), encoding="utf-8")
+
+
+def _write_retrieval_prediction_run(base_dir: Path, run_id: str) -> None:
+    """Write a tlmtc-shaped retrieval prediction run (predictions.csv + meta) under ``base_dir``.
+
+    Prediction artifacts are tlmtc-shaped: the task text columns arrive as
+    ``text``/``text_pair`` and are restored on import.
+    """
+    run_dir = base_dir / "eval" / "prediction_outputs" / run_id
+    rows = [
+        {
+            **{key: value for key, value in row.items() if key not in {"query", "chunk"}},
+            "text": row["query"],
+            "text_pair": row["chunk"],
+        }
+        for row in _retrieval_rows()
+    ]
+    _write(run_dir / "predictions.csv", rows)
+    meta = EvalPredictMeta(run_id=run_id, task=Task.RETRIEVAL, created_at=datetime(2026, 1, 1, tzinfo=UTC))
+    (run_dir / "pragmata_predict.meta.json").write_text(meta.model_dump_json(), encoding="utf-8")
 
 
 class TestScoreRetrieval:
@@ -280,9 +301,20 @@ class TestScoreInput:
         with pytest.raises(ValueError, match="At most one input selector"):
             score(base_dir=tmp_path, path=csv, export_id="ignored", task="retrieval", seed=1)
 
-    def test_prediction_id_not_supported(self, tmp_path: Path):
-        with pytest.raises(NotImplementedError, match="not yet supported"):
-            score(base_dir=tmp_path, prediction_id="predict-001", task="retrieval")
+    def test_scores_via_prediction_id(self, tmp_path: Path):
+        _write_retrieval_prediction_run(tmp_path, "run-1")
+
+        report = score(base_dir=tmp_path, prediction_id="run-1", task="retrieval", seed=1)
+
+        assert isinstance(report, RetrievalScoreReport)
+        assert report.n_examples == 2
+        assert report.source.kind == "model_prediction"
+        assert report.source.ref == "run-1"
+        assert report.source.resolved_path == str(Path("eval") / "prediction_outputs" / "run-1" / "predictions.csv")
+
+    def test_prediction_id_missing_run_errors(self, tmp_path: Path):
+        with pytest.raises(FileNotFoundError, match="Prediction run 'nope' metadata does not exist"):
+            score(base_dir=tmp_path, prediction_id="nope", task="retrieval")
 
 
 class TestScoreConsolidationAndGuard:

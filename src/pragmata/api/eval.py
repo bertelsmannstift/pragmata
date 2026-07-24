@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from pragmata.api._error_log import error_log
-from pragmata.core.eval.export import export_eval_train_meta
+from pragmata.core.eval.export import export_eval_predict_meta, export_eval_train_meta
 from pragmata.core.eval.imports import (
     import_eval_predict_frame,
     import_eval_score_frame,
@@ -15,6 +15,7 @@ from pragmata.core.eval.scoring import ScoreReport, build_score_report
 from pragmata.core.eval.tlmtc_adapters import run_tlmtc_predict, run_tlmtc_train
 from pragmata.core.eval.transforms import build_tlmtc_frame
 from pragmata.core.paths.eval_paths import (
+    resolve_eval_predict_meta_path,
     resolve_eval_predict_paths,
     resolve_eval_score_input,
     resolve_eval_score_paths,
@@ -24,7 +25,7 @@ from pragmata.core.paths.eval_paths import (
 )
 from pragmata.core.paths.paths import WorkspacePaths
 from pragmata.core.schemas.annotation_task import Task
-from pragmata.core.schemas.eval_output import EvalTrainMeta
+from pragmata.core.schemas.eval_output import EvalPredictMeta, EvalTrainMeta
 from pragmata.core.settings.eval_settings import (
     EvalPredictSettings,
     EvalScoreSettings,
@@ -167,7 +168,10 @@ def predict_labels(
     Returns:
         Result metadata for the completed tlmtc prediction run. Its ``paths``
         attribute contains the resolved prediction filesystem layout, including
-        the generated probabilities and predictions CSV artifacts.
+        the generated probabilities and predictions CSV artifacts. A
+        ``pragmata_predict.meta.json`` sidecar is written beside those artifacts
+        so the run can be discovered and scored (``pragmata eval score
+        --prediction-id``).
     """
     settings = EvalPredictSettings.resolve(
         config=load_config_file(config_path) if isinstance(config_path, (str, Path)) else None,
@@ -201,12 +205,25 @@ def predict_labels(
         mode="predict",
     )
 
-    return run_tlmtc_predict(
+    result = run_tlmtc_predict(
         unlabeled_data=tlmtc_frame,
         work_dir=predict_paths.tool_root,
         evaluator_run_id=resolved_evaluator_run_id,
         predict_kwargs=settings.predict_kwargs,
     )
+    export_eval_predict_meta(
+        meta=EvalPredictMeta(
+            run_id=result.paths.run_id,
+            task=settings.task,
+            unlabeled_data_path=str(predict_paths.prediction_input_csv),
+        ),
+        path=resolve_eval_predict_meta_path(
+            workspace=workspace,
+            run_id=result.paths.run_id,
+        ),
+    )
+
+    return result
 
 
 def score(
@@ -255,8 +272,8 @@ def score(
         ValueError: If more than one input selector (``path`` / ``export_id`` /
             ``prediction_id``) is given.
         EvalInputSchemaError: If the input violates the score contract.
-        FileNotFoundError: If the selected input CSV or annotation export is missing.
-        NotImplementedError: If ``prediction_id`` is used before predict lands.
+        FileNotFoundError: If the selected input CSV, annotation export, or
+            prediction run is missing.
     """
     settings = EvalScoreSettings.resolve(
         config=load_config_file(config_path) if isinstance(config_path, (str, Path)) else None,
