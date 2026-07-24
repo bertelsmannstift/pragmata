@@ -13,7 +13,7 @@ from pragmata.cli.parsing import (
     parse_user_specs,
 )
 
-annotation_app = typer.Typer(help="Annotation pipeline commands.")
+annotation_app = typer.Typer(help="Annotation pipeline commands.", no_args_is_help=True)
 
 _api_url_opt = typer.Option(None, "--api-url", help="Argilla server URL. Falls back to ARGILLA_API_URL env var.")
 _api_key_opt = typer.Option(None, "--api-key", help="Argilla API key. Falls back to ARGILLA_API_KEY env var.")

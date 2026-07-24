@@ -48,6 +48,19 @@ class TestTrainEvaluatorCommand:
         assert "Train a supervised evaluator model." in output
         assert "--train-kwargs" in output
 
+    def test_bare_invocation_shows_help(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("COLUMNS", "200")
+        result = runner.invoke(eval_app, [], color=False)
+        output = strip_ansi(result.output)
+
+        assert result.exit_code != 0
+        assert "Usage" in output
+        assert "train-evaluator" in output
+        assert "score" in output
+
     def test_help_available(
         self,
         monkeypatch: pytest.MonkeyPatch,

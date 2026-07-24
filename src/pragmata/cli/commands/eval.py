@@ -6,7 +6,7 @@ from pragmata import eval
 from pragmata.api import UNSET
 from pragmata.cli.parsing import parse_cli_value
 
-eval_app = typer.Typer(help="Evaluation commands.")
+eval_app = typer.Typer(help="Evaluation commands.", no_args_is_help=True)
 
 
 @eval_app.command("train-evaluator")
