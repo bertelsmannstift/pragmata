@@ -346,7 +346,7 @@ def test_build_tlmtc_frame_logs_training_duplicate_consolidation(
         build_tlmtc_frame(frame, task=Task.GENERATION, mode="train")
 
     assert caplog.messages == [
-        "Consolidated duplicate eval training rows for generation: input_rows=4 output_rows=1 "
+        "Consolidated duplicate eval rows by majority for generation: input_rows=4 output_rows=1 "
         "collapsed_rows=3 duplicate_units=1 key_columns=('record_uuid',)"
     ]
 
