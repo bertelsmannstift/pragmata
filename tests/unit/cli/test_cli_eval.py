@@ -254,6 +254,15 @@ class TestTrainEvaluatorCommand:
 class TestPredictLabelsCommand:
     """Tests for the eval predict-labels CLI command."""
 
+    def test_root_app_help_available(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("COLUMNS", "200")
+        result = runner.invoke(app, ["eval", "predict-labels", "--help"], color=False)
+        output = strip_ansi(result.output)
+
+        assert result.exit_code == 0
+        assert "Predict evaluation labels with a trained evaluator." in output
+        assert "--predict-kwargs" in output
+
     def test_help_available(
         self,
         monkeypatch: pytest.MonkeyPatch,
