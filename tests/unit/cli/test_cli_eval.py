@@ -26,11 +26,30 @@ class _TrainResult:
     paths = _Paths()
 
 
+class _PredictResult:
+    class _Paths:
+        run_id = "train-run-123"
+        prediction_run_dir = Path("workspace/eval/prediction_outputs/train-run-123")
+        probabilities_path = prediction_run_dir / "probabilities.csv"
+        predictions_path = prediction_run_dir / "predictions.csv"
+
+    paths = _Paths()
+
+
 def test_eval_command_registered() -> None:
     result = runner.invoke(app, ["--help"])
 
     assert result.exit_code == 0
     assert "eval" in result.output
+
+
+def test_eval_help_lists_commands() -> None:
+    result = runner.invoke(app, ["eval", "--help"])
+
+    assert result.exit_code == 0
+    assert "train-evaluator" in result.output
+    assert "predict-labels" in result.output
+    assert "score" in result.output
 
 
 class TestTrainEvaluatorCommand:
@@ -59,6 +78,7 @@ class TestTrainEvaluatorCommand:
         assert result.exit_code != 0
         assert "Usage" in output
         assert "train-evaluator" in output
+        assert "predict-labels" in output
         assert "score" in output
 
     def test_help_available(
@@ -229,6 +249,107 @@ class TestTrainEvaluatorCommand:
         assert "workspace/eval/train_outputs/train-run-123" in result.output
         assert "model_directory:" in result.output
         assert "workspace/eval/train_outputs/train-run-123/model" in result.output
+
+
+class TestPredictLabelsCommand:
+    """Tests for the eval predict-labels CLI command."""
+
+    def test_root_app_help_available(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("COLUMNS", "200")
+        result = runner.invoke(app, ["eval", "predict-labels", "--help"], color=False)
+        output = strip_ansi(result.output)
+
+        assert result.exit_code == 0
+        assert "Predict evaluation labels with a trained evaluator." in output
+        assert "--predict-kwargs" in output
+
+    def test_help_available(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("COLUMNS", "200")
+        result = runner.invoke(eval_app, ["predict-labels", "--help"], color=False)
+        output = strip_ansi(result.output)
+
+        assert result.exit_code == 0
+        assert "Predict evaluation labels with a trained evaluator." in output
+        assert "--unlabeled-data-path" in output
+        assert "--evaluator-run-id" in output
+        assert "--task" in output
+        assert "--base-dir" in output
+        assert "--config" in output
+        assert "--predict-kwargs" in output
+
+    def test_maps_omitted_options_to_unset(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        captured: dict[str, object] = {}
+
+        def fake_predict_labels(**kwargs: Any) -> _PredictResult:
+            captured.update(kwargs)
+            return _PredictResult()
+
+        monkeypatch.setattr("pragmata.eval.predict_labels", fake_predict_labels)
+
+        result = runner.invoke(eval_app, ["predict-labels"])
+
+        assert result.exit_code == 0
+        assert set(captured) == {
+            "unlabeled_data_path",
+            "evaluator_run_id",
+            "task",
+            "base_dir",
+            "config_path",
+            "predict_kwargs",
+        }
+        assert all(value is UNSET for value in captured.values())
+
+    def test_delegates_to_public_api_and_prints_summary(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        captured: dict[str, object] = {}
+
+        def fake_predict_labels(**kwargs: Any) -> _PredictResult:
+            captured.update(kwargs)
+            return _PredictResult()
+
+        monkeypatch.setattr("pragmata.eval.predict_labels", fake_predict_labels)
+
+        result = runner.invoke(
+            eval_app,
+            [
+                "predict-labels",
+                "--unlabeled-data-path",
+                "inputs/retrieval.csv",
+                "--evaluator-run-id",
+                "train-run-123",
+                "--task",
+                "retrieval",
+                "--base-dir",
+                "workspace",
+                "--config",
+                "eval.yml",
+                "--predict-kwargs",
+                '{"batch_size": 16, "use_cpu": true, "verbosity": "quiet"}',
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert captured == {
+            "unlabeled_data_path": "inputs/retrieval.csv",
+            "evaluator_run_id": "train-run-123",
+            "task": "retrieval",
+            "base_dir": "workspace",
+            "config_path": "eval.yml",
+            "predict_kwargs": {"batch_size": 16, "use_cpu": True, "verbosity": "quiet"},
+        }
+        assert "Evaluator prediction run complete." in result.output
+        assert "evaluator_run_id: train-run-123" in result.output
+        assert "prediction_directory: workspace/eval/prediction_outputs/train-run-123" in result.output
+        assert "probabilities: workspace/eval/prediction_outputs/train-run-123/probabilities.csv" in result.output
+        assert "predictions: workspace/eval/prediction_outputs/train-run-123/predictions.csv" in result.output
 
 
 def _fake_retrieval_report() -> RetrievalScoreReport:
