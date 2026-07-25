@@ -12,9 +12,11 @@ from pragmata.core.schemas.eval_output import (
     GroundingScoreReport,
     MetricScore,
     RetrievalScoreReport,
+    ScoreInputSource,
 )
 
 NOW = datetime(2026, 5, 28, 13, 30, tzinfo=UTC)
+SOURCE = ScoreInputSource(kind="direct_path", ref="data/labeled.csv", resolved_path="data/labeled.csv")
 
 
 def _metric(point: float = 0.5, *, method: str = "bootstrap", n: int = 5) -> dict[str, object]:
@@ -26,7 +28,7 @@ def _metric(point: float = 0.5, *, method: str = "bootstrap", n: int = 5) -> dic
 def valid_retrieval_report():
     """Valid retrieval score report fields."""
     return {
-        "annotation_export_id": "export-1",
+        "source": SOURCE,
         "created_at": NOW,
         "n_examples": 5,
         "top_k": 3,
@@ -44,7 +46,7 @@ def valid_retrieval_report():
 def valid_grounding_report():
     """Valid grounding score report fields."""
     return {
-        "annotation_export_id": "export-1",
+        "source": SOURCE,
         "created_at": NOW,
         "n_examples": 5,
         "ci_level": 0.95,
@@ -60,7 +62,7 @@ def valid_grounding_report():
 def valid_generation_report():
     """Valid generation score report fields."""
     return {
-        "annotation_export_id": "export-1",
+        "source": SOURCE,
         "created_at": NOW,
         "n_examples": 5,
         "ci_level": 0.95,
@@ -122,6 +124,28 @@ class TestMetricScore:
             score.point = 0.9  # type: ignore[misc]
 
 
+class TestScoreInputSource:
+    """Tests for the score-input provenance model."""
+
+    @pytest.mark.parametrize("kind", ["direct_path", "annotation_export", "model_prediction"])
+    def test_accepts_each_kind(self, kind: str) -> None:
+        source = ScoreInputSource(kind=kind, ref="x", resolved_path="eval/x.csv")
+        assert source.kind == kind
+
+    def test_rejects_unknown_kind(self) -> None:
+        with pytest.raises(ValidationError):
+            ScoreInputSource(kind="s3_bucket", ref="x", resolved_path="eval/x.csv")
+
+    def test_rejects_extra_fields(self) -> None:
+        with pytest.raises(ValidationError):
+            ScoreInputSource(kind="direct_path", ref="x", resolved_path="eval/x.csv", unexpected="v")
+
+    def test_is_frozen(self) -> None:
+        source = ScoreInputSource(kind="direct_path", ref="x", resolved_path="eval/x.csv")
+        with pytest.raises(ValidationError):
+            source.ref = "y"  # type: ignore[misc]
+
+
 def test_eval_train_meta_accepts_valid_payload() -> None:
     """EvalTrainMeta captures the Pragmata-owned run/task link."""
     meta = EvalTrainMeta(
@@ -165,7 +189,7 @@ def test_retrieval_report_constructs(valid_retrieval_report):
     assert report.top_k == 3
     assert report.ci_level == 0.95
     assert report.ndcg_at_k.point == 1.0
-    assert report.annotation_export_id == "export-1"
+    assert report.source == SOURCE
 
 
 def test_grounding_report_constructs(valid_grounding_report):
@@ -175,7 +199,7 @@ def test_grounding_report_constructs(valid_grounding_report):
     assert report.task == Task.GROUNDING
     assert report.grounding_presence_rate.point == 0.8
     assert report.conditional_fabrication_rate.n == 3
-    assert report.annotation_export_id == "export-1"
+    assert report.source == SOURCE
 
 
 def test_generation_report_constructs(valid_generation_report):
@@ -184,7 +208,7 @@ def test_generation_report_constructs(valid_generation_report):
 
     assert report.task == Task.GENERATION
     assert report.helpfulness_rate.point == 0.6
-    assert report.annotation_export_id == "export-1"
+    assert report.source == SOURCE
 
 
 @pytest.mark.parametrize(
@@ -212,14 +236,13 @@ def test_score_reports_reject_wrong_task(report_cls, fields_fixture, wrong_task,
         (GenerationScoreReport, "valid_generation_report"),
     ],
 )
-def test_annotation_export_id_is_optional(report_cls, fields_fixture, request):
-    """Score reports can be written without annotation-export provenance."""
+def test_source_is_required(report_cls, fields_fixture, request):
+    """A score report must record its input provenance; source is not optional."""
     fields = request.getfixturevalue(fields_fixture).copy()
-    fields.pop("annotation_export_id")
+    fields.pop("source")
 
-    report = report_cls(**fields)
-
-    assert report.annotation_export_id is None
+    with pytest.raises(ValidationError):
+        report_cls(**fields)
 
 
 def test_grounding_allows_undefined_conditional_fabrication_rate(valid_grounding_report):

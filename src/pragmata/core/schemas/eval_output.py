@@ -39,6 +39,26 @@ class MetricScore(BaseModel):
         return self
 
 
+class ScoreInputSource(BaseModel):
+    """Provenance of the labeled data a score report was computed from.
+
+    ``kind`` records the source category: ``direct_path`` (a path supplied
+    directly), ``annotation_export`` (resolved from a workspace annotation
+    export), or ``model_prediction`` (labels produced by ``pragmata eval
+    predict``). ``ref`` is the selector's value (the ``path``, ``export_id``, or
+    ``prediction_id``); ``resolved_path`` is the concrete CSV that was read,
+    recorded relative to the workspace (or absolute when the input lies outside
+    it). ``kind`` also drives ingestion: only ``model_prediction`` inputs are
+    tlmtc-shaped and need text-column restoration before validation.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: Literal["direct_path", "annotation_export", "model_prediction"]
+    ref: str
+    resolved_path: str
+
+
 class EvalTrainMeta(BaseModel):
     """Pragmata-owned metadata for a completed evaluator training run."""
 
@@ -56,7 +76,7 @@ class RetrievalScoreReport(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     task: Literal[Task.RETRIEVAL] = Task.RETRIEVAL
-    annotation_export_id: str | None = None
+    source: ScoreInputSource
     notes: str = ""
     created_at: datetime
     n_examples: PositiveInt
@@ -69,6 +89,17 @@ class RetrievalScoreReport(BaseModel):
     mean_reciprocal_rank_at_k: MetricScore
     ndcg_at_k: MetricScore
 
+    def metric_scores(self) -> list[tuple[str, MetricScore | None]]:
+        """The report's metrics in display order, each paired with its field name."""
+        return [
+            ("topical_precision_at_k", self.topical_precision_at_k),
+            ("sufficiency_hit_at_k", self.sufficiency_hit_at_k),
+            ("sufficiency_rate_at_k", self.sufficiency_rate_at_k),
+            ("misleading_context_rate_at_k", self.misleading_context_rate_at_k),
+            ("mean_reciprocal_rank_at_k", self.mean_reciprocal_rank_at_k),
+            ("ndcg_at_k", self.ndcg_at_k),
+        ]
+
 
 class GroundingScoreReport(BaseModel):
     """Schema for grounding_scores.json."""
@@ -76,7 +107,7 @@ class GroundingScoreReport(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     task: Literal[Task.GROUNDING] = Task.GROUNDING
-    annotation_export_id: str | None = None
+    source: ScoreInputSource
     notes: str = ""
     created_at: datetime
     n_examples: PositiveInt
@@ -87,6 +118,16 @@ class GroundingScoreReport(BaseModel):
     citation_presence_rate: MetricScore
     conditional_fabrication_rate: MetricScore | None = None
 
+    def metric_scores(self) -> list[tuple[str, MetricScore | None]]:
+        """The report's metrics in display order, each paired with its field name."""
+        return [
+            ("grounding_presence_rate", self.grounding_presence_rate),
+            ("unsupported_claim_rate", self.unsupported_claim_rate),
+            ("contradiction_rate", self.contradiction_rate),
+            ("citation_presence_rate", self.citation_presence_rate),
+            ("conditional_fabrication_rate", self.conditional_fabrication_rate),
+        ]
+
 
 class GenerationScoreReport(BaseModel):
     """Schema for generation_scores.json."""
@@ -94,7 +135,7 @@ class GenerationScoreReport(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     task: Literal[Task.GENERATION] = Task.GENERATION
-    annotation_export_id: str | None = None
+    source: ScoreInputSource
     notes: str = ""
     created_at: datetime
     n_examples: PositiveInt
@@ -104,3 +145,13 @@ class GenerationScoreReport(BaseModel):
     helpfulness_rate: MetricScore
     incompleteness_rate: MetricScore
     unsafe_content_rate: MetricScore
+
+    def metric_scores(self) -> list[tuple[str, MetricScore | None]]:
+        """The report's metrics in display order, each paired with its field name."""
+        return [
+            ("proper_action_rate", self.proper_action_rate),
+            ("on_topic_rate", self.on_topic_rate),
+            ("helpfulness_rate", self.helpfulness_rate),
+            ("incompleteness_rate", self.incompleteness_rate),
+            ("unsafe_content_rate", self.unsafe_content_rate),
+        ]

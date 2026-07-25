@@ -1,13 +1,15 @@
 """Integration tests for the calibration / production split against a live Argilla.
 
 Run with: pytest tests/integration/test_annotation_calibration.py -m "integration and annotation" -v
-Requires: make setup (Argilla stack running on localhost:6900)
+Requires: an Argilla stack. `make test-integration` stands up an ephemeral one and
+targets it via PRAGMATA_TEST_ARGILLA_URL / PRAGMATA_TEST_ARGILLA_API_KEY.
 """
 
 from pathlib import Path
 
 import argilla as rg
 import pytest
+import yaml
 
 from pragmata.api.annotation_import import import_records
 from pragmata.core.annotation.argilla_task_definitions import dataset_name
@@ -16,12 +18,13 @@ from pragmata.core.paths.annotation_paths import resolve_import_paths
 from pragmata.core.paths.paths import WorkspacePaths
 from pragmata.core.schemas.annotation_import import PartitionManifest
 from pragmata.core.schemas.annotation_task import Task
-from pragmata.core.settings.annotation_settings import AnnotationSettings, TaskSettings, WorkspaceSettings
+from pragmata.core.settings.annotation_settings import AnnotationSettings
+from tests.conftest import argilla_api_key, argilla_api_url
 
 pytestmark = [pytest.mark.integration, pytest.mark.annotation]
 
-_API_URL = "http://localhost:6900"
-_API_KEY = "argilla.apikey"
+_API_URL = argilla_api_url()
+_API_KEY = argilla_api_key()
 _DATASET_ID = "testcalibration"
 _CREDS: dict[str, str] = {"api_url": _API_URL, "api_key": _API_KEY}
 
@@ -47,23 +50,12 @@ def _manifest_path(base_dir: Path, dataset_id: str) -> Path:
     return resolve_import_paths(workspace=workspace, dataset_id=dataset_id).partition_manifest
 
 
-@pytest.fixture(scope="module")
-def client() -> rg.Argilla:
-    return rg.Argilla(api_url=_API_URL, api_key=_API_KEY)
-
-
 @pytest.fixture(autouse=True, scope="module")
 def clean_environment(client: rg.Argilla):
     teardown_resources(client, _SETTINGS)
     setup_workspaces(client, _SETTINGS)
     yield
     teardown_resources(client, _SETTINGS)
-
-
-@pytest.fixture()
-def base_dir(tmp_path: Path) -> Path:
-    """Per-test workspace so each test owns its partition manifest."""
-    return tmp_path
 
 
 # ---------------------------------------------------------------------------
@@ -255,20 +247,29 @@ class TestPerWorkspaceMinSubmitted:
         ``distribution.min_submitted`` must reflect the inherited value (4).
         """
         auto_id = "testcarveout"
-        carved_settings = AnnotationSettings(
-            dataset_id=auto_id,
-            production_min_submitted=1,
-            workspaces={
-                "retrieval": WorkspaceSettings(
-                    production_min_submitted=2,
-                    tasks={Task.RETRIEVAL: TaskSettings(production_min_submitted=4)},
-                ),
-                "grounding": WorkspaceSettings(tasks={Task.GROUNDING: TaskSettings()}),
-                "generation": WorkspaceSettings(tasks={Task.GENERATION: TaskSettings()}),
+        # Single source for the carve-out topology: deployment default 1, retrieval
+        # workspace 2, retrieval task 4. The same dict drives both setup/teardown
+        # (via resolve) and the lazy dataset creation inside import_records (via the
+        # YAML config) — datasets are created by import_records, not setup_workspaces,
+        # and a YAML config is the only user-facing channel for nested per-task
+        # overrides (import_records has no kwarg for them).
+        carveout = {
+            "production_min_submitted": 1,
+            "workspaces": {
+                "retrieval": {
+                    "production_min_submitted": 2,
+                    "tasks": {"retrieval": {"production_min_submitted": 4}},
+                },
+                "grounding": {"tasks": {"grounding": {}}},
+                "generation": {"tasks": {"generation": {}}},
             },
-        )
+        }
+        carved_settings = AnnotationSettings.resolve(config=carveout, overrides={"dataset_id": auto_id})
         teardown_resources(client, carved_settings)
         setup_workspaces(client, carved_settings)
+
+        config_path = base_dir / "carveout.yaml"
+        config_path.write_text(yaml.safe_dump(carveout), encoding="utf-8")
 
         try:
             records = [_make_raw(i) for i in range(3)]
@@ -276,6 +277,7 @@ class TestPerWorkspaceMinSubmitted:
                 records,
                 dataset_id=auto_id,
                 base_dir=base_dir,
+                config_path=config_path,
                 calibration_fraction=0.0,
                 **_CREDS,
             )

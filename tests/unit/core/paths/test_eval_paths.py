@@ -11,7 +11,9 @@ from pragmata.core.paths.eval_paths import (
     EvalTrainPaths,
     find_latest_annotation_export_id,
     find_latest_eval_train_run_id,
+    provenance_path,
     resolve_eval_predict_paths,
+    resolve_eval_score_input,
     resolve_eval_score_paths,
     resolve_eval_train_meta_path,
     resolve_eval_train_paths,
@@ -104,7 +106,6 @@ def test_resolve_eval_train_paths_uses_direct_labeled_data_path(
         workspace=workspace,
         task=Task.RETRIEVAL,
         labeled_data_path=input_csv,
-        export_id="ignored-export",
     )
 
     assert paths == EvalTrainPaths(
@@ -548,7 +549,6 @@ def test_resolve_eval_score_paths_returns_expected_bundle(
         retrieval_scores_json=expected_score_dir / "retrieval_scores.json",
         grounding_scores_json=expected_score_dir / "grounding_scores.json",
         generation_scores_json=expected_score_dir / "generation_scores.json",
-        scores_meta_json=expected_score_dir / "scores.meta.json",
     )
 
 
@@ -588,6 +588,116 @@ def test_score_artifact_paths_are_score_id_specific(
     assert first.retrieval_scores_json != second.retrieval_scores_json
     assert first.grounding_scores_json != second.grounding_scores_json
     assert first.generation_scores_json != second.generation_scores_json
-    assert first.scores_meta_json != second.scores_meta_json
 
     assert first.score_dir.parent == second.score_dir.parent == first.tool_root / "scores"
+
+
+def test_resolve_eval_score_input_uses_direct_labeled_input_path(
+    workspace: WorkspacePaths,
+    tmp_path: Path,
+) -> None:
+    """A direct labeled input path is used verbatim (resolved)."""
+    csv = tmp_path / "labeled.csv"
+    csv.write_text("example_id\nexample-1\n", encoding="utf-8")
+
+    resolved = resolve_eval_score_input(workspace=workspace, task=Task.RETRIEVAL, path=csv)
+
+    assert resolved.input_csv == csv.resolve()
+    assert resolved.source.kind == "direct_path"
+    assert resolved.source.ref == str(csv)
+
+
+def test_resolve_eval_score_input_rejects_missing_direct_path(
+    workspace: WorkspacePaths,
+    tmp_path: Path,
+) -> None:
+    """A direct labeled input path that does not exist fails fast."""
+    with pytest.raises(FileNotFoundError, match="Scoring input CSV does not exist"):
+        resolve_eval_score_input(workspace=workspace, task=Task.RETRIEVAL, path=tmp_path / "nope.csv")
+
+
+def test_resolve_eval_score_input_uses_explicit_export_id(
+    workspace: WorkspacePaths,
+) -> None:
+    """An explicit export id resolves to the requested task CSV."""
+    _write_annotation_export(
+        workspace=workspace,
+        export_id="export-a",
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+        tasks=[Task.GROUNDING],
+    )
+
+    resolved = resolve_eval_score_input(workspace=workspace, task=Task.GROUNDING, export_id="export-a")
+
+    assert resolved.input_csv == workspace.base_dir / "annotation" / "exports" / "export-a" / "grounding.csv"
+    assert resolved.source.kind == "annotation_export"
+    assert resolved.source.ref == "export-a"
+    assert resolved.source.resolved_path == "annotation/exports/export-a/grounding.csv"
+
+
+def test_resolve_eval_score_input_falls_back_to_latest_export(
+    workspace: WorkspacePaths,
+) -> None:
+    """With no selector, the latest valid annotation export is used (interim fallback)."""
+    _write_annotation_export(
+        workspace=workspace,
+        export_id="older",
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+        tasks=[Task.RETRIEVAL],
+    )
+    _write_annotation_export(
+        workspace=workspace,
+        export_id="newer",
+        created_at=datetime(2026, 6, 1, tzinfo=UTC),
+        tasks=[Task.RETRIEVAL],
+    )
+
+    resolved = resolve_eval_score_input(workspace=workspace, task=Task.RETRIEVAL)
+
+    assert resolved.input_csv == workspace.base_dir / "annotation" / "exports" / "newer" / "retrieval.csv"
+    assert resolved.source.kind == "annotation_export"
+    assert resolved.source.ref == "newer"
+
+
+def test_resolve_eval_score_input_prediction_run_not_supported(
+    workspace: WorkspacePaths,
+) -> None:
+    """A prediction run as the only selector is deferred until eval predict lands."""
+    with pytest.raises(NotImplementedError, match="prediction run is not yet supported"):
+        resolve_eval_score_input(workspace=workspace, task=Task.RETRIEVAL, prediction_id="run-1")
+
+
+def test_resolve_eval_score_input_rejects_path_and_export_together(
+    workspace: WorkspacePaths,
+    tmp_path: Path,
+) -> None:
+    """A direct path and an export id together is an error - there is no precedence."""
+    csv = tmp_path / "labeled.csv"
+    csv.write_text("example_id\nexample-1\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="path, export_id"):
+        resolve_eval_score_input(workspace=workspace, task=Task.RETRIEVAL, path=csv, export_id="export-a")
+
+
+def test_resolve_eval_score_input_rejects_missing_export_metadata(
+    workspace: WorkspacePaths,
+) -> None:
+    """Export selection requires export metadata."""
+    export_dir = workspace.base_dir / "annotation" / "exports" / "broken"
+    export_dir.mkdir(parents=True)
+    (export_dir / "retrieval.csv").write_text("example_id\nexample-1\n", encoding="utf-8")
+
+    with pytest.raises(FileNotFoundError, match="Annotation export metadata does not exist"):
+        resolve_eval_score_input(workspace=workspace, task=Task.RETRIEVAL, export_id="broken")
+
+
+def test_provenance_path_relativizes_inside_workspace(tmp_path: Path) -> None:
+    """An input under the workspace is recorded relative to it."""
+    csv = tmp_path / "eval" / "scores" / "in.csv"
+    assert provenance_path(input_csv=csv, base_dir=tmp_path) == "eval/scores/in.csv"
+
+
+def test_provenance_path_keeps_absolute_outside_workspace(tmp_path: Path) -> None:
+    """An input outside the workspace is recorded as its absolute path."""
+    outside = Path("/data/external/labeled.csv")
+    assert provenance_path(input_csv=outside, base_dir=tmp_path) == str(outside)

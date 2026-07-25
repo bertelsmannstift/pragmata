@@ -179,35 +179,35 @@ def test_eval_predict_settings_accepts_evaluator_run_id_and_predict_kwargs() -> 
     }
 
 
-def test_eval_score_settings_construction_with_labeled_input_path() -> None:
+def test_eval_score_settings_construction_with_path() -> None:
     """EvalScoreSettings accepts a direct labeled input path."""
     settings = EvalScoreSettings.model_validate(
         {
-            "labeled_input_path": "data/labeled.csv",
+            "path": "data/labeled.csv",
             "task": "retrieval",
         }
     )
 
     assert settings.base_dir == Path.cwd()
     assert settings.score_id
-    assert settings.labeled_input_path == Path("data/labeled.csv")
-    assert settings.prediction_run_id is None
+    assert settings.path == Path("data/labeled.csv")
+    assert settings.prediction_id is None
     assert settings.task == Task.RETRIEVAL
 
 
-def test_eval_score_settings_construction_with_prediction_run_id() -> None:
+def test_eval_score_settings_construction_with_prediction_id() -> None:
     """EvalScoreSettings accepts a prediction run selector."""
     settings = EvalScoreSettings.model_validate(
         {
-            "prediction_run_id": "prediction-run-001",
+            "prediction_id": "prediction-run-001",
             "task": "grounding",
         }
     )
 
     assert settings.base_dir == Path.cwd()
     assert settings.score_id
-    assert settings.labeled_input_path is None
-    assert settings.prediction_run_id == "prediction-run-001"
+    assert settings.path is None
+    assert settings.prediction_id == "prediction-run-001"
     assert settings.task == Task.GROUNDING
 
 
