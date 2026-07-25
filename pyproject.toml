@@ -14,8 +14,9 @@ requires-python = ">=3.12"
 keywords = [
     "rag",
     "retrieval-augmented generation",
-    "evaluation",
-    "query generation",
+    "rag evaluation",
+    "synthetic query generation",
+    "rag annotation",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
