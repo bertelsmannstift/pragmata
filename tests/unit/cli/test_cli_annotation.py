@@ -124,6 +124,19 @@ class TestStatusCommand:
         kwargs = mock_status.call_args.kwargs
         assert kwargs["api_url"] is UNSET
         assert kwargs["workspace"] is None
+        assert kwargs["tag_partial_panels"] is False
+
+    @patch("pragmata.annotation.report_status")
+    def test_status_tag_partial_panels_flag_and_echo(self, mock_status):
+        from pragmata.core.annotation.panel_status import TagResult
+
+        mock_status.return_value = self._stub_report().with_tag_result(
+            TagResult(n_tagged=5, n_cleared=2, n_already_tagged=1)
+        )
+        result = runner.invoke(app, ["annotation", "status", "--tag-partial-panels"])
+        assert result.exit_code == 0
+        assert mock_status.call_args.kwargs["tag_partial_panels"] is True
+        assert "tag-partial-panels: tagged=5 cleared=2 already_tagged=1" in result.output
 
 
 class TestIaaCommand:

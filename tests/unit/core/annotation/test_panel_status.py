@@ -1,11 +1,15 @@
 """Unit tests for live panel status (read-only, config-free)."""
 
 import logging
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from pragmata.core.annotation.panel_status import compute_panel_status, compute_task_progress
+from pragmata.core.annotation.panel_status import (
+    compute_panel_status,
+    compute_task_progress,
+    tag_partial_panels,
+)
 
 WS = "dom_retrieval"
 
@@ -17,10 +21,13 @@ def _record(
     chunk_id: str = "c1",
     n_retrieved_chunks: int | None = None,
     response_statuses: list[str] | None = None,
+    needs_completion: str | None = None,
 ) -> MagicMock:
     metadata: dict[str, object] = {"record_uuid": record_uuid, "chunk_id": chunk_id}
     if n_retrieved_chunks is not None:
         metadata["n_retrieved_chunks"] = n_retrieved_chunks
+    if needs_completion is not None:
+        metadata["needs_completion"] = needs_completion
     rec = MagicMock()
     rec.id = record_id
     rec.metadata = metadata
@@ -251,3 +258,107 @@ class TestComputeTaskProgress:
         pr = compute_task_progress(client)
         assert [r.task for r in pr.by_task] == ["grounding"]
         assert pr.grand.completed == 0
+
+
+class TestTagPartialPanels:
+    def test_tags_unresolved_chunks_of_partial_panel(self) -> None:
+        # K=3: one chunk submitted, two unstarted → partial → tag the two.
+        recs = [
+            _record(chunk_id="c1", response_statuses=["submitted"], record_id="r1"),
+            _record(chunk_id="c2", response_statuses=[], record_id="r2"),
+            _record(chunk_id="c3", response_statuses=[], record_id="r3"),
+        ]
+        ds = _dataset("retrieval_production", recs)
+        with patch("argilla.TermsMetadataProperty"):
+            result = tag_partial_panels(_client([ds]))
+        assert (result.n_tagged, result.n_cleared, result.n_already_tagged) == (2, 0, 0)
+        (logged,) = ds.records.log.call_args.args
+        assert {r.id for r in logged} == {"r2", "r3"}
+
+    def test_fully_unstarted_panel_not_tagged(self) -> None:
+        recs = [_record(chunk_id=f"c{i}", response_statuses=[], record_id=f"r{i}") for i in range(3)]
+        ds = _dataset("retrieval_production", recs)
+        with patch("argilla.TermsMetadataProperty"):
+            result = tag_partial_panels(_client([ds]))
+        assert result.n_tagged == 0
+        ds.records.log.assert_not_called()
+
+    def test_complete_panel_not_tagged(self) -> None:
+        recs = [_record(chunk_id=f"c{i}", response_statuses=["submitted"], record_id=f"r{i}") for i in range(3)]
+        ds = _dataset("retrieval_production", recs)
+        with patch("argilla.TermsMetadataProperty"):
+            result = tag_partial_panels(_client([ds]))
+        assert result.n_tagged == 0
+
+    def test_clears_stale_tag_on_non_partial_panel(self) -> None:
+        # Fully-unstarted panel whose chunk carries a stale needs_completion tag
+        # (e.g. from the old broad predicate) → cleared, never re-tagged.
+        recs = [
+            _record(chunk_id="c1", response_statuses=[], record_id="r1", needs_completion="true"),
+            _record(chunk_id="c2", response_statuses=[], record_id="r2"),
+        ]
+        ds = _dataset("retrieval_production", recs)
+        with patch("argilla.TermsMetadataProperty"):
+            result = tag_partial_panels(_client([ds]))
+        assert (result.n_tagged, result.n_cleared) == (0, 1)
+        (logged,) = ds.records.log.call_args.args
+        assert {r.id for r in logged} == {"r1"}
+        assert "needs_completion" not in logged[0].metadata
+
+    def test_already_tagged_is_idempotent(self) -> None:
+        recs = [
+            _record(chunk_id="c1", response_statuses=["submitted"], record_id="r1"),
+            _record(chunk_id="c2", response_statuses=[], record_id="r2", needs_completion="true"),
+        ]
+        ds = _dataset("retrieval_production", recs)
+        with patch("argilla.TermsMetadataProperty"):
+            result = tag_partial_panels(_client([ds]))
+        assert (result.n_tagged, result.n_cleared, result.n_already_tagged) == (0, 0, 1)
+        ds.records.log.assert_not_called()
+
+    def test_split_panel_across_prod_and_cal(self) -> None:
+        # Per-item calibration: the only annotated chunk is in cal; prod chunks
+        # unstarted. Panel is partial ACROSS datasets → tag the prod chunks.
+        prod = _dataset(
+            "retrieval_production",
+            [
+                _record(chunk_id="c2", response_statuses=[], record_id="p2"),
+                _record(chunk_id="c3", response_statuses=[], record_id="p3"),
+            ],
+        )
+        cal = _dataset(
+            "retrieval_calibration",
+            [_record(chunk_id="c1", response_statuses=["submitted"], record_id="cal1")],
+            min_submitted=3,
+        )
+        with patch("argilla.TermsMetadataProperty"):
+            result = tag_partial_panels(_client([prod, cal]))
+        assert result.n_tagged == 2
+        (logged,) = prod.records.log.call_args.args
+        assert {r.id for r in logged} == {"p2", "p3"}
+        cal.records.log.assert_not_called()
+
+    def test_writes_routed_per_workspace_when_names_collide(self) -> None:
+        d1 = _dataset(
+            "retrieval_production",
+            [
+                _record(record_uuid="uA", chunk_id="c1", response_statuses=["submitted"], record_id="a1"),
+                _record(record_uuid="uA", chunk_id="c2", response_statuses=[], record_id="a2"),
+            ],
+            workspace="dom1_retrieval",
+        )
+        d2 = _dataset(
+            "retrieval_production",
+            [
+                _record(record_uuid="uB", chunk_id="c1", response_statuses=["submitted"], record_id="b1"),
+                _record(record_uuid="uB", chunk_id="c2", response_statuses=[], record_id="b2"),
+            ],
+            workspace="dom2_retrieval",
+        )
+        with patch("argilla.TermsMetadataProperty"):
+            result = tag_partial_panels(_client([d1, d2]))
+        assert result.n_tagged == 2
+        (l1,) = d1.records.log.call_args.args
+        (l2,) = d2.records.log.call_args.args
+        assert {r.id for r in l1} == {"a2"}
+        assert {r.id for r in l2} == {"b2"}

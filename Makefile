@@ -1,9 +1,16 @@
 COMPOSE_FILE := deploy/annotation/docker-compose.dev.yml
 ENV_FILE     := deploy/annotation/.env
 ENV_EXAMPLE  := deploy/annotation/.env.dev.example
-TEST_PROJECT := pragmata-test
 
-.PHONY: docker-up docker-up-external-pg docker-up-external-es docker-up-external docker-down docker-down-clean docker-stop docker-logs docker-status ensure-env lint type-check test-stack test test-integration test-all ci
+# One throwaway stack for all test targets — an isolated Compose project on a
+# non-default host port so its destructive setup/teardown can never touch the
+# live stack (Compose project 'annotation') on :6900. The -p project scope
+# always wins over the shared compose file, so containers/volumes stay disjoint.
+# test-stack and test-integration/test-all share it (they never run at once).
+TEST_STACK_PROJECT := pragmata-test
+TEST_STACK_PORT    := 6901
+
+.PHONY: docker-up docker-up-external-pg docker-up-external-es docker-up-external docker-down docker-down-clean docker-stop docker-logs docker-status ensure-env lint type-check test-stack test-unit test-integration test-all ci
 
 # Profiles: all-bundled (default), external-pg (ext Postgres), external-es (ext ES), no profile (all external)
 ALL_PROFILES := --profile all-bundled --profile external-pg --profile external-es
@@ -62,22 +69,42 @@ type-check: ## Run mypy type checker
 	uv run mypy src/pragmata
 
 # ── Test suites ──────────────────────────────────────────────────────
+#
+#   test-unit         unit tests only — no stack, fast (default dev loop)
+#   test-integration  integration tests on a throwaway isolated stack
+#   test-all          every test (unit + integration + packaging) on that stack
+#   test-stack        stack health smoke test (isolated project + port)
+#
+# test-integration / test-all stand up an ephemeral Argilla on :$(TEST_STACK_PORT)
+# under an isolated Compose project, point the tests at it via
+# PRAGMATA_TEST_ARGILLA_URL, and always tear it down (volumes included). The live
+# stack on :6900 is never touched. Integration tests also
+# refuse to run unless PRAGMATA_TEST_ARGILLA_URL is set (tests/conftest.py), so a
+# bare `pytest -m integration` can't fall back to :6900 either.
 
-test: ## Run unit tests (default — excludes integration)
+test-unit: ## Run unit tests only — no stack (fast default loop)
 	python -m pytest
 
-test-stack: ensure-env ## Smoke-test the stack in an isolated Compose project
+test-integration: PYTEST_SELECT := -m integration
+test-all:         PYTEST_SELECT :=
+test-integration test-all: ensure-env
 	@set -e; \
-	trap 'docker compose -p $(TEST_PROJECT) -f $(COMPOSE_FILE) --env-file $(ENV_FILE) $(ALL_PROFILES) down -v >/dev/null' EXIT; \
-	docker compose -p $(TEST_PROJECT) -f $(COMPOSE_FILE) --env-file $(ENV_FILE) --profile all-bundled up -d --pull always --wait --remove-orphans; \
-	python3 -c "import urllib.request; r = urllib.request.urlopen(urllib.request.Request('http://localhost:6900/api/v1/me', headers={'X-Argilla-Api-Key': 'argilla.apikey'}), timeout=10); assert r.status == 200" \
-		|| { echo "Stack health check failed"; exit 1; }; \
-	echo "Stack smoke test passed (isolated project '$(TEST_PROJECT)' torn down, volumes cleaned up)"
+	export ARGILLA_PORT=$(TEST_STACK_PORT); \
+	trap 'docker compose -p $(TEST_STACK_PROJECT) -f $(COMPOSE_FILE) --env-file $(ENV_FILE) $(ALL_PROFILES) down -v >/dev/null 2>&1' EXIT; \
+	docker compose -p $(TEST_STACK_PROJECT) -f $(COMPOSE_FILE) --env-file $(ENV_FILE) --profile all-bundled up -d --pull always --wait --remove-orphans; \
+	API_KEY=$$(. $(ENV_FILE); echo $${ARGILLA_API_KEY:-argilla.apikey}); \
+	PRAGMATA_TEST_ARGILLA_URL=http://localhost:$(TEST_STACK_PORT) \
+	PRAGMATA_TEST_ARGILLA_API_KEY=$$API_KEY \
+		python -m pytest -o "addopts=" $(PYTEST_SELECT)
 
-test-integration: ## Run integration tests (requires running Argilla stack)
-	python -m pytest -o "addopts=" -m integration
+test-stack: ensure-env ## Smoke-test the stack in an isolated Compose project + port (never touches :6900)
+	@set -e; \
+	export ARGILLA_PORT=$(TEST_STACK_PORT); \
+	trap 'docker compose -p $(TEST_STACK_PROJECT) -f $(COMPOSE_FILE) --env-file $(ENV_FILE) $(ALL_PROFILES) down -v >/dev/null 2>&1' EXIT; \
+	docker compose -p $(TEST_STACK_PROJECT) -f $(COMPOSE_FILE) --env-file $(ENV_FILE) --profile all-bundled up -d --pull always --wait --remove-orphans; \
+	API_KEY=$$(. $(ENV_FILE); echo $${ARGILLA_API_KEY:-argilla.apikey}); \
+	python3 -c "import urllib.request; r = urllib.request.urlopen(urllib.request.Request('http://localhost:$(TEST_STACK_PORT)/api/v1/me', headers={'X-Argilla-Api-Key': '$$API_KEY'}), timeout=10); assert r.status == 200" \
+		|| { echo 'Stack health check failed'; exit 1; }; \
+	echo "Stack smoke test passed (isolated project '$(TEST_STACK_PROJECT)' on :$(TEST_STACK_PORT), torn down + volumes cleaned)"
 
-test-all: ## Run all tests
-	python -m pytest -o "addopts="
-
-ci: lint type-check test ## Run full CI locally (lint + type-check + unit tests)
+ci: lint type-check test-unit ## Run full CI locally (lint + type-check + unit tests)

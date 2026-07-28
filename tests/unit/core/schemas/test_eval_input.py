@@ -119,6 +119,47 @@ def generation_predict_frame() -> FrameFactory:
     return _factory
 
 
+@pytest.fixture
+def retrieval_score_frame() -> FrameFactory:
+    """Return a factory for valid retrieval scoring dataframes (two chunks, one query)."""
+
+    def _factory(**overrides: object) -> pd.DataFrame:
+        data: dict[str, object] = {
+            "query": ["a query", "a query"],
+            "chunk": ["first chunk", "second chunk"],
+            "topically_relevant": [1, 0],
+            "evidence_sufficient": [1, 0],
+            "misleading": [0, 1],
+            "record_uuid": ["rec-1", "rec-1"],
+            "chunk_id": ["chunk-1", "chunk-2"],
+            "chunk_rank": [1, 2],
+        }
+        data.update(overrides)
+        return pd.DataFrame(data)
+
+    return _factory
+
+
+@pytest.fixture
+def grounding_score_frame(grounding_train_frame: FrameFactory) -> FrameFactory:
+    """Valid grounding scoring frame: the training columns plus ``record_uuid``."""
+
+    def _factory(**overrides: object) -> pd.DataFrame:
+        return grounding_train_frame(**{"record_uuid": ["rec-1", "rec-2"], **overrides})
+
+    return _factory
+
+
+@pytest.fixture
+def generation_score_frame(generation_train_frame: FrameFactory) -> FrameFactory:
+    """Valid generation scoring frame: the training columns plus ``record_uuid``."""
+
+    def _factory(**overrides: object) -> pd.DataFrame:
+        return generation_train_frame(**{"record_uuid": ["rec-1", "rec-2"], **overrides})
+
+    return _factory
+
+
 class TestValidateEvalTrainFrame:
     """Tests for validating labeled eval training dataframes."""
 
@@ -275,12 +316,43 @@ class TestValidateEvalTrainFrame:
 class TestValidateEvalScoreFrame:
     """Tests for validating labeled eval scoring dataframes."""
 
-    def test_validates_labeled_score_frame(self, retrieval_train_frame: FrameFactory) -> None:
-        df = retrieval_train_frame(record_uuid=["a", "b"])
+    def test_validates_retrieval_score_frame(self, retrieval_score_frame: FrameFactory) -> None:
+        df = retrieval_score_frame()
 
         validated = validate_eval_score_frame(df, task=Task.RETRIEVAL)
 
         pd.testing.assert_frame_equal(validated, df)
+
+    def test_validates_grounding_score_frame(self, grounding_score_frame: FrameFactory) -> None:
+        df = grounding_score_frame()
+
+        validated = validate_eval_score_frame(df, task=Task.GROUNDING)
+
+        pd.testing.assert_frame_equal(validated, df)
+
+    def test_validates_generation_score_frame(self, generation_score_frame: FrameFactory) -> None:
+        df = generation_score_frame()
+
+        validated = validate_eval_score_frame(df, task=Task.GENERATION)
+
+        pd.testing.assert_frame_equal(validated, df)
+
+    def test_preserves_extra_columns(self, retrieval_score_frame: FrameFactory) -> None:
+        df = retrieval_score_frame(doc_id=["doc-a", "doc-b"])
+
+        validated = validate_eval_score_frame(df, task=Task.RETRIEVAL)
+
+        pd.testing.assert_frame_equal(validated, df)
+
+    def test_coerces_rank_to_integer(self, retrieval_score_frame: FrameFactory) -> None:
+        df = retrieval_score_frame(chunk_rank=[1.0, 2.0])
+
+        validated = validate_eval_score_frame(df, task=Task.RETRIEVAL)
+
+        pd.testing.assert_series_equal(
+            validated["chunk_rank"],
+            pd.Series([1, 2], name="chunk_rank", dtype="int64"),
+        )
 
     def test_rejects_non_dataframe_score_input(self) -> None:
         with pytest.raises(EvalInputSchemaError, match="Expected a pandas DataFrame"):
@@ -288,12 +360,70 @@ class TestValidateEvalScoreFrame:
 
     def test_rejects_invalid_labeled_score_frame_with_score_specific_error(
         self,
-        retrieval_train_frame: FrameFactory,
+        retrieval_score_frame: FrameFactory,
     ) -> None:
-        df = retrieval_train_frame(topically_relevant=[1, 2])
+        df = retrieval_score_frame(topically_relevant=[1, 2])
 
         with pytest.raises(EvalInputSchemaError, match="scoring data contract"):
             validate_eval_score_frame(df, task=Task.RETRIEVAL)
+
+    @pytest.mark.parametrize(
+        ("task", "fixture_name"),
+        [
+            (Task.RETRIEVAL, "retrieval_score_frame"),
+            (Task.GROUNDING, "grounding_score_frame"),
+            (Task.GENERATION, "generation_score_frame"),
+        ],
+    )
+    def test_requires_record_uuid(
+        self,
+        request: pytest.FixtureRequest,
+        task: Task,
+        fixture_name: str,
+    ) -> None:
+        factory: FrameFactory = request.getfixturevalue(fixture_name)
+        df = factory().drop(columns=["record_uuid"])
+
+        with pytest.raises(EvalInputSchemaError, match="scoring data contract"):
+            validate_eval_score_frame(df, task=task)
+
+    @pytest.mark.parametrize("missing", ["chunk_id", "chunk_rank"])
+    def test_retrieval_requires_chunk_identity_columns(
+        self,
+        retrieval_score_frame: FrameFactory,
+        missing: str,
+    ) -> None:
+        df = retrieval_score_frame().drop(columns=[missing])
+
+        with pytest.raises(EvalInputSchemaError, match="scoring data contract"):
+            validate_eval_score_frame(df, task=Task.RETRIEVAL)
+
+    @pytest.mark.parametrize("bad_rank", [[1, 0], [1, -1]])
+    def test_rejects_non_positive_rank(
+        self,
+        retrieval_score_frame: FrameFactory,
+        bad_rank: list[int],
+    ) -> None:
+        df = retrieval_score_frame(chunk_rank=bad_rank)
+
+        with pytest.raises(EvalInputSchemaError, match="scoring data contract"):
+            validate_eval_score_frame(df, task=Task.RETRIEVAL)
+
+    def test_train_and_score_schemas_are_distinct(
+        self,
+        retrieval_train_frame: FrameFactory,
+    ) -> None:
+        """One frame, two verdicts: training accepts it, scoring rejects it.
+
+        This pins the design intent that scoring's structural metadata
+        (``record_uuid`` here) does not leak back into the training contract.
+        """
+        df = retrieval_train_frame()
+        assert "record_uuid" not in df.columns
+
+        validate_eval_train_frame(df, task=Task.RETRIEVAL)  # training accepts
+        with pytest.raises(EvalInputSchemaError, match="scoring data contract"):
+            validate_eval_score_frame(df, task=Task.RETRIEVAL)  # scoring rejects
 
 
 class TestValidateEvalPredictFrame:

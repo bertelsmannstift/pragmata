@@ -1,7 +1,8 @@
 """Integration tests for annotation setup against a live Argilla server.
 
 Run with: pytest tests/integration/test_annotation_setup.py -m "integration and annotation" -v
-Requires: make setup (Argilla stack running on localhost:6900)
+Requires: an Argilla stack. `make test-integration` stands up an ephemeral one and
+targets it via PRAGMATA_TEST_ARGILLA_URL / PRAGMATA_TEST_ARGILLA_API_KEY.
 """
 
 import argilla as rg
@@ -18,18 +19,9 @@ from tests.integration._argilla_cleanup import purge_workspace_datasets
 
 pytestmark = [pytest.mark.integration, pytest.mark.annotation]
 
-_API_URL = "http://localhost:6900"
-_API_KEY = "argilla.apikey"
 _TEST_USER = "test_annotator_integration"
 
 _DEFAULT_SETTINGS = AnnotationSettings()
-
-
-@pytest.fixture(scope="module")
-def client(annotation_stack_status) -> rg.Argilla:
-    if not annotation_stack_status.ready:
-        pytest.skip(annotation_stack_status.skip_reason or "annotation stack not ready")
-    return rg.Argilla(api_url=_API_URL, api_key=_API_KEY)
 
 
 @pytest.fixture(autouse=True, scope="module")

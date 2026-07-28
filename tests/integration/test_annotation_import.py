@@ -1,8 +1,11 @@
 """Integration tests for annotation import against a live Argilla server.
 
 Run with: pytest tests/integration/test_annotation_import.py -m "integration and annotation" -v
-Requires: make setup (Argilla stack running on localhost:6900)
+Requires: an Argilla stack. `make test-integration` stands up an ephemeral one and
+targets it via PRAGMATA_TEST_ARGILLA_URL / PRAGMATA_TEST_ARGILLA_API_KEY.
 """
+
+from pathlib import Path
 
 import argilla as rg
 import pytest
@@ -10,12 +13,13 @@ import pytest
 from pragmata.api.annotation_import import ImportResult, import_records
 from pragmata.core.annotation.setup import setup_workspaces, teardown_resources
 from pragmata.core.settings.annotation_settings import AnnotationSettings
+from tests.conftest import argilla_api_key, argilla_api_url
 from tests.integration._argilla_cleanup import purge_workspace_datasets
 
 pytestmark = [pytest.mark.integration, pytest.mark.annotation]
 
-_API_URL = "http://localhost:6900"
-_API_KEY = "argilla.apikey"
+_API_URL = argilla_api_url()
+_API_KEY = argilla_api_key()
 _DATASET_ID = "testimport"
 _CREDS: dict[str, str] = {"api_url": _API_URL, "api_key": _API_KEY}
 
@@ -33,13 +37,6 @@ def _make_raw(n_chunks: int = 2, *, language: str | None = "de") -> dict:
         "context_set": "ctx-001",
         "language": language,
     }
-
-
-@pytest.fixture(scope="module")
-def client(annotation_stack_status) -> rg.Argilla:
-    if not annotation_stack_status.ready:
-        pytest.skip(annotation_stack_status.skip_reason or "annotation stack not ready")
-    return rg.Argilla(api_url=_API_URL, api_key=_API_KEY)
 
 
 @pytest.fixture(autouse=True, scope="module")
@@ -73,12 +70,12 @@ def sample_records() -> list[dict]:
 # ---------------------------------------------------------------------------
 
 
-def test_import_result_type(client: rg.Argilla, sample_records: list[dict]) -> None:
-    result = import_records(sample_records, dataset_id=_DATASET_ID, **_CREDS)
+def test_import_result_type(client: rg.Argilla, sample_records: list[dict], base_dir: Path) -> None:
+    result = import_records(sample_records, dataset_id=_DATASET_ID, base_dir=base_dir, **_CREDS)
     assert isinstance(result, ImportResult)
 
 
-def test_record_counts_per_dataset(client: rg.Argilla, sample_records: list[dict]) -> None:
+def test_record_counts_per_dataset(client: rg.Argilla, sample_records: list[dict], base_dir: Path) -> None:
     """Retrieval: sum(chunks), grounding: N, generation: N."""
     n_records = len(sample_records)
     n_retrieval = sum(len(r["chunks"]) for r in sample_records)  # 3 + 2 = 5
@@ -86,6 +83,7 @@ def test_record_counts_per_dataset(client: rg.Argilla, sample_records: list[dict
     result = import_records(
         sample_records,
         dataset_id=_DATASET_ID,
+        base_dir=base_dir,
         calibration_fraction=0.0,
         **_CREDS,
     )
@@ -102,9 +100,9 @@ def test_record_counts_per_dataset(client: rg.Argilla, sample_records: list[dict
     assert result.dataset_counts[gen_ds_name] == n_records
 
 
-def test_records_exist_in_argilla(client: rg.Argilla, sample_records: list[dict]) -> None:
+def test_records_exist_in_argilla(client: rg.Argilla, sample_records: list[dict], base_dir: Path) -> None:
     """After import, all three datasets contain records."""
-    import_records(sample_records, dataset_id=_DATASET_ID, calibration_fraction=0.0, **_CREDS)
+    import_records(sample_records, dataset_id=_DATASET_ID, base_dir=base_dir, calibration_fraction=0.0, **_CREDS)
 
     ret_ds = client.datasets(f"retrieval_production_{_DATASET_ID}", workspace="retrieval")
     gnd_ds = client.datasets(f"grounding_production_{_DATASET_ID}", workspace="grounding")
@@ -120,9 +118,9 @@ def test_records_exist_in_argilla(client: rg.Argilla, sample_records: list[dict]
     assert len(list(gen_ds.records)) > 0
 
 
-def test_record_uuid_linkage(client: rg.Argilla, sample_records: list[dict]) -> None:
+def test_record_uuid_linkage(client: rg.Argilla, sample_records: list[dict], base_dir: Path) -> None:
     """record_uuid metadata appears in all three datasets and intersects."""
-    import_records(sample_records, dataset_id=_DATASET_ID, calibration_fraction=0.0, **_CREDS)
+    import_records(sample_records, dataset_id=_DATASET_ID, base_dir=base_dir, calibration_fraction=0.0, **_CREDS)
 
     def _uuids(ds_name: str, ws_name: str) -> set[str]:
         ds = client.datasets(ds_name, workspace=ws_name)
@@ -137,15 +135,15 @@ def test_record_uuid_linkage(client: rg.Argilla, sample_records: list[dict]) -> 
     assert len(ret_uuids) == len(sample_records)
 
 
-def test_idempotent_reimport(client: rg.Argilla, sample_records: list[dict]) -> None:
+def test_idempotent_reimport(client: rg.Argilla, sample_records: list[dict], base_dir: Path) -> None:
     """Calling import_records twice with same data produces same record count.
 
     Idempotency relies on deterministic Record.id values derived from content hashes
     (derive_record_uuid). Argilla upserts on Record.id, so identical IDs on the second
     import overwrite existing records rather than creating duplicates.
     """
-    import_records(sample_records, dataset_id=_DATASET_ID, calibration_fraction=0.0, **_CREDS)
-    import_records(sample_records, dataset_id=_DATASET_ID, calibration_fraction=0.0, **_CREDS)
+    import_records(sample_records, dataset_id=_DATASET_ID, base_dir=base_dir, calibration_fraction=0.0, **_CREDS)
+    import_records(sample_records, dataset_id=_DATASET_ID, base_dir=base_dir, calibration_fraction=0.0, **_CREDS)
 
     ret_ds = client.datasets(f"retrieval_production_{_DATASET_ID}", workspace="retrieval")
     gnd_ds = client.datasets(f"grounding_production_{_DATASET_ID}", workspace="grounding")
@@ -159,11 +157,11 @@ def test_idempotent_reimport(client: rg.Argilla, sample_records: list[dict]) -> 
     assert len(list(gen_ds.records)) == n_records
 
 
-def test_invalid_records_skipped_with_errors(client: rg.Argilla) -> None:
+def test_invalid_records_skipped_with_errors(client: rg.Argilla, base_dir: Path) -> None:
     """Invalid dicts are reported as errors, not sent to Argilla."""
     raw = [{"query": "no answer or chunks"}, _make_raw(1)]
 
-    result = import_records(raw, dataset_id=_DATASET_ID, calibration_fraction=0.0, **_CREDS)
+    result = import_records(raw, dataset_id=_DATASET_ID, base_dir=base_dir, calibration_fraction=0.0, **_CREDS)
 
     assert result.total_records == 2
     assert len(result.errors) == 1
@@ -172,7 +170,7 @@ def test_invalid_records_skipped_with_errors(client: rg.Argilla) -> None:
     assert sum(result.dataset_counts.values()) > 0
 
 
-def test_dataset_auto_creation(client: rg.Argilla) -> None:
+def test_dataset_auto_creation(client: rg.Argilla, base_dir: Path) -> None:
     """Import auto-creates datasets when they don't exist."""
     auto_id = "autotest"
     auto_settings = AnnotationSettings(dataset_id=auto_id)
@@ -181,7 +179,7 @@ def test_dataset_auto_creation(client: rg.Argilla) -> None:
     teardown_resources(client, auto_settings)
 
     # Import without prior setup_datasets — datasets should be auto-created
-    result = import_records([_make_raw(1)], dataset_id=auto_id, calibration_fraction=0.0, **_CREDS)
+    result = import_records([_make_raw(1)], dataset_id=auto_id, base_dir=base_dir, calibration_fraction=0.0, **_CREDS)
 
     assert result.total_records == 1
     assert result.errors == []

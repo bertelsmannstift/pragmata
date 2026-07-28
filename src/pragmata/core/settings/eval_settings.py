@@ -42,10 +42,8 @@ class EvalTrainSettings(ResolveSettings):
         scale_learning_rate: Whether tlmtc should scale a proxy-tuned learning
             rate for the target checkpoint.
         sequence_length: Maximum tokenized sequence length passed to tlmtc.
-            Defaults to 1024 for paired RAG text with long-context EuroBERT
+            Defaults to 1024 for paired RAG text with long-context mmBERT
             checkpoints.
-        trust_remote_code: Whether Hugging Face loading may execute custom remote
-            code for the selected checkpoints.
         train_kwargs: Additional `train_tlmtc`-specific keyword arguments passed
             through to the tlmtc API. Use this for tlmtc-owned options.
     """
@@ -55,11 +53,10 @@ class EvalTrainSettings(ResolveSettings):
     export_id: str | None = None
     task: Task
     target_name: str | None = Field(default=None, min_length=1)
-    checkpoint: str = Field(default="EuroBERT/EuroBERT-610m", min_length=1)
-    proxy_checkpoint: str = Field(default="EuroBERT/EuroBERT-210m", min_length=1)
+    checkpoint: str = Field(default="jhu-clsp/mmBERT-base", min_length=1)
+    proxy_checkpoint: str = Field(default="jhu-clsp/mmBERT-small", min_length=1)
     scale_learning_rate: bool = True
     sequence_length: PositiveInt = 1024
-    trust_remote_code: bool = True
     train_kwargs: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
@@ -83,12 +80,13 @@ class EvalPredictSettings(ResolveSettings):
             predicted evaluation labels. Prediction input is intentionally explicit;
             it is not inferred from prior tool outputs.
         evaluator_run_id: Optional trained evaluator run identifier. This selects
-            the tlmtc training run to load. If omitted, tlmtc's default latest-run
-            lookup is used.
+            the tlmtc training run to load. If omitted, Pragmata selects the latest
+            evaluator compatible with the requested task.
         task: Annotation task to predict labels for. The task determines the
             Pragmata-owned task mapping, serialization, labels, and output contract.
         predict_kwargs: Additional `predict_tlmtc`-specific keyword arguments passed
-            through to the tlmtc API. Use this for tlmtc-owned options.
+            through to the tlmtc API. Use this for tlmtc-owned options such as batch
+            size, device selection, verbosity, and inference backend.
     """
 
     base_dir: Path = Field(default_factory=Path.cwd)
@@ -101,25 +99,37 @@ class EvalPredictSettings(ResolveSettings):
 class EvalScoreSettings(ResolveSettings):
     """Evaluation scoring settings.
 
+    Input selectors are mutually exclusive (enforced by
+    ``resolve_eval_score_input``): at most one of ``path`` / ``export_id`` /
+    ``prediction_id`` may be given, and more than one raises. With no selector,
+    the latest annotation export for the task is used (interim, until
+    ``eval predict`` and its output layout land).
+
     Attributes:
         base_dir: Workspace base directory. Pragmata resolves score artifacts under
             `<base_dir>/eval/scores/<score_id>/`.
-        score_id: Unique identifier for the score run. Used to name the
-            Pragmata-owned score artifact directory.
-        labeled_input_path: Optional direct path to labeled data to score. Use this
+        score_id: Unique identifier for the score run. Names the Pragmata-owned
+            score artifact directory.
+        path: Optional direct path to labeled data to score. Use this
             for standalone scoring, including human-labeled datasets or externally
-            prepared labeled records. If provided, it takes precedence over
-            `prediction_run_id`.
-        prediction_run_id: Optional Pragmata prediction run identifier. Use this to
-            score labels produced by `pragmata eval predict`. If omitted together
-            with `labeled_input_path`, the scoring workflow selects the latest
-            available prediction run.
+            prepared labeled records.
+        export_id: Optional annotation export identifier; resolves to the
+            task-specific exported CSV.
+        prediction_id: Optional Pragmata prediction run identifier for labels
+            produced by `pragmata eval predict`. Not yet supported.
         task: Annotation task to score. The task determines which task-specific
             label contract and score metrics are applied.
+        n_resamples: Bootstrap iterations for the continuous metrics' CIs.
+        ci: Confidence level for every reported interval (e.g. 0.95 for 95%).
+        seed: Optional RNG seed for reproducible bootstrap intervals.
     """
 
     base_dir: Path = Field(default_factory=Path.cwd)
     score_id: str = Field(default_factory=lambda: uuid4().hex)
-    labeled_input_path: Path | None = None
-    prediction_run_id: str | None = None
+    path: Path | None = None
+    export_id: str | None = None
+    prediction_id: str | None = None
     task: Task
+    n_resamples: PositiveInt = 1000
+    ci: float = Field(default=0.95, gt=0.0, lt=1.0)
+    seed: int | None = None

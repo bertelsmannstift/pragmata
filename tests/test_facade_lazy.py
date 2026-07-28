@@ -123,6 +123,7 @@ def test_dir_returns_public_surface() -> None:
         "Locale",
         "SetupResult",
         "StatusReport",
+        "TagResult",
         "Task",
         "UserSpec",
         "compute_iaa",

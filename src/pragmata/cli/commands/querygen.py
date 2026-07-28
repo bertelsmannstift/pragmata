@@ -6,7 +6,7 @@ from pragmata import querygen
 from pragmata.api import UNSET
 from pragmata.cli.parsing import parse_cli_value
 
-querygen_app = typer.Typer(help="Synthetic query generation commands.")
+querygen_app = typer.Typer(help="Synthetic query generation commands.", no_args_is_help=True)
 
 
 @querygen_app.command("gen-queries")

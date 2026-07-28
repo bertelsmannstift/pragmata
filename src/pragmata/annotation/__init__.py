@@ -21,6 +21,7 @@ __all__ = [
     "Locale",
     "SetupResult",
     "StatusReport",
+    "TagResult",
     "Task",
     "UserSpec",
     "compute_iaa",
@@ -39,6 +40,7 @@ _LAZY: dict[str, tuple[str, str]] = {
     "Locale": ("pragmata.core.schemas.annotation_task", "Locale"),
     "SetupResult": ("pragmata.core.annotation.setup", "SetupResult"),
     "StatusReport": ("pragmata.core.annotation.panel_status", "StatusReport"),
+    "TagResult": ("pragmata.core.annotation.panel_status", "TagResult"),
     "Task": ("pragmata.core.schemas.annotation_task", "Task"),
     "UserSpec": ("pragmata.core.settings.annotation_settings", "UserSpec"),
     "compute_iaa": ("pragmata.api.annotation_iaa", "compute_iaa"),
@@ -75,6 +77,7 @@ if TYPE_CHECKING:
     from pragmata.core.annotation.export_runner import ExportResult as ExportResult
     from pragmata.core.annotation.panel_status import HeadlineTotals as HeadlineTotals
     from pragmata.core.annotation.panel_status import StatusReport as StatusReport
+    from pragmata.core.annotation.panel_status import TagResult as TagResult
     from pragmata.core.annotation.setup import SetupResult as SetupResult
     from pragmata.core.schemas.annotation_task import Locale as Locale
     from pragmata.core.schemas.annotation_task import Task as Task
