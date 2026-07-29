@@ -3,7 +3,7 @@
 from datetime import UTC, datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, PositiveInt, model_validator
+from pydantic import BaseModel, ConfigDict, Field, NonNegativeInt, PositiveInt, model_validator
 
 from pragmata.core.schemas.annotation_task import Task
 
@@ -82,6 +82,10 @@ class RetrievalScoreReport(BaseModel):
     n_examples: PositiveInt
     top_k: PositiveInt
     ci_level: CiLevel
+    # Incomplete panels dropped by skip_incomplete_panels before scoring. Recorded on
+    # the artifact because skipping changes the population: n_examples then counts
+    # queries whose panels were completed, not the corpus.
+    n_panels_skipped: NonNegativeInt = 0
     topical_precision_at_k: MetricScore
     sufficiency_hit_at_k: MetricScore
     sufficiency_rate_at_k: MetricScore

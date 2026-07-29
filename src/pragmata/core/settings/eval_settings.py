@@ -137,4 +137,13 @@ class EvalScoreSettings(ResolveSettings):
     n_resamples: PositiveInt = 1000
     ci: float = Field(default=0.95, gt=0.0, lt=1.0)
     seed: int | None = None
+    skip_incomplete_panels: bool = False
     allow_incomplete_panels: bool = False
+
+    @model_validator(mode="after")
+    def _at_most_one_incomplete_panel_mode(self) -> "EvalScoreSettings":
+        if self.skip_incomplete_panels and self.allow_incomplete_panels:
+            raise ValueError(
+                "skip_incomplete_panels and allow_incomplete_panels are mutually exclusive; pass at most one."
+            )
+        return self

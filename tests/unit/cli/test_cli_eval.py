@@ -426,6 +426,7 @@ class TestScoreCommand:
             "--n-resamples",
             "--ci",
             "--seed",
+            "--skip-incomplete-panels",
             "--allow-incomplete-panels",
             "--config",
         ):
@@ -454,6 +455,7 @@ class TestScoreCommand:
             "n_resamples",
             "ci",
             "seed",
+            "skip_incomplete_panels",
             "allow_incomplete_panels",
             "config_path",
         }
@@ -506,6 +508,7 @@ class TestScoreCommand:
             "n_resamples": 500,
             "ci": 0.9,
             "seed": 7,
+            "skip_incomplete_panels": UNSET,
             "allow_incomplete_panels": UNSET,
             "config_path": "eval.yml",
         }
