@@ -248,8 +248,8 @@ def score(
         ci: Confidence level for every interval. Defaults to 0.95.
         seed: Optional RNG seed for reproducible bootstrap intervals.
         allow_incomplete_panels: Score retrieval panels whose labeled chunks do not
-            cover ``n_retrieved_chunks``. Defaults to False: a partial panel changes
-            the @K denominators and biases the rank-sensitive metrics upward.
+            cover ``n_retrieved_chunks``. Defaults to ``False`` because a partial panel
+            changes the @K denominators and biases the rank-sensitive metrics upward.
         config_path: Path to a YAML configuration file.
 
     Returns:

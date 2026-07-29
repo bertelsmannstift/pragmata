@@ -132,34 +132,31 @@ def _guard_complete_panels(frame: pd.DataFrame, *, task: Task, allow_incomplete:
     top-down, so the unjudged low-rank chunks can never lower the score.
 
     The check needs ``n_retrieved_chunks`` (the query's true K, carried by annotation
-    exports). Without that column the completeness of a panel is unknowable here, so
-    the frame passes with a warning rather than a hard failure - direct-path and
-    prediction inputs are not required to carry export metadata.
+    exports). Where no panel carries a known K the completeness of the input is
+    unknowable here, so the frame passes with a warning rather than a hard failure -
+    direct-path and prediction inputs are not required to carry export metadata.
 
     ``allow_incomplete=True`` (CLI: ``--allow-incomplete-panels``) skips the check for
     callers who accept the bias, e.g. to score everything for a coverage comparison.
     """
     if task != Task.RETRIEVAL or allow_incomplete:
         return
-    if "n_retrieved_chunks" not in frame.columns:
+    panels = _panels_with_known_k(frame)
+    if panels.empty:
         logger.warning(
-            "retrieval scoring input carries no n_retrieved_chunks column; panel "
-            "completeness cannot be verified. Metrics over partial panels are biased - "
+            "score input: retrieval panel completeness unverifiable (no panel carries "
+            "n_retrieved_chunks metadata) - metrics over partial panels are biased upward, "
             "see import_eval_score_frame."
         )
         return
-    per_query = frame.groupby("record_uuid").agg(
-        n_chunks=("chunk_id", "nunique"),
-        k=("n_retrieved_chunks", "max"),
-    )
-    short = per_query[per_query["n_chunks"] < per_query["k"]]
+    short = panels[panels["n_chunks"] < panels["k"]]
     if not short.empty:
         raise EvalInputSchemaError(
-            f"Scoring input for retrieval has {len(short)} panel(s) with fewer labeled "
-            f"chunks than n_retrieved_chunks (e.g. record_uuid {short.index[0]!r}: "
-            f"{int(short.iloc[0]['n_chunks'])} of {int(short.iloc[0]['k'])}). Partial "
-            f"panels bias every retrieval metric; filter them out, or pass "
-            f"allow_incomplete_panels=True (--allow-incomplete-panels) to score anyway."
+            f"Scoring input for {task.value} has {len(short)} panel(s) with fewer labeled chunks "
+            f"than n_retrieved_chunks (e.g. record_uuid {short.index[0]!r}: "
+            f"{int(short.iloc[0]['n_chunks'])} of {int(short.iloc[0]['k'])}); partial panels bias "
+            f"every retrieval metric, so filter them out or pass allow_incomplete_panels=True "
+            f"(--allow-incomplete-panels) to score anyway."
         )
 
 
@@ -170,3 +167,19 @@ def _reject_duplicates(frame: pd.DataFrame, keys: list[str], task: Task, unit: s
             f"Scoring input for {task.value} has {int(duplicated.sum())} row(s) with a duplicate "
             f"{unit} key {tuple(keys)}; each unit must be unique so metric denominators are not double-counted."
         )
+
+
+def _panels_with_known_k(frame: pd.DataFrame) -> pd.DataFrame:
+    """Count distinct labeled chunks and K per retrieval panel, keeping only panels with a known K.
+
+    ``n_retrieved_chunks`` is absent from direct-path and prediction inputs, and is the
+    ``-1`` sentinel on export records predating the metadata backfill; both mean "K
+    unknown here", so such panels cannot be checked for completeness.
+    """
+    if "n_retrieved_chunks" not in frame.columns:
+        return pd.DataFrame(columns=["n_chunks", "k"])
+    per_query = frame.groupby("record_uuid").agg(
+        n_chunks=("chunk_id", "nunique"),
+        k=("n_retrieved_chunks", "max"),
+    )
+    return per_query[per_query["k"] > 0]
