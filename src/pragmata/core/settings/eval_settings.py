@@ -122,6 +122,10 @@ class EvalScoreSettings(ResolveSettings):
         n_resamples: Bootstrap iterations for the continuous metrics' CIs.
         ci: Confidence level for every reported interval (e.g. 0.95 for 95%).
         seed: Optional RNG seed for reproducible bootstrap intervals.
+        allow_incomplete_panels: Score retrieval panels whose labeled chunks do not
+            cover ``n_retrieved_chunks``. Off by default because every retrieval
+            metric averages over a query's chunk set, so a partial panel changes the
+            @K denominators and biases the rank-sensitive metrics.
     """
 
     base_dir: Path = Field(default_factory=Path.cwd)
@@ -133,3 +137,4 @@ class EvalScoreSettings(ResolveSettings):
     n_resamples: PositiveInt = 1000
     ci: float = Field(default=0.95, gt=0.0, lt=1.0)
     seed: int | None = None
+    allow_incomplete_panels: bool = False

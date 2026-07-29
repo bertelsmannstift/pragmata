@@ -185,6 +185,12 @@ def score_command(
         "--seed",
         help="RNG seed for reproducible bootstrap intervals.",
     ),
+    allow_incomplete_panels: bool = typer.Option(
+        False,
+        "--allow-incomplete-panels",
+        help="Score retrieval panels whose labeled chunks do not cover the retrieval. "
+        "Off by default: partial panels bias every retrieval metric.",
+    ),
     config_path: str | None = typer.Option(
         None,
         "--config",
@@ -207,6 +213,7 @@ def score_command(
         n_resamples=UNSET if n_resamples is None else n_resamples,
         ci=UNSET if ci is None else ci,
         seed=UNSET if seed is None else seed,
+        allow_incomplete_panels=allow_incomplete_panels or UNSET,
         config_path=UNSET if config_path is None else config_path,
     )
 

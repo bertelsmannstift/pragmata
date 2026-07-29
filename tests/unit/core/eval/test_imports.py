@@ -279,3 +279,102 @@ class TestImportEvalScoreFrame:
         assert "text" not in frame.columns and "text_pair" not in frame.columns
         assert frame.loc[0, "query"] == "q1"
         assert frame.loc[0, "chunk"] == "c1"
+
+
+class TestGuardCompletePanels:
+    """Tests for the retrieval panel-completeness guard."""
+
+    _DIRECT = ScoreInputSource(kind="direct_path", ref="in.csv", resolved_path="in.csv")
+
+    _HEADER = (
+        "query,chunk,topically_relevant,evidence_sufficient,misleading,"
+        "record_uuid,chunk_id,chunk_rank,n_retrieved_chunks"
+    )
+
+    def _write(self, tmp_path: Path, rows: list[str]) -> Path:
+        path = tmp_path / "score.csv"
+        path.write_text("\n".join(rows) + "\n", encoding="utf-8")
+        return path
+
+    def test_rejects_partial_panel(self, tmp_path: Path) -> None:
+        # Two labeled chunks of a K=5 retrieval: the @K denominators would be wrong.
+        path = self._write(
+            tmp_path,
+            [
+                self._HEADER,
+                "q1,c1,1,1,0,r1,ch1,1,5",
+                "q1,c2,0,0,1,r1,ch2,2,5",
+            ],
+        )
+
+        with pytest.raises(EvalInputSchemaError, match="fewer labeled chunks"):
+            import_eval_score_frame(path=path, task=Task.RETRIEVAL, source=self._DIRECT)
+
+    def test_accepts_complete_panel(self, tmp_path: Path) -> None:
+        path = self._write(
+            tmp_path,
+            [
+                self._HEADER,
+                "q1,c1,1,1,0,r1,ch1,1,2",
+                "q1,c2,0,0,1,r1,ch2,2,2",
+            ],
+        )
+
+        frame = import_eval_score_frame(path=path, task=Task.RETRIEVAL, source=self._DIRECT)
+
+        assert len(frame) == 2
+
+    def test_allow_incomplete_panels_skips_the_guard(self, tmp_path: Path) -> None:
+        path = self._write(
+            tmp_path,
+            [
+                self._HEADER,
+                "q1,c1,1,1,0,r1,ch1,1,5",
+            ],
+        )
+
+        frame = import_eval_score_frame(
+            path=path, task=Task.RETRIEVAL, source=self._DIRECT, allow_incomplete_panels=True
+        )
+
+        assert len(frame) == 1
+
+    def test_missing_k_column_warns_instead_of_failing(self, tmp_path: Path, caplog) -> None:
+        # Direct-path inputs are not required to carry export metadata; completeness is
+        # unknowable without K, so the frame passes with a warning.
+        path = tmp_path / "score.csv"
+        path.write_text(
+            "\n".join(
+                [
+                    "query,chunk,topically_relevant,evidence_sufficient,misleading,"
+                    "record_uuid,chunk_id,chunk_rank",
+                    "q1,c1,1,1,0,r1,ch1,1",
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        with caplog.at_level("WARNING"):
+            frame = import_eval_score_frame(path=path, task=Task.RETRIEVAL, source=self._DIRECT)
+
+        assert len(frame) == 1
+        assert any("n_retrieved_chunks" in message for message in caplog.messages)
+
+    def test_guard_does_not_apply_to_grounding(self, tmp_path: Path) -> None:
+        path = tmp_path / "score.csv"
+        path.write_text(
+            "\n".join(
+                [
+                    "answer,context_set,support_present,unsupported_claim_present,"
+                    "contradicted_claim_present,source_cited,fabricated_source,record_uuid",
+                    "a1,ctx,1,0,0,1,0,r1",
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        frame = import_eval_score_frame(path=path, task=Task.GROUNDING, source=self._DIRECT)
+
+        assert len(frame) == 1

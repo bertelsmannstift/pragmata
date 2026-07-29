@@ -1,5 +1,6 @@
 """Dataframe imports for eval workflows."""
 
+import logging
 from pathlib import Path
 
 import pandas as pd
@@ -14,6 +15,8 @@ from pragmata.core.schemas.eval_input import (
     validate_eval_train_frame,
 )
 from pragmata.core.schemas.eval_output import ScoreInputSource
+
+logger = logging.getLogger(__name__)
 
 
 def import_eval_train_frame(
@@ -57,6 +60,7 @@ def import_eval_score_frame(
     path: Path,
     task: Task,
     source: ScoreInputSource,
+    allow_incomplete_panels: bool = False,
 ) -> pd.DataFrame:
     """Read, prepare, and validate a labeled eval scoring dataframe.
 
@@ -81,13 +85,17 @@ def import_eval_score_frame(
         task: Annotation task that determines the dataframe contract.
         source: Provenance of the input; ``source.kind`` decides whether the
             frame needs tlmtc text-column restoration.
+        allow_incomplete_panels: Permit retrieval panels whose labeled chunks do not
+            cover ``n_retrieved_chunks``. Off by default; see
+            ``_guard_complete_panels``.
 
     Returns:
         Validated dataframe with Pragmata task columns, one row per scoring unit.
 
     Raises:
-        EvalInputSchemaError: If the frame violates the score contract or retains a
-            duplicate scoring unit after majority consolidation.
+        EvalInputSchemaError: If the frame violates the score contract, retains a
+            duplicate scoring unit after majority consolidation, or contains an
+            incomplete retrieval panel without ``allow_incomplete_panels``.
     """
     frame = pd.read_csv(path, encoding="utf-8")
     if source.kind == "model_prediction":
@@ -95,6 +103,7 @@ def import_eval_score_frame(
     validated = validate_eval_score_frame(frame, task=task)
     consolidated = consolidate_labels_by_majority(validated, task=task)
     _guard_unique_scoring_units(consolidated, task=task)
+    _guard_complete_panels(consolidated, task=task, allow_incomplete=allow_incomplete_panels)
     return consolidated
 
 
@@ -111,6 +120,47 @@ def _guard_unique_scoring_units(frame: pd.DataFrame, *, task: Task) -> None:
         _reject_duplicates(frame, ["record_uuid", "chunk_rank"], task, "chunk rank")
     else:
         _reject_duplicates(frame, ["record_uuid"], task, "query")
+
+
+def _guard_complete_panels(frame: pd.DataFrame, *, task: Task, allow_incomplete: bool) -> None:
+    """Reject retrieval panels whose labeled chunks do not cover the retrieval.
+
+    Every retrieval metric averages over a query's chunk set, so a partial panel is
+    not a smaller sample of the same quantity - it changes the metric. Precision@K
+    over 2 labeled chunks of a K=5 retrieval has the wrong denominator, and the
+    rank-sensitive metrics (MRR, NDCG) are biased upward because annotators work
+    top-down, so the unjudged low-rank chunks can never lower the score.
+
+    The check needs ``n_retrieved_chunks`` (the query's true K, carried by annotation
+    exports). Without that column the completeness of a panel is unknowable here, so
+    the frame passes with a warning rather than a hard failure - direct-path and
+    prediction inputs are not required to carry export metadata.
+
+    ``allow_incomplete=True`` (CLI: ``--allow-incomplete-panels``) skips the check for
+    callers who accept the bias, e.g. to score everything for a coverage comparison.
+    """
+    if task != Task.RETRIEVAL or allow_incomplete:
+        return
+    if "n_retrieved_chunks" not in frame.columns:
+        logger.warning(
+            "retrieval scoring input carries no n_retrieved_chunks column; panel "
+            "completeness cannot be verified. Metrics over partial panels are biased - "
+            "see import_eval_score_frame."
+        )
+        return
+    per_query = frame.groupby("record_uuid").agg(
+        n_chunks=("chunk_id", "nunique"),
+        k=("n_retrieved_chunks", "max"),
+    )
+    short = per_query[per_query["n_chunks"] < per_query["k"]]
+    if not short.empty:
+        raise EvalInputSchemaError(
+            f"Scoring input for retrieval has {len(short)} panel(s) with fewer labeled "
+            f"chunks than n_retrieved_chunks (e.g. record_uuid {short.index[0]!r}: "
+            f"{int(short.iloc[0]['n_chunks'])} of {int(short.iloc[0]['k'])}). Partial "
+            f"panels bias every retrieval metric; filter them out, or pass "
+            f"allow_incomplete_panels=True (--allow-incomplete-panels) to score anyway."
+        )
 
 
 def _reject_duplicates(frame: pd.DataFrame, keys: list[str], task: Task, unit: str) -> None:

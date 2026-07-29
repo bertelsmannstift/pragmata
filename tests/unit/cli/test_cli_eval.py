@@ -426,6 +426,7 @@ class TestScoreCommand:
             "--n-resamples",
             "--ci",
             "--seed",
+            "--allow-incomplete-panels",
             "--config",
         ):
             assert option in output
@@ -453,6 +454,7 @@ class TestScoreCommand:
             "n_resamples",
             "ci",
             "seed",
+            "allow_incomplete_panels",
             "config_path",
         }
         assert all(value is UNSET for value in captured.values())
@@ -504,6 +506,7 @@ class TestScoreCommand:
             "n_resamples": 500,
             "ci": 0.9,
             "seed": 7,
+            "allow_incomplete_panels": UNSET,
             "config_path": "eval.yml",
         }
 

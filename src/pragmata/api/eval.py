@@ -220,6 +220,7 @@ def score(
     n_resamples: int | Unset = UNSET,
     ci: float | Unset = UNSET,
     seed: int | Unset = UNSET,
+    allow_incomplete_panels: bool | Unset = UNSET,
     config_path: str | Path | Unset = UNSET,
 ) -> ScoreReport:
     """Score labeled eval data into corpus metrics with confidence intervals.
@@ -246,6 +247,9 @@ def score(
         n_resamples: Bootstrap iterations for the continuous metrics. Defaults to 1000.
         ci: Confidence level for every interval. Defaults to 0.95.
         seed: Optional RNG seed for reproducible bootstrap intervals.
+        allow_incomplete_panels: Score retrieval panels whose labeled chunks do not
+            cover ``n_retrieved_chunks``. Defaults to False: a partial panel changes
+            the @K denominators and biases the rank-sensitive metrics upward.
         config_path: Path to a YAML configuration file.
 
     Returns:
@@ -271,6 +275,7 @@ def score(
             "n_resamples": n_resamples,
             "ci": ci,
             "seed": seed,
+            "allow_incomplete_panels": allow_incomplete_panels,
         },
     )
     workspace = WorkspacePaths.from_base_dir(settings.base_dir)
@@ -284,7 +289,12 @@ def score(
             export_id=settings.export_id,
             prediction_id=settings.prediction_id,
         )
-        frame = import_eval_score_frame(path=resolved.input_csv, task=settings.task, source=resolved.source)
+        frame = import_eval_score_frame(
+            path=resolved.input_csv,
+            task=settings.task,
+            source=resolved.source,
+            allow_incomplete_panels=settings.allow_incomplete_panels,
+        )
         report = build_score_report(
             frame,
             task=settings.task,
