@@ -9,7 +9,7 @@ from pragmata.core.paths.annotation_paths import AnnotationExportPaths, resolve_
 from pragmata.core.paths.paths import WorkspacePaths
 from pragmata.core.schemas.annotation_export import AnnotationExportMeta
 from pragmata.core.schemas.annotation_task import Task
-from pragmata.core.schemas.eval_output import EvalTrainMeta, ScoreInputSource
+from pragmata.core.schemas.eval_output import EvalPredictMeta, EvalTrainMeta, ScoreInputSource
 
 
 @dataclass(frozen=True, slots=True)
@@ -219,6 +219,25 @@ def resolve_eval_train_meta_path(
     return workspace.tool_root("eval") / "train_outputs" / run_id / "pragmata_train.meta.json"
 
 
+def resolve_eval_predict_meta_path(
+    *,
+    workspace: WorkspacePaths,
+    run_id: str,
+) -> Path:
+    """Build the Pragmata-owned metadata path for a completed eval prediction run.
+
+    Args:
+        workspace: Workspace path bundle.
+        run_id: tlmtc prediction run identifier (the evaluator run id, which
+            tlmtc also uses to name the prediction-output directory).
+
+    Returns:
+        Path to the Pragmata predict metadata sidecar under the tlmtc
+        prediction-run directory.
+    """
+    return workspace.tool_root("eval") / "prediction_outputs" / run_id / "pragmata_predict.meta.json"
+
+
 def resolve_eval_predict_paths(
     *,
     workspace: WorkspacePaths,
@@ -415,16 +434,19 @@ def resolve_eval_score_input(
     for the task is used, mirroring ``resolve_eval_train_paths``.
 
     Direct paths and annotation exports are already Pragmata-shaped and score
-    without further preparation. Scoring a prediction run (``prediction_id``) is
-    not currently supported and raises ``NotImplementedError`` (see #303). With no
-    selector, the latest annotation export is used.
+    without further preparation. A ``prediction_id`` selects a completed
+    prediction run's ``predictions.csv`` (tlmtc-shaped; the importer restores the
+    task text columns); the run's persisted ``pragmata_predict.meta.json`` is
+    checked to confirm it was produced for the requested task. With no selector,
+    the latest annotation export is used.
 
     Args:
         workspace: Workspace path bundle.
         task: Annotation task that determines which exported task CSV is required.
         path: Direct labeled CSV path.
         export_id: Annotation export identifier.
-        prediction_id: Pragmata prediction run identifier.
+        prediction_id: Pragmata prediction run identifier (the evaluator run id
+            that produced the run; see ``EvalPredictMeta``).
 
     Returns:
         The resolved input CSV and its ``ScoreInputSource`` provenance. The
@@ -432,9 +454,10 @@ def resolve_eval_score_input(
         how the input was selected without re-running selection.
 
     Raises:
-        ValueError: If more than one of ``path`` / ``export_id`` / ``prediction_id`` is given.
-        FileNotFoundError: If the selected input CSV or annotation export is missing.
-        NotImplementedError: If a prediction run is selected; not yet supported (see #303).
+        ValueError: If more than one of ``path`` / ``export_id`` / ``prediction_id``
+            is given, or if the prediction run was produced for a different task.
+        FileNotFoundError: If the selected input CSV, annotation export, or
+            prediction run is missing.
     """
     _require_at_most_one_selector(path=path, export_id=export_id, prediction_id=prediction_id)
 
@@ -451,12 +474,35 @@ def resolve_eval_score_input(
             ),
         )
 
+    if prediction_id is not None:
+        meta_path = resolve_eval_predict_meta_path(workspace=workspace, run_id=prediction_id)
+        if not meta_path.is_file():
+            raise FileNotFoundError(
+                f"Prediction run {prediction_id!r} metadata does not exist. "
+                f"Expected pragmata_predict.meta.json at {meta_path}."
+            )
+        meta = EvalPredictMeta.model_validate_json(meta_path.read_text(encoding="utf-8"))
+        if meta.task != task:
+            raise ValueError(
+                f"Prediction run {prediction_id!r} was produced for task={meta.task.value!r}, "
+                f"not requested task={task.value!r}."
+            )
+        predictions_csv = meta_path.parent / "predictions.csv"
+        if not predictions_csv.is_file():
+            raise FileNotFoundError(
+                f"Prediction run {prediction_id!r} does not contain predictions.csv. Expected {predictions_csv}."
+            )
+        return EvalScoreInput(
+            input_csv=predictions_csv,
+            source=ScoreInputSource(
+                kind="model_prediction",
+                ref=prediction_id,
+                resolved_path=provenance_path(input_csv=predictions_csv, base_dir=workspace.base_dir),
+            ),
+        )
+
     if export_id is not None:
         resolved_export_id = export_id
-    elif prediction_id is not None:
-        raise NotImplementedError(
-            "Scoring a prediction run is not yet supported (see issue #303). Pass path or export_id instead."
-        )
     else:
         resolved_export_id = find_latest_annotation_export_id(workspace=workspace, task=task)
 

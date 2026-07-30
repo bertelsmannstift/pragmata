@@ -12,6 +12,7 @@ from pragmata.core.paths.eval_paths import (
     find_latest_annotation_export_id,
     find_latest_eval_train_run_id,
     provenance_path,
+    resolve_eval_predict_meta_path,
     resolve_eval_predict_paths,
     resolve_eval_score_input,
     resolve_eval_score_paths,
@@ -22,7 +23,7 @@ from pragmata.core.paths.eval_paths import (
 from pragmata.core.paths.paths import WorkspacePaths
 from pragmata.core.schemas.annotation_export import AnnotationExportMeta
 from pragmata.core.schemas.annotation_task import Task
-from pragmata.core.schemas.eval_output import EvalTrainMeta
+from pragmata.core.schemas.eval_output import EvalPredictMeta, EvalTrainMeta
 
 
 @pytest.fixture()
@@ -92,6 +93,25 @@ def _write_eval_train_meta(
         task=task,
     )
     meta_path.write_text(meta.model_dump_json(), encoding="utf-8")
+
+
+def _write_prediction_run(
+    *,
+    workspace: WorkspacePaths,
+    run_id: str,
+    task: Task,
+    write_predictions_csv: bool = True,
+) -> Path:
+    """Write a minimal prediction run (meta sidecar + predictions.csv) for score tests."""
+    meta_path = resolve_eval_predict_meta_path(workspace=workspace, run_id=run_id)
+    meta_path.parent.mkdir(parents=True)
+    meta = EvalPredictMeta(run_id=run_id, task=task)
+    meta_path.write_text(meta.model_dump_json(), encoding="utf-8")
+
+    if write_predictions_csv:
+        (meta_path.parent / "predictions.csv").write_text("record_uuid\nr1\n", encoding="utf-8")
+
+    return meta_path.parent
 
 
 def test_resolve_eval_train_paths_uses_direct_labeled_data_path(
@@ -659,11 +679,50 @@ def test_resolve_eval_score_input_falls_back_to_latest_export(
     assert resolved.source.ref == "newer"
 
 
-def test_resolve_eval_score_input_prediction_run_not_supported(
+def test_resolve_eval_score_input_resolves_prediction_run(
     workspace: WorkspacePaths,
 ) -> None:
-    """A prediction run as the only selector is deferred until eval predict lands."""
-    with pytest.raises(NotImplementedError, match="prediction run is not yet supported"):
+    """A prediction id resolves to the run's predictions.csv with model_prediction provenance."""
+    run_dir = _write_prediction_run(workspace=workspace, run_id="run-1", task=Task.RETRIEVAL)
+
+    resolved = resolve_eval_score_input(workspace=workspace, task=Task.RETRIEVAL, prediction_id="run-1")
+
+    assert resolved.input_csv == run_dir / "predictions.csv"
+    assert resolved.source.kind == "model_prediction"
+    assert resolved.source.ref == "run-1"
+    assert resolved.source.resolved_path == "eval/prediction_outputs/run-1/predictions.csv"
+
+
+def test_resolve_eval_score_input_rejects_missing_prediction_run(
+    workspace: WorkspacePaths,
+) -> None:
+    """A prediction id with no persisted run metadata is an error."""
+    with pytest.raises(FileNotFoundError, match="Prediction run 'run-1' metadata does not exist"):
+        resolve_eval_score_input(workspace=workspace, task=Task.RETRIEVAL, prediction_id="run-1")
+
+
+def test_resolve_eval_score_input_rejects_task_mismatched_prediction_run(
+    workspace: WorkspacePaths,
+) -> None:
+    """Scoring a prediction run produced for a different task is rejected."""
+    _write_prediction_run(workspace=workspace, run_id="run-1", task=Task.GROUNDING)
+
+    with pytest.raises(ValueError, match="was produced for task='grounding'"):
+        resolve_eval_score_input(workspace=workspace, task=Task.RETRIEVAL, prediction_id="run-1")
+
+
+def test_resolve_eval_score_input_rejects_prediction_run_missing_predictions_csv(
+    workspace: WorkspacePaths,
+) -> None:
+    """A prediction run whose predictions.csv is absent is an error."""
+    _write_prediction_run(
+        workspace=workspace,
+        run_id="run-1",
+        task=Task.RETRIEVAL,
+        write_predictions_csv=False,
+    )
+
+    with pytest.raises(FileNotFoundError, match="does not contain predictions.csv"):
         resolve_eval_score_input(workspace=workspace, task=Task.RETRIEVAL, prediction_id="run-1")
 
 
