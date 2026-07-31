@@ -18,7 +18,7 @@ flowchart TD
     export["annotation export<br/>(CSV, row-level label columns)"]
     export --> human["human-labeled export"]
     export --> evalpath["evaluator-based path"]
-    evalpath -->|"pragmata eval train"| trained["trained evaluator"]
+    evalpath -->|"pragmata eval train-evaluator"| trained["trained evaluator"]
     trained -->|"pragmata eval predict-labels"| predicted["row-level predicted labels"]
     human -->|"pragmata eval score"| score
     predicted -->|"pragmata eval score"| score["SCORING<br/>row-level labels → corpus metrics + CIs<br/><b>MISSING - this doc</b>"]
