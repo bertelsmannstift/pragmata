@@ -19,7 +19,7 @@ flowchart TD
     export --> human["human-labeled export"]
     export --> evalpath["evaluator-based path"]
     evalpath -->|"pragmata eval train"| trained["trained evaluator"]
-    trained -->|"pragmata eval predict"| predicted["row-level predicted labels"]
+    trained -->|"pragmata eval predict-labels"| predicted["row-level predicted labels"]
     human -->|"pragmata eval score"| score
     predicted -->|"pragmata eval score"| score["SCORING<br/>row-level labels → corpus metrics + CIs<br/><b>MISSING - this doc</b>"]
     score --> out["*_scores.json<br/>core/schemas/eval_output.py"]
@@ -145,7 +145,7 @@ The input is selected by exactly one of three mutually-exclusive selectors:
 |---|---|---|
 | `path` | direct labeled data | human-annotated or externally-prepared labeled records that score without going through prediction |
 | `export_id` | annotation export | convenience selector; resolves to the task-specific CSV (mirrors `find_latest_annotation_export_id`) |
-| `prediction_id` | prediction output | labels produced by `pragmata eval predict`; a **pragmata** prediction run, even though the underlying output is tlmtc-managed |
+| `prediction_id` | prediction output | labels produced by `pragmata eval predict-labels`; a **pragmata** prediction run, even though the underlying output is tlmtc-managed |
 
 `score_id` is an **output** identifier, not an input selector: it names where score artifacts are written (`eval/scores/<score_id>/`) and defaults to the generated value from `EvalScoreSettings`. `export_id` is never reused for output naming.
 

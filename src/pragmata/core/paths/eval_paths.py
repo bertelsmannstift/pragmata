@@ -243,7 +243,7 @@ def resolve_eval_predict_paths(
     workspace: WorkspacePaths,
     unlabeled_data_path: Path,
 ) -> EvalPredictPaths:
-    """Resolve the explicit unlabeled input CSV consumed by eval predict.
+    """Resolve the explicit unlabeled input CSV consumed by eval predict-labels.
 
     Args:
         workspace: Workspace path bundle.
