@@ -102,8 +102,7 @@ class EvalScoreSettings(ResolveSettings):
     Input selectors are mutually exclusive (enforced by
     ``resolve_eval_score_input``): at most one of ``path`` / ``export_id`` /
     ``prediction_id`` may be given, and more than one raises. With no selector,
-    the latest annotation export for the task is used (interim, until
-    ``eval predict`` and its output layout land).
+    the latest annotation export for the task is used.
 
     Attributes:
         base_dir: Workspace base directory. Pragmata resolves score artifacts under
@@ -116,7 +115,8 @@ class EvalScoreSettings(ResolveSettings):
         export_id: Optional annotation export identifier; resolves to the
             task-specific exported CSV.
         prediction_id: Optional Pragmata prediction run identifier for labels
-            produced by `pragmata eval predict`. Not yet supported.
+            produced by `pragmata eval predict-labels`; resolves to that run's
+            `predictions.csv`.
         task: Annotation task to score. The task determines which task-specific
             label contract and score metrics are applied.
         n_resamples: Bootstrap iterations for the continuous metrics' CIs.

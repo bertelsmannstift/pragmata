@@ -149,7 +149,7 @@ The input is selected by exactly one of three mutually-exclusive selectors:
 
 `score_id` is an **output** identifier, not an input selector: it names where score artifacts are written (`eval/scores/<score_id>/`) and defaults to the generated value from `EvalScoreSettings`. `export_id` is never reused for output naming.
 
-`EvalScoreSettings` carries `path`, `export_id`, `prediction_id`, and `score_id`. The selectors are mutually exclusive, with the latest annotation export as the no-selector fallback (resolved; see below). `prediction_id` is not yet wired - a `find_latest_prediction_run` resolver still needs writing in `eval_paths.py` (deferred, tracked in #303).
+`EvalScoreSettings` carries `path`, `export_id`, `prediction_id`, and `score_id`. The selectors are mutually exclusive, with the latest annotation export as the no-selector fallback (resolved; see below). `prediction_id` resolves directly to `prediction_outputs/<prediction_id>/predictions.csv`, whose `pragmata_predict.meta.json` sidecar is read only to confirm the run was produced for the requested task.
 
 ### CLI - `pragmata eval score`
 
@@ -191,4 +191,4 @@ Input-source selection and path resolution belong in `core/paths/eval_paths.py`,
 
 1. ~~**Input selection semantics.**~~ **Resolved.** `path` / `export_id` / `prediction_id` are mutually exclusive with no precedence - passing more than one raises `ValueError` (`_require_at_most_one_selector` in `eval_paths.py`). None is required; with no selector the latest annotation export is used. (The earlier proposal of a precedence order was dropped in favour of mutual exclusivity.)
 2. **Incomplete and degenerate scoring data.** Retrieval metrics assume complete ranked chunk labels per query. If some chunks are unlabeled we need a deliberate policy: fail with an informative message, skip affected queries, or compute a caveated fallback. Similarly, all-0/all-1 or otherwise degenerate labels can make some estimates uninformative and should be handled explicitly. Ideally the validation/guard logic is reusable between `eval train` and `eval score` where the constraints overlap.
-3. **`find_latest_prediction_run` resolver** to be added in `eval_paths.py`, mirroring `find_latest_annotation_export_id`. Deferred alongside `prediction_id` scoring - tracked in #303.
+3. ~~**`find_latest_prediction_run` resolver.**~~ **Resolved.** Not needed and not added: `prediction_id` is always an explicit selector, and the no-selector fallback stays the latest annotation export, so nothing calls for a latest-prediction finder.
