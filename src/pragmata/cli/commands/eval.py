@@ -158,7 +158,7 @@ def score_command(
     prediction_id: str | None = typer.Option(
         None,
         "--prediction-id",
-        help="Prediction run identifier. Not yet supported (lands with eval predict).",
+        help="Prediction run identifier; resolves to the predictions CSV written by eval predict-labels.",
     ),
     score_id: str | None = typer.Option(
         None,
