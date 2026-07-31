@@ -145,7 +145,12 @@ def _write_retrieval_prediction_run(base_dir: Path, run_id: str) -> None:
         for row in _retrieval_rows()
     ]
     _write(run_dir / "predictions.csv", rows)
-    meta = EvalPredictMeta(run_id=run_id, task=Task.RETRIEVAL, created_at=datetime(2026, 1, 1, tzinfo=UTC))
+    meta = EvalPredictMeta(
+        run_id=run_id,
+        task=Task.RETRIEVAL,
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+        unlabeled_data_path="/inputs/unlabeled.csv",
+    )
     (run_dir / "pragmata_predict.meta.json").write_text(meta.model_dump_json(), encoding="utf-8")
 
 

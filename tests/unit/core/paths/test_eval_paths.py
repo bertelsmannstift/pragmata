@@ -105,7 +105,7 @@ def _write_prediction_run(
     """Write a minimal prediction run (meta sidecar + predictions.csv) for score tests."""
     meta_path = resolve_eval_predict_meta_path(workspace=workspace, run_id=run_id)
     meta_path.parent.mkdir(parents=True)
-    meta = EvalPredictMeta(run_id=run_id, task=task)
+    meta = EvalPredictMeta(run_id=run_id, task=task, unlabeled_data_path="/inputs/unlabeled.csv")
     meta_path.write_text(meta.model_dump_json(), encoding="utf-8")
 
     if write_predictions_csv:
