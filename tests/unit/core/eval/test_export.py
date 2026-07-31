@@ -9,10 +9,10 @@ from pragmata.core.schemas.annotation_task import Task
 from pragmata.core.schemas.eval_output import EvalPredictMeta, EvalTrainMeta
 
 
-def test_export_eval_train_meta_serializes_metadata_json_values(
+def test_export_eval_meta_serializes_train_meta_json_values(
     tmp_path: Path,
 ) -> None:
-    """export_eval_train_meta should serialize metadata using JSON-compatible model_dump output."""
+    """export_eval_meta should serialize train metadata using JSON-compatible model_dump output."""
     meta = EvalTrainMeta(
         run_id="train-run-1",
         created_at=datetime(2026, 5, 28, 13, 30, tzinfo=UTC),
@@ -31,10 +31,10 @@ def test_export_eval_train_meta_serializes_metadata_json_values(
     }
 
 
-def test_export_eval_predict_meta_serializes_metadata_json_values(
+def test_export_eval_meta_serializes_predict_meta_json_values(
     tmp_path: Path,
 ) -> None:
-    """export_eval_predict_meta should serialize metadata using JSON-compatible model_dump output."""
+    """export_eval_meta should serialize predict metadata using JSON-compatible model_dump output."""
     meta = EvalPredictMeta(
         run_id="prediction-evaluator",
         created_at=datetime(2026, 5, 28, 13, 30, tzinfo=UTC),

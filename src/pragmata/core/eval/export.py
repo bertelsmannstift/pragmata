@@ -2,12 +2,11 @@
 
 from pathlib import Path
 
-from pydantic import BaseModel
-
 from pragmata.core.atomic_io import atomic_write_json
+from pragmata.core.schemas.eval_output import EvalPredictMeta, EvalTrainMeta
 
 
-def export_eval_meta(meta: BaseModel, path: Path) -> None:
+def export_eval_meta(meta: EvalTrainMeta | EvalPredictMeta, path: Path) -> None:
     """Write Pragmata-owned evaluator run metadata to disk as JSON.
 
     Shared by train and predict runs (``EvalTrainMeta`` / ``EvalPredictMeta``);
