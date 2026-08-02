@@ -158,7 +158,7 @@ def score_command(
     prediction_id: str | None = typer.Option(
         None,
         "--prediction-id",
-        help="Prediction run identifier. Not yet supported (lands with eval predict).",
+        help="Prediction run identifier; resolves to the predictions CSV written by eval predict-labels.",
     ),
     score_id: str | None = typer.Option(
         None,
@@ -193,9 +193,9 @@ def score_command(
 ) -> None:
     """Score labeled eval data into corpus metrics with confidence intervals.
 
-    The input is selected by one of ``--path`` / ``--export-id`` /
-    ``--prediction-id`` (precedence in that order); with none, the latest
-    annotation export is used.
+    The input is selected by at most one of ``--path`` / ``--export-id`` /
+    ``--prediction-id`` - they are mutually exclusive with no precedence, and
+    passing more than one raises. With none, the latest annotation export is used.
     """
     report = eval.score(
         task=UNSET if task is None else task,
