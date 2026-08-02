@@ -23,7 +23,7 @@ jobs:
     steps:
       - name: Apply type labels
         if: github.event.action == 'opened' || github.event.action == 'reopened'
-        uses: actions/labeler@v6
+        uses: actions/labeler@v7
 
       - name: Apply size label
         uses: codelytv/pr-size-labeler@v1
