@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       build_package:
-        description: "Run full release preflight including package build"
+        description: "Build package during manual preflight; only pushed v*.*.* tags publish"
         required: false
         type: boolean
         default: false
@@ -21,27 +21,97 @@ env:
   PYTHON_VERSION: "3.12"
 
 jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v8.3.2
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Check lockfile is current
+        run: uv lock --check
+
+      - name: Install lint dependencies
+        run: uv sync --extra lint --frozen
+
+      - name: Run Ruff formatter (check only)
+        run: uv run ruff format --check .
+
+      - name: Run Ruff linter
+        run: uv run ruff check .
+
+  type:
+    name: Type check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v8.3.2
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Check lockfile is current
+        run: uv lock --check
+
+      - name: Install type-check dependencies
+        run: uv sync --extra type --frozen
+
+      - name: Run mypy
+        run: uv run mypy src/pragmata
+
+  test:
+    name: Run unit and packaging tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v8.3.2
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Check lockfile is current
+        run: uv lock --check
+
+      - name: Install test dependencies
+        run: uv sync --extra test --frozen
+
+      - name: Run unit tests
+        run: uv run pytest -q
+
+      - name: Run packaging tests
+        run: uv run pytest -m packaging -q
+
   integration-tests:
-    name: Run ${{ matrix.suite.name }} integration tests
+    name: Run integration tests
     runs-on: ubuntu-latest
     timeout-minutes: 30
-
-    strategy:
-      fail-fast: false
-      matrix:
-        suite:
-          - name: annotation
-            marker: annotation
-            extra: annotation
-            start_stack: true
-          - name: query generation
-            marker: querygen
-            extra: querygen
-            start_stack: false
-          - name: evaluation
-            marker: eval
-            extra: eval
-            start_stack: false
 
     steps:
       - name: Checkout code
@@ -68,36 +138,16 @@ jobs:
       - name: Check lockfile is current
         run: uv lock --check
 
-      - name: Install integration-test dependencies
-        run: uv sync --python ${{ env.PYTHON_VERSION }} --frozen --extra test --extra ${{ matrix.suite.extra }}
-
-      - name: Start annotation stack
-        if: matrix.suite.start_stack
-        run: |
-          docker compose \
-            --project-name pragmata-release-${{ github.run_id }}-${{ strategy.job-index }} \
-            --file deploy/annotation/docker-compose.dev.yml \
-            --env-file deploy/annotation/.env.dev.example \
-            --profile all-bundled \
-            up --detach --pull always --wait --remove-orphans
-
       - name: Run integration tests
-        run: uv run --python ${{ env.PYTHON_VERSION }} --frozen pytest -o addopts= -m "integration and ${{ matrix.suite.marker }}" -q
-
-      - name: Stop annotation stack
-        if: always() && matrix.suite.start_stack
-        run: |
-          docker compose \
-            --project-name pragmata-release-${{ github.run_id }}-${{ strategy.job-index }} \
-            --file deploy/annotation/docker-compose.dev.yml \
-            --env-file deploy/annotation/.env.dev.example \
-            --profile all-bundled \
-            down --volumes --remove-orphans
+        run: >-
+          uv run --python ${{ env.PYTHON_VERSION }} --frozen
+          --extra test --extra annotation --extra querygen --extra eval
+          make test-integration
 
   build:
     name: Build package
     runs-on: ubuntu-latest
-    needs: integration-tests
+    needs: [lint, type, test, integration-tests]
     if: github.event_name == 'push' || inputs.build_package
 
     steps:
@@ -118,7 +168,7 @@ jobs:
         if: github.event_name == 'push'
         run: |
           TAG_VERSION="${GITHUB_REF_NAME#v}"
-          PACKAGE_VERSION="$(uv run --no-sync python - <<'PY'
+          PACKAGE_VERSION="$(uv run --no-project --python "${PYTHON_VERSION}" python - <<'PY'
           import tomllib
           from pathlib import Path
 
@@ -144,7 +194,7 @@ jobs:
           ls -l dist/
 
       - name: Check package metadata
-        run: uvx --from twine twine check dist/*
+        run: uvx --from twine twine check --strict dist/*
 
       - name: Upload package distributions
         uses: actions/upload-artifact@v7
@@ -175,4 +225,4 @@ jobs:
           path: dist/
 
       - name: Publish package distributions to PyPI
-        uses: pypa/gh-action-pypi-publish@v1.14.0
+        uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # v1.14.0
