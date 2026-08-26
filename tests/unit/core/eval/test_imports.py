@@ -1,5 +1,6 @@
 """Tests for eval dataframe import workflows."""
 
+import logging
 from pathlib import Path
 
 import pandas as pd
@@ -188,7 +189,7 @@ class TestImportEvalScoreFrame:
             ],
         )
 
-        frame = import_eval_score_frame(path=path, task=Task.RETRIEVAL, source=self._DIRECT)
+        frame, _ = import_eval_score_frame(path=path, task=Task.RETRIEVAL, source=self._DIRECT)
 
         assert list(frame["query"]) == ["q1", "q1"]
         assert set(["query", "chunk", "record_uuid", "chunk_id", "chunk_rank"]).issubset(frame.columns)
@@ -217,7 +218,7 @@ class TestImportEvalScoreFrame:
             ],
         )
 
-        frame = import_eval_score_frame(path=path, task=Task.RETRIEVAL, source=self._DIRECT)
+        frame, _ = import_eval_score_frame(path=path, task=Task.RETRIEVAL, source=self._DIRECT)
 
         assert len(frame) == 1
         row = frame.iloc[0]
@@ -254,7 +255,7 @@ class TestImportEvalScoreFrame:
             ],
         )
 
-        frame = import_eval_score_frame(path=path, task=Task.GROUNDING, source=self._DIRECT)
+        frame, _ = import_eval_score_frame(path=path, task=Task.GROUNDING, source=self._DIRECT)
 
         assert len(frame) == 1
         row = frame.iloc[0]
@@ -273,9 +274,171 @@ class TestImportEvalScoreFrame:
             ],
         )
 
-        frame = import_eval_score_frame(path=path, task=Task.RETRIEVAL, source=self._PREDICTION)
+        frame, _ = import_eval_score_frame(path=path, task=Task.RETRIEVAL, source=self._PREDICTION)
 
         assert {"query", "chunk"}.issubset(frame.columns)
         assert "text" not in frame.columns and "text_pair" not in frame.columns
         assert frame.loc[0, "query"] == "q1"
         assert frame.loc[0, "chunk"] == "c1"
+
+    def test_rejects_retrieval_panel_short_of_n_retrieved_chunks(self, tmp_path: Path) -> None:
+        # Two labeled chunks of a K=5 retrieval: the @K denominators would be wrong.
+        path = self._write(
+            tmp_path,
+            [
+                "query,chunk,topically_relevant,evidence_sufficient,misleading,"
+                "record_uuid,chunk_id,chunk_rank,n_retrieved_chunks",
+                "q1,c1,1,1,0,r1,ch1,1,5",
+                "q1,c2,0,0,1,r1,ch2,2,5",
+            ],
+        )
+
+        with pytest.raises(EvalInputSchemaError, match="fewer labeled chunks"):
+            import_eval_score_frame(path=path, task=Task.RETRIEVAL, source=self._DIRECT)
+
+    def test_accepts_retrieval_panel_covering_n_retrieved_chunks(self, tmp_path: Path) -> None:
+        path = self._write(
+            tmp_path,
+            [
+                "query,chunk,topically_relevant,evidence_sufficient,misleading,"
+                "record_uuid,chunk_id,chunk_rank,n_retrieved_chunks",
+                "q1,c1,1,1,0,r1,ch1,1,2",
+                "q1,c2,0,0,1,r1,ch2,2,2",
+            ],
+        )
+
+        frame, _ = import_eval_score_frame(path=path, task=Task.RETRIEVAL, source=self._DIRECT)
+
+        assert len(frame) == 2
+
+    def test_allow_incomplete_panels_skips_the_completeness_guard(self, tmp_path: Path) -> None:
+        path = self._write(
+            tmp_path,
+            [
+                "query,chunk,topically_relevant,evidence_sufficient,misleading,"
+                "record_uuid,chunk_id,chunk_rank,n_retrieved_chunks",
+                "q1,c1,1,1,0,r1,ch1,1,5",
+            ],
+        )
+
+        frame, n_panels_skipped = import_eval_score_frame(
+            path=path, task=Task.RETRIEVAL, source=self._DIRECT, allow_incomplete_panels=True
+        )
+
+        assert len(frame) == 1
+        assert n_panels_skipped == 0
+
+    def test_skip_incomplete_panels_drops_short_panels_and_reports_the_count(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        # One complete K=2 panel, one short K=5 panel: the short one is dropped and
+        # counted so the score artifact records the reduced population.
+        path = self._write(
+            tmp_path,
+            [
+                "query,chunk,topically_relevant,evidence_sufficient,misleading,"
+                "record_uuid,chunk_id,chunk_rank,n_retrieved_chunks",
+                "q1,c1,1,1,0,r1,ch1,1,2",
+                "q1,c2,0,0,1,r1,ch2,2,2",
+                "q2,c3,1,0,0,r2,ch3,1,5",
+            ],
+        )
+
+        frame, n_panels_skipped = import_eval_score_frame(
+            path=path, task=Task.RETRIEVAL, source=self._DIRECT, skip_incomplete_panels=True
+        )
+
+        assert n_panels_skipped == 1
+        assert set(frame["record_uuid"]) == {"r1"}
+
+    def test_skip_incomplete_panels_rejects_an_input_with_no_complete_panel(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        path = self._write(
+            tmp_path,
+            [
+                "query,chunk,topically_relevant,evidence_sufficient,misleading,"
+                "record_uuid,chunk_id,chunk_rank,n_retrieved_chunks",
+                "q1,c1,1,1,0,r1,ch1,1,5",
+            ],
+        )
+
+        with pytest.raises(EvalInputSchemaError, match="no complete panel"):
+            import_eval_score_frame(path=path, task=Task.RETRIEVAL, source=self._DIRECT, skip_incomplete_panels=True)
+
+    def test_skip_and_allow_are_mutually_exclusive(self, tmp_path: Path) -> None:
+        path = self._write(
+            tmp_path,
+            [
+                "query,chunk,topically_relevant,evidence_sufficient,misleading,"
+                "record_uuid,chunk_id,chunk_rank,n_retrieved_chunks",
+                "q1,c1,1,1,0,r1,ch1,1,1",
+            ],
+        )
+
+        with pytest.raises(ValueError, match="mutually exclusive"):
+            import_eval_score_frame(
+                path=path,
+                task=Task.RETRIEVAL,
+                source=self._DIRECT,
+                skip_incomplete_panels=True,
+                allow_incomplete_panels=True,
+            )
+
+    def test_warns_instead_of_failing_without_an_n_retrieved_chunks_column(
+        self,
+        tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        # Direct-path inputs are not required to carry export metadata; completeness is
+        # unknowable without K, so the frame passes with a warning.
+        path = self._write(
+            tmp_path,
+            [
+                "query,chunk,topically_relevant,evidence_sufficient,misleading,record_uuid,chunk_id,chunk_rank",
+                "q1,c1,1,1,0,r1,ch1,1",
+            ],
+        )
+
+        with caplog.at_level(logging.WARNING, logger="pragmata.core.eval.imports"):
+            frame, _ = import_eval_score_frame(path=path, task=Task.RETRIEVAL, source=self._DIRECT)
+
+        assert len(frame) == 1
+        assert any("n_retrieved_chunks" in message for message in caplog.messages)
+
+    def test_warns_instead_of_failing_when_every_panel_carries_the_absent_k_sentinel(
+        self,
+        tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        # Pre-backfill exports carry n_retrieved_chunks=-1; K is unknown, not violated.
+        path = self._write(
+            tmp_path,
+            [
+                "query,chunk,topically_relevant,evidence_sufficient,misleading,"
+                "record_uuid,chunk_id,chunk_rank,n_retrieved_chunks",
+                "q1,c1,1,1,0,r1,ch1,1,-1",
+            ],
+        )
+
+        with caplog.at_level(logging.WARNING, logger="pragmata.core.eval.imports"):
+            frame, _ = import_eval_score_frame(path=path, task=Task.RETRIEVAL, source=self._DIRECT)
+
+        assert len(frame) == 1
+        assert any("n_retrieved_chunks" in message for message in caplog.messages)
+
+    def test_completeness_guard_does_not_apply_to_grounding(self, tmp_path: Path) -> None:
+        path = self._write(
+            tmp_path,
+            [
+                "answer,context_set,support_present,unsupported_claim_present,"
+                "contradicted_claim_present,source_cited,fabricated_source,record_uuid",
+                "a1,ctx,1,0,0,1,0,r1",
+            ],
+        )
+
+        frame, _ = import_eval_score_frame(path=path, task=Task.GROUNDING, source=self._DIRECT)
+
+        assert len(frame) == 1

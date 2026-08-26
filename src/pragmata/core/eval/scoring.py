@@ -67,8 +67,13 @@ def build_score_report(
     seed: int | None,
     source: ScoreInputSource,
     created_at: datetime,
+    n_panels_skipped: int = 0,
 ) -> ScoreReport:
-    """Assemble the task-specific report from per-query values (pure, I/O-free)."""
+    """Assemble the task-specific report from per-query values (pure, I/O-free).
+
+    ``n_panels_skipped`` is recorded on the retrieval report only; the other tasks
+    have no panel notion and reject the field by schema.
+    """
     alpha = 1.0 - ci
 
     def bootstrap(values: list[float]) -> MetricScore:
@@ -85,6 +90,7 @@ def build_score_report(
         return RetrievalScoreReport(
             source=source,
             created_at=created_at,
+            n_panels_skipped=n_panels_skipped,
             n_examples=len(values["topical_precision_at_k"]),
             # chunk_rank is 1-based (enforced by Field(ge=1) on import), so its max is the
             # number of retrieved chunks.
