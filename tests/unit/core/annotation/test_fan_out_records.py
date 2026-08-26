@@ -33,6 +33,7 @@ def _partition(
         assignments=assignments,
         pairs_by_rid={derive_record_uuid(p): p for p in records},
         calibration_fraction={t: 0.5 for t in Task},
+        calibration_max_items={t: None for t in Task},
     )
 
 
@@ -191,11 +192,11 @@ class TestFanOutRecords:
         assert cal_total == 3 * 3  # 3 cal records * 3 tasks
         assert prod_total == 2 * 3  # 2 prod records * 3 tasks
 
-    def test_skips_tasks_not_in_workspaces_topology(self, patched_create_dataset, caplog) -> None:
+    def test_records_for_task_absent_from_topology_raises(self, patched_create_dataset) -> None:
         client = MagicMock()
-        _, created = patched_create_dataset
 
-        # Topology only declares retrieval; grounding/generation are absent.
+        # Topology only declares retrieval; grounding / generation are absent
+        # but the partition manifest has assignments for them.
         partial_settings = AnnotationSettings(
             dataset_id="run1",
             workspaces={"retrieval": WorkspaceSettings(tasks={Task.RETRIEVAL: TaskSettings()})},
@@ -203,13 +204,8 @@ class TestFanOutRecords:
         records = [_make_pair("q0")]
         assignments = _assignments_with_uniform_calibration(records, is_cal=False)
 
-        with caplog.at_level("WARNING"):
-            result = fan_out_records(client, partial_settings, partition=_partition(records, assignments))
-
-        # Only retrieval gets a dataset; grounding and generation are skipped with a warning.
-        assert len(result) == 1
-        assert any(ds_name.startswith("retrieval_") for (_, ds_name) in created)
-        assert "not in workspaces topology" in caplog.text
+        with pytest.raises(RuntimeError, match="not include this task"):
+            fan_out_records(client, partial_settings, partition=_partition(records, assignments))
 
     def test_per_chunk_retrieval_routing(self, patched_create_dataset) -> None:
         """Different chunks of one record can route to different retrieval buckets."""
