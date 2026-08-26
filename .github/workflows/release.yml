@@ -1,37 +1,228 @@
-name: Release (Build Only)
+name: Release
 
 on:
+  workflow_dispatch:
+    inputs:
+      build_package:
+        description: "Build package during manual preflight; only pushed v*.*.* tags publish"
+        required: false
+        type: boolean
+        default: false
+
   push:
     tags:
       - "v*.*.*"
+
+permissions:
+  contents: read
 
 env:
   UV_VERSION: "0.9.30"
   PYTHON_VERSION: "3.12"
 
 jobs:
-  build:
-    name: Build Python package
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v7
+      - name: Checkout code
+        uses: actions/checkout@v7
 
-    - name: Set up uv
-      uses: astral-sh/setup-uv@v8.3.2
-      with:
-        version: ${{ env.UV_VERSION }}
-        enable-cache: true
-        cache-dependency-glob: "uv.lock"
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v8.3.2
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
 
-    - name: Set up Python
-      run: uv python install ${{ env.PYTHON_VERSION }}
+      - name: Set up Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
 
-    - name: Build package
-      run: uv build
+      - name: Check lockfile is current
+        run: uv lock --check
 
-    - name: Check build artifacts
-      run: |
-        echo "Built files:"
-        ls -l dist/
+      - name: Install lint dependencies
+        run: uv sync --extra lint --frozen
+
+      - name: Run Ruff formatter (check only)
+        run: uv run ruff format --check .
+
+      - name: Run Ruff linter
+        run: uv run ruff check .
+
+  type:
+    name: Type check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v8.3.2
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Check lockfile is current
+        run: uv lock --check
+
+      - name: Install type-check dependencies
+        run: uv sync --extra type --frozen
+
+      - name: Run mypy
+        run: uv run mypy src/pragmata
+
+  test:
+    name: Run unit and packaging tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v8.3.2
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Check lockfile is current
+        run: uv lock --check
+
+      - name: Install test dependencies
+        run: uv sync --extra test --frozen
+
+      - name: Run unit tests
+        run: uv run pytest -q
+
+      - name: Run packaging tests
+        run: uv run pytest -m packaging -q
+
+  integration-tests:
+    name: Run integration tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Check release tag is on main
+        if: github.event_name == 'push'
+        run: |
+          git fetch origin main
+          git merge-base --is-ancestor HEAD origin/main
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v8.3.2
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Check lockfile is current
+        run: uv lock --check
+
+      - name: Run integration tests
+        run: >-
+          uv run --python ${{ env.PYTHON_VERSION }} --frozen
+          --extra test --extra annotation --extra querygen --extra eval
+          make test-integration
+
+  build:
+    name: Build package
+    runs-on: ubuntu-latest
+    needs: [lint, type, test, integration-tests]
+    if: github.event_name == 'push' || inputs.build_package
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v8.3.2
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Check tag matches package version
+        if: github.event_name == 'push'
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PACKAGE_VERSION="$(uv run --no-project --python "${PYTHON_VERSION}" python - <<'PY'
+          import tomllib
+          from pathlib import Path
+
+          pyproject = tomllib.loads(Path("pyproject.toml").read_text())
+          print(pyproject["project"]["version"])
+          PY
+          )"
+
+          echo "Tag version:     ${TAG_VERSION}"
+          echo "Package version: ${PACKAGE_VERSION}"
+
+          test "${TAG_VERSION}" = "${PACKAGE_VERSION}"
+
+      - name: Check lockfile is current
+        run: uv lock --check
+
+      - name: Build package
+        run: uv build
+
+      - name: Check build artifacts
+        run: |
+          echo "Built files:"
+          ls -l dist/
+
+      - name: Check package metadata
+        run: uvx --from twine twine check --strict dist/*
+
+      - name: Upload package distributions
+        uses: actions/upload-artifact@v7
+        with:
+          name: python-package-distributions
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    name: Publish package to PyPI
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+
+    environment:
+      name: pypi
+      url: https://pypi.org/p/pragmata
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Download package distributions
+        uses: actions/download-artifact@v8
+        with:
+          name: python-package-distributions
+          path: dist/
+
+      - name: Publish package distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # v1.14.0
