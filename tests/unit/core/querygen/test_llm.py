@@ -31,6 +31,12 @@ class _FakePrompt:
 
 
 @pytest.fixture
+def rate_limiter() -> InMemoryRateLimiter:
+    """Return the shared limiter supplied by the caller."""
+    return InMemoryRateLimiter()
+
+
+@pytest.fixture
 def mock_llm_setup(
     monkeypatch: pytest.MonkeyPatch,
 ) -> dict[str, Any]:
@@ -70,6 +76,7 @@ def test_build_prompt_template_returns_chat_prompt_template() -> None:
 def test_build_llm_runnable_composes_wrappers_and_prompt(
     monkeypatch: pytest.MonkeyPatch,
     mock_llm_setup: dict[str, Any],
+    rate_limiter: InMemoryRateLimiter,
 ) -> None:
     """build_llm_runnable composes prompt with retry-wrapped structured LLM."""
     fake_prompt = _FakePrompt()
@@ -85,9 +92,7 @@ def test_build_llm_runnable_composes_wrappers_and_prompt(
         model="gpt-4o",
         api_key="sk-test",
         output_schema=_DummyOutputSchema,
-        requests_per_second=5.0,
-        check_every_n_seconds=0.1,
-        max_bucket_size=10,
+        rate_limiter=rate_limiter,
         base_url=None,
         model_kwargs={"temperature": 0},
     )
@@ -98,7 +103,7 @@ def test_build_llm_runnable_composes_wrappers_and_prompt(
     assert init_kwargs["model_provider"] == "openai"
     assert init_kwargs["api_key"] == "sk-test"
     assert init_kwargs["temperature"] == 0
-    assert isinstance(init_kwargs["rate_limiter"], InMemoryRateLimiter)
+    assert init_kwargs["rate_limiter"] is rate_limiter
 
     mock_llm_setup["llm"].with_structured_output.assert_called_once_with(_DummyOutputSchema)
     mock_llm_setup["structured"].with_retry.assert_called_once()
@@ -130,6 +135,7 @@ def test_build_llm_runnable_inserts_optional_init_kwargs_conditionally(
     model_kwargs: dict[str, Any],
     expected_present: set[str],
     expected_absent: set[str],
+    rate_limiter: InMemoryRateLimiter,
 ) -> None:
     """Optional init kwargs are forwarded only when provided."""
     build_llm_runnable(
@@ -139,9 +145,7 @@ def test_build_llm_runnable_inserts_optional_init_kwargs_conditionally(
         model="m",
         api_key="k",
         output_schema=_DummyOutputSchema,
-        requests_per_second=1.0,
-        check_every_n_seconds=1.0,
-        max_bucket_size=1,
+        rate_limiter=rate_limiter,
         base_url=base_url,
         model_kwargs=model_kwargs,
     )
@@ -153,6 +157,7 @@ def test_build_llm_runnable_inserts_optional_init_kwargs_conditionally(
 
 def test_build_llm_runnable_applies_int_default_timeout(
     mock_llm_setup: dict[str, Any],
+    rate_limiter: InMemoryRateLimiter,
 ) -> None:
     """A default int request timeout is forwarded when the caller supplies none.
 
@@ -165,9 +170,7 @@ def test_build_llm_runnable_applies_int_default_timeout(
         model="magistral-medium-latest",
         api_key="k",
         output_schema=_DummyOutputSchema,
-        requests_per_second=1.0,
-        check_every_n_seconds=1.0,
-        max_bucket_size=1,
+        rate_limiter=rate_limiter,
         base_url=None,
         model_kwargs={},
     )
@@ -179,6 +182,7 @@ def test_build_llm_runnable_applies_int_default_timeout(
 
 def test_build_llm_runnable_caller_timeout_overrides_default(
     mock_llm_setup: dict[str, Any],
+    rate_limiter: InMemoryRateLimiter,
 ) -> None:
     """A caller-supplied model_kwargs['timeout'] overrides the default."""
     build_llm_runnable(
@@ -188,9 +192,7 @@ def test_build_llm_runnable_caller_timeout_overrides_default(
         model="gpt-4o",
         api_key="k",
         output_schema=_DummyOutputSchema,
-        requests_per_second=1.0,
-        check_every_n_seconds=1.0,
-        max_bucket_size=1,
+        rate_limiter=rate_limiter,
         base_url=None,
         model_kwargs={"timeout": 120},
     )
@@ -201,6 +203,7 @@ def test_build_llm_runnable_caller_timeout_overrides_default(
 
 def test_build_llm_runnable_wraps_init_error(
     monkeypatch: pytest.MonkeyPatch,
+    rate_limiter: InMemoryRateLimiter,
 ) -> None:
     """Model initialization errors are wrapped in LlmInitializationError."""
 
@@ -220,9 +223,7 @@ def test_build_llm_runnable_wraps_init_error(
             model="m",
             api_key="k",
             output_schema=_DummyOutputSchema,
-            requests_per_second=1.0,
-            check_every_n_seconds=1.0,
-            max_bucket_size=1,
+            rate_limiter=rate_limiter,
             base_url=None,
             model_kwargs={},
         )
@@ -238,6 +239,7 @@ def test_build_llm_runnable_wraps_init_error(
 def test_build_llm_runnable_rejects_reserved_model_kwargs(
     mock_llm_setup: dict[str, Any],
     reserved_key: str,
+    rate_limiter: InMemoryRateLimiter,
 ) -> None:
     """Reserved init kwargs cannot be overridden via model_kwargs."""
     with pytest.raises(
@@ -251,9 +253,7 @@ def test_build_llm_runnable_rejects_reserved_model_kwargs(
             model="gpt-4o",
             api_key="sk-test",
             output_schema=_DummyOutputSchema,
-            requests_per_second=1.0,
-            check_every_n_seconds=1.0,
-            max_bucket_size=1,
+            rate_limiter=rate_limiter,
             base_url=None,
             model_kwargs={reserved_key: "override"},
         )
