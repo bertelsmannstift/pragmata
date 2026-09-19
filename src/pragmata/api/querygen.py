@@ -5,6 +5,7 @@ from itertools import islice
 from pathlib import Path
 from typing import Any
 
+from langchain_core.rate_limiters import InMemoryRateLimiter
 from pydantic import BaseModel, ConfigDict, PositiveInt
 
 from pragmata.api._error_log import error_log
@@ -200,6 +201,11 @@ def gen_queries(
     )
 
     with error_log(paths.run_dir):
+        rate_limiter = InMemoryRateLimiter(
+            requests_per_second=settings.llm.requests_per_second,
+            check_every_n_seconds=settings.llm.check_every_n_seconds,
+            max_bucket_size=settings.llm.max_bucket_size,
+        )
         planning_summary_state: PlanningSummaryState | None = None
 
         if settings.enable_planning_memory:
@@ -226,6 +232,7 @@ def gen_queries(
                 api_key=api_key,
                 batch_candidate_ids=batch_candidate_ids,
                 planning_summary=planning_summary_state,
+                rate_limiter=rate_limiter,
             )
             planning_outputs.extend(batch_blueprints)
 
@@ -236,6 +243,7 @@ def gen_queries(
                     llm_settings=settings.llm,
                     api_key=api_key,
                     prior_summary_state=planning_summary_state,
+                    rate_limiter=rate_limiter,
                 )
 
         filtered_planning_outputs = filter_aligned_candidate_ids(
@@ -267,6 +275,7 @@ def gen_queries(
                     candidates=blueprint_batch,
                     llm_settings=settings.llm,
                     api_key=api_key,
+                    rate_limiter=rate_limiter,
                 )
             )
 
