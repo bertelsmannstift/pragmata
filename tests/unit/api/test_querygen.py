@@ -5,9 +5,11 @@ from pathlib import Path
 from textwrap import dedent
 
 import pytest
+from langchain_core.rate_limiters import InMemoryRateLimiter
 
 import pragmata.api.querygen as querygen_api
 from pragmata.core.paths.querygen_paths import QueryGenRunPaths
+from pragmata.core.querygen import batching
 from pragmata.core.schemas.querygen_output import PlanningSummaryArtifact, SyntheticQueriesMeta, SyntheticQueryRow
 from pragmata.core.schemas.querygen_plan import QueryBlueprint
 from pragmata.core.schemas.querygen_realize import RealizedQuery
@@ -40,6 +42,64 @@ def _required_querygen_kwargs(tmp_path: Path) -> dict[str, object]:
         "base_dir": tmp_path,
         "model_provider": "mistralai",
     }
+
+
+@pytest.mark.parametrize("enable_planning_memory", [True, False])
+def test_gen_queries_shares_rate_limiter_across_batches_and_stages_per_run(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    enable_planning_memory: bool,
+) -> None:
+    monkeypatch.setattr("pragmata.api.querygen.iter_batch_sizes", batching.iter_batch_sizes)
+    monkeypatch.setattr("pragmata.api.querygen.chunk_blueprints", batching.chunk_blueprints)
+    stage_limiters: dict[str, list[InMemoryRateLimiter]] = {"planning": [], "summary": [], "realization": []}
+
+    def run_planning_stage(
+        *, batch_candidate_ids: list[str], rate_limiter: InMemoryRateLimiter, **_: object
+    ) -> list[QueryBlueprint]:
+        stage_limiters["planning"].append(rate_limiter)
+        return [_make_blueprint(candidate_id) for candidate_id in batch_candidate_ids]
+
+    def run_planning_summary(*, rate_limiter: InMemoryRateLimiter, **_: object) -> PlanningSummaryState:
+        stage_limiters["summary"].append(rate_limiter)
+        return _make_planning_summary_state()
+
+    def run_realization_stage(
+        *, candidates: list[QueryBlueprint], rate_limiter: InMemoryRateLimiter, **_: object
+    ) -> list[RealizedQuery]:
+        stage_limiters["realization"].append(rate_limiter)
+        return [_make_realized_query(candidate.candidate_id) for candidate in candidates]
+
+    monkeypatch.setattr("pragmata.api.querygen.run_planning_stage", run_planning_stage)
+    monkeypatch.setattr("pragmata.api.querygen.run_planning_summary", run_planning_summary)
+    monkeypatch.setattr("pragmata.api.querygen.run_realization_stage", run_realization_stage)
+
+    previous_limiter = None
+    for _ in range(2):
+        querygen_api.gen_queries(
+            **_required_querygen_kwargs(tmp_path),
+            n_queries=5,
+            batch_size=2,
+            requests_per_second=2.5,
+            check_every_n_seconds=0.2,
+            max_bucket_size=3,
+            enable_planning_memory=enable_planning_memory,
+        )
+
+        assert len(stage_limiters["planning"]) == 3
+        assert len(stage_limiters["summary"]) == (3 if enable_planning_memory else 0)
+        assert len(stage_limiters["realization"]) == 3
+        limiters = [limiter for stage in stage_limiters.values() for limiter in stage]
+        limiter = limiters[0]
+        assert isinstance(limiter, InMemoryRateLimiter)
+        assert all(item is limiter for item in limiters)
+        assert limiter is not previous_limiter
+        assert limiter.requests_per_second == 2.5
+        assert limiter.check_every_n_seconds == 0.2
+        assert limiter.max_bucket_size == 3
+        previous_limiter = limiter
+        for stage in stage_limiters.values():
+            stage.clear()
 
 
 def _make_blueprint(
@@ -189,8 +249,9 @@ def _install_default_workflow_stubs(
         api_key: str,
         batch_candidate_ids: list[str],
         planning_summary: PlanningSummaryState | None = None,
+        rate_limiter: InMemoryRateLimiter,
     ) -> list[QueryBlueprint]:
-        del spec, llm_settings, api_key, planning_summary
+        del spec, llm_settings, api_key, planning_summary, rate_limiter
         return [_make_blueprint(candidate_id) for candidate_id in batch_candidate_ids]
 
     def run_planning_summary(
@@ -200,8 +261,9 @@ def _install_default_workflow_stubs(
         llm_settings,  # noqa: ANN001
         api_key: str,
         prior_summary_state: PlanningSummaryState | None = None,
+        rate_limiter: InMemoryRateLimiter,
     ) -> PlanningSummaryState:
-        del spec, llm_settings, api_key, prior_summary_state
+        del spec, llm_settings, api_key, prior_summary_state, rate_limiter
         first_candidate_id = candidates[0].candidate_id
         return _make_planning_summary_state(
             redundancy_patterns=f"Repeated patterns around {first_candidate_id}.",
@@ -235,8 +297,9 @@ def _install_default_workflow_stubs(
         candidates: list[QueryBlueprint],
         llm_settings,  # noqa: ANN001
         api_key: str,
+        rate_limiter: InMemoryRateLimiter,
     ) -> list[RealizedQuery]:
-        del llm_settings, api_key
+        del llm_settings, api_key, rate_limiter
         return [_make_realized_query(candidate.candidate_id) for candidate in candidates]
 
     def assemble_query_rows(
@@ -300,20 +363,20 @@ def _install_default_workflow_stubs(
     ) -> None:
         del artifact, artifact_path
 
-    monkeypatch.setattr(querygen_api, "build_candidate_ids", build_candidate_ids)
-    monkeypatch.setattr(querygen_api, "iter_batch_sizes", iter_batch_sizes)
-    monkeypatch.setattr(querygen_api, "read_planning_summary_artifact", read_planning_summary_artifact)
-    monkeypatch.setattr(querygen_api, "run_planning_stage", run_planning_stage)
-    monkeypatch.setattr(querygen_api, "run_planning_summary", run_planning_summary)
-    monkeypatch.setattr(querygen_api, "filter_aligned_candidate_ids", filter_aligned_candidate_ids)
-    monkeypatch.setattr(querygen_api, "deduplicate_blueprints", deduplicate_blueprints)
-    monkeypatch.setattr(querygen_api, "chunk_blueprints", chunk_blueprints)
-    monkeypatch.setattr(querygen_api, "run_realization_stage", run_realization_stage)
-    monkeypatch.setattr(querygen_api, "assemble_query_rows", assemble_query_rows)
-    monkeypatch.setattr(querygen_api, "assemble_queries_meta", assemble_queries_meta)
-    monkeypatch.setattr(querygen_api, "assemble_planning_summary", assemble_planning_summary)
-    monkeypatch.setattr(querygen_api, "export_queries", export_queries)
-    monkeypatch.setattr(querygen_api, "export_planning_summary", export_planning_summary)
+    monkeypatch.setattr("pragmata.api.querygen.build_candidate_ids", build_candidate_ids)
+    monkeypatch.setattr("pragmata.api.querygen.iter_batch_sizes", iter_batch_sizes)
+    monkeypatch.setattr("pragmata.api.querygen.read_planning_summary_artifact", read_planning_summary_artifact)
+    monkeypatch.setattr("pragmata.api.querygen.run_planning_stage", run_planning_stage)
+    monkeypatch.setattr("pragmata.api.querygen.run_planning_summary", run_planning_summary)
+    monkeypatch.setattr("pragmata.api.querygen.filter_aligned_candidate_ids", filter_aligned_candidate_ids)
+    monkeypatch.setattr("pragmata.api.querygen.deduplicate_blueprints", deduplicate_blueprints)
+    monkeypatch.setattr("pragmata.api.querygen.chunk_blueprints", chunk_blueprints)
+    monkeypatch.setattr("pragmata.api.querygen.run_realization_stage", run_realization_stage)
+    monkeypatch.setattr("pragmata.api.querygen.assemble_query_rows", assemble_query_rows)
+    monkeypatch.setattr("pragmata.api.querygen.assemble_queries_meta", assemble_queries_meta)
+    monkeypatch.setattr("pragmata.api.querygen.assemble_planning_summary", assemble_planning_summary)
+    monkeypatch.setattr("pragmata.api.querygen.export_queries", export_queries)
+    monkeypatch.setattr("pragmata.api.querygen.export_planning_summary", export_planning_summary)
 
 
 def test_gen_queries_combines_user_args_config_and_defaults(tmp_path: Path) -> None:
@@ -403,8 +466,8 @@ def test_gen_queries_fingerprints_spec_before_resolving_paths(
             planning_summary_artifact_json=tool_root / f"{spec_fingerprint}.json",
         )
 
-    monkeypatch.setattr(querygen_api, "fingerprint_querygen_spec", fingerprint_querygen_spec)
-    monkeypatch.setattr(querygen_api, "resolve_querygen_paths", resolve_querygen_paths)
+    monkeypatch.setattr("pragmata.api.querygen.fingerprint_querygen_spec", fingerprint_querygen_spec)
+    monkeypatch.setattr("pragmata.api.querygen.resolve_querygen_paths", resolve_querygen_paths)
 
     result = querygen_api.gen_queries(
         **_required_querygen_kwargs(tmp_path),
@@ -441,7 +504,7 @@ def test_gen_queries_reads_planning_summary_artifact_from_resolved_path(
         )
         return None
 
-    monkeypatch.setattr(querygen_api, "read_planning_summary_artifact", read_planning_summary_artifact)
+    monkeypatch.setattr("pragmata.api.querygen.read_planning_summary_artifact", read_planning_summary_artifact)
 
     result = querygen_api.gen_queries(
         **_required_querygen_kwargs(tmp_path),
@@ -524,8 +587,8 @@ def test_gen_queries_repeats_planning_batches_and_applies_stage1_filter_to_aggre
     planning_batch_calls: list[list[str]] = []
     stage1_filter_seen: list[dict[str, list[str]]] = []
 
-    monkeypatch.setattr(querygen_api, "build_candidate_ids", lambda n_queries: candidate_ids)
-    monkeypatch.setattr(querygen_api, "iter_batch_sizes", lambda n_queries, batch_size: iter([2, 2, 1]))
+    monkeypatch.setattr("pragmata.api.querygen.build_candidate_ids", lambda n_queries: candidate_ids)
+    monkeypatch.setattr("pragmata.api.querygen.iter_batch_sizes", lambda n_queries, batch_size: iter([2, 2, 1]))
 
     def run_planning_stage(
         *,
@@ -534,8 +597,9 @@ def test_gen_queries_repeats_planning_batches_and_applies_stage1_filter_to_aggre
         api_key: str,
         batch_candidate_ids: list[str],
         planning_summary: PlanningSummaryState | None = None,
+        rate_limiter: InMemoryRateLimiter,
     ) -> list[QueryBlueprint]:
-        del spec, llm_settings, api_key, planning_summary
+        del spec, llm_settings, api_key, planning_summary, rate_limiter
         planning_batch_calls.append(list(batch_candidate_ids))
         return [_make_blueprint(candidate_id) for candidate_id in batch_candidate_ids]
 
@@ -552,8 +616,8 @@ def test_gen_queries_repeats_planning_batches_and_applies_stage1_filter_to_aggre
             )
         return items
 
-    monkeypatch.setattr(querygen_api, "run_planning_stage", run_planning_stage)
-    monkeypatch.setattr(querygen_api, "filter_aligned_candidate_ids", filter_aligned_candidate_ids)
+    monkeypatch.setattr("pragmata.api.querygen.run_planning_stage", run_planning_stage)
+    monkeypatch.setattr("pragmata.api.querygen.filter_aligned_candidate_ids", filter_aligned_candidate_ids)
 
     querygen_api.gen_queries(
         **_required_querygen_kwargs(tmp_path),
@@ -582,7 +646,7 @@ def test_gen_queries_invokes_first_planning_batch_with_none_summary_when_no_prio
     """When no prior artifact is available, the first planning batch starts with no planning summary."""
     planning_summary_seen: list[PlanningSummaryState | None] = []
 
-    monkeypatch.setattr(querygen_api, "read_planning_summary_artifact", lambda **kwargs: None)
+    monkeypatch.setattr("pragmata.api.querygen.read_planning_summary_artifact", lambda **kwargs: None)
 
     def run_planning_stage(
         *,
@@ -591,12 +655,13 @@ def test_gen_queries_invokes_first_planning_batch_with_none_summary_when_no_prio
         api_key: str,
         batch_candidate_ids: list[str],
         planning_summary: PlanningSummaryState | None = None,
+        rate_limiter: InMemoryRateLimiter,
     ) -> list[QueryBlueprint]:
-        del spec, llm_settings, api_key
+        del spec, llm_settings, api_key, rate_limiter
         planning_summary_seen.append(planning_summary)
         return [_make_blueprint(candidate_id) for candidate_id in batch_candidate_ids]
 
-    monkeypatch.setattr(querygen_api, "run_planning_stage", run_planning_stage)
+    monkeypatch.setattr("pragmata.api.querygen.run_planning_stage", run_planning_stage)
 
     querygen_api.gen_queries(
         **_required_querygen_kwargs(tmp_path),
@@ -633,9 +698,9 @@ def test_gen_queries_threads_planning_summary_state_across_batches(
     )
     returned_states = iter([summary_state_1, summary_state_2, summary_state_3])
 
-    monkeypatch.setattr(querygen_api, "build_candidate_ids", lambda n_queries: candidate_ids)
-    monkeypatch.setattr(querygen_api, "iter_batch_sizes", lambda n_queries, batch_size: iter([2, 2, 1]))
-    monkeypatch.setattr(querygen_api, "read_planning_summary_artifact", lambda **kwargs: None)
+    monkeypatch.setattr("pragmata.api.querygen.build_candidate_ids", lambda n_queries: candidate_ids)
+    monkeypatch.setattr("pragmata.api.querygen.iter_batch_sizes", lambda n_queries, batch_size: iter([2, 2, 1]))
+    monkeypatch.setattr("pragmata.api.querygen.read_planning_summary_artifact", lambda **kwargs: None)
 
     def run_planning_stage(
         *,
@@ -644,8 +709,9 @@ def test_gen_queries_threads_planning_summary_state_across_batches(
         api_key: str,
         batch_candidate_ids: list[str],
         planning_summary: PlanningSummaryState | None = None,
+        rate_limiter: InMemoryRateLimiter,
     ) -> list[QueryBlueprint]:
-        del spec, llm_settings, api_key
+        del spec, llm_settings, api_key, rate_limiter
         planning_batch_calls.append(
             {
                 "batch_candidate_ids": list(batch_candidate_ids),
@@ -661,8 +727,9 @@ def test_gen_queries_threads_planning_summary_state_across_batches(
         llm_settings,  # noqa: ANN001
         api_key: str,
         prior_summary_state: PlanningSummaryState | None = None,
+        rate_limiter: InMemoryRateLimiter,
     ) -> PlanningSummaryState:
-        del spec, llm_settings, api_key
+        del spec, llm_settings, api_key, rate_limiter
         planning_summary_calls.append(
             {
                 "candidate_ids": [candidate.candidate_id for candidate in candidates],
@@ -671,8 +738,8 @@ def test_gen_queries_threads_planning_summary_state_across_batches(
         )
         return next(returned_states)
 
-    monkeypatch.setattr(querygen_api, "run_planning_stage", run_planning_stage)
-    monkeypatch.setattr(querygen_api, "run_planning_summary", run_planning_summary)
+    monkeypatch.setattr("pragmata.api.querygen.run_planning_stage", run_planning_stage)
+    monkeypatch.setattr("pragmata.api.querygen.run_planning_summary", run_planning_summary)
 
     querygen_api.gen_queries(
         **_required_querygen_kwargs(tmp_path),
@@ -738,8 +805,8 @@ def test_gen_queries_applies_stage1_filtering_before_deduplication(
         assert [candidate.candidate_id for candidate in candidates] == ["c001", "c003"]
         return candidates
 
-    monkeypatch.setattr(querygen_api, "filter_aligned_candidate_ids", filter_aligned_candidate_ids)
-    monkeypatch.setattr(querygen_api, "deduplicate_blueprints", deduplicate_blueprints)
+    monkeypatch.setattr("pragmata.api.querygen.filter_aligned_candidate_ids", filter_aligned_candidate_ids)
+    monkeypatch.setattr("pragmata.api.querygen.deduplicate_blueprints", deduplicate_blueprints)
 
     querygen_api.gen_queries(
         **_required_querygen_kwargs(tmp_path),
@@ -782,14 +849,15 @@ def test_gen_queries_drives_realization_batches_from_selected_blueprints(
         candidates: list[QueryBlueprint],
         llm_settings,  # noqa: ANN001
         api_key: str,
+        rate_limiter: InMemoryRateLimiter,
     ) -> list[RealizedQuery]:
-        del llm_settings, api_key
+        del llm_settings, api_key, rate_limiter
         realization_batch_calls.append([candidate.candidate_id for candidate in candidates])
         return [_make_realized_query(candidate.candidate_id) for candidate in candidates]
 
-    monkeypatch.setattr(querygen_api, "deduplicate_blueprints", deduplicate_blueprints)
-    monkeypatch.setattr(querygen_api, "chunk_blueprints", chunk_blueprints)
-    monkeypatch.setattr(querygen_api, "run_realization_stage", run_realization_stage)
+    monkeypatch.setattr("pragmata.api.querygen.deduplicate_blueprints", deduplicate_blueprints)
+    monkeypatch.setattr("pragmata.api.querygen.chunk_blueprints", chunk_blueprints)
+    monkeypatch.setattr("pragmata.api.querygen.run_realization_stage", run_realization_stage)
 
     querygen_api.gen_queries(
         **_required_querygen_kwargs(tmp_path),
@@ -851,9 +919,9 @@ def test_gen_queries_applies_stage2_filtering_before_assembly(
             _make_row(query_id="stage2-filter-check_q002", query="query 2"),
         ]
 
-    monkeypatch.setattr(querygen_api, "deduplicate_blueprints", deduplicate_blueprints)
-    monkeypatch.setattr(querygen_api, "filter_aligned_candidate_ids", filter_aligned_candidate_ids)
-    monkeypatch.setattr(querygen_api, "assemble_query_rows", assemble_query_rows)
+    monkeypatch.setattr("pragmata.api.querygen.deduplicate_blueprints", deduplicate_blueprints)
+    monkeypatch.setattr("pragmata.api.querygen.filter_aligned_candidate_ids", filter_aligned_candidate_ids)
+    monkeypatch.setattr("pragmata.api.querygen.assemble_query_rows", assemble_query_rows)
 
     querygen_api.gen_queries(
         **_required_querygen_kwargs(tmp_path),
@@ -891,8 +959,8 @@ def test_gen_queries_calls_assembly_and_export_with_final_post_filter_outputs(
     assemble_rows_calls: list[dict[str, object]] = []
     assemble_meta_calls: list[dict[str, object]] = []
 
-    monkeypatch.setattr(querygen_api, "build_candidate_ids", lambda n_queries: ["c001", "c002", "c003"])
-    monkeypatch.setattr(querygen_api, "iter_batch_sizes", lambda n_queries, batch_size: iter([3]))
+    monkeypatch.setattr("pragmata.api.querygen.build_candidate_ids", lambda n_queries: ["c001", "c002", "c003"])
+    monkeypatch.setattr("pragmata.api.querygen.iter_batch_sizes", lambda n_queries, batch_size: iter([3]))
 
     def run_planning_stage(
         *,
@@ -901,8 +969,9 @@ def test_gen_queries_calls_assembly_and_export_with_final_post_filter_outputs(
         api_key: str,
         batch_candidate_ids: list[str],
         planning_summary: PlanningSummaryState | None = None,
+        rate_limiter: InMemoryRateLimiter,
     ) -> list[QueryBlueprint]:
-        del spec, llm_settings, api_key, planning_summary
+        del spec, llm_settings, api_key, planning_summary, rate_limiter
         return [_make_blueprint(candidate_id) for candidate_id in batch_candidate_ids]
 
     def filter_aligned_candidate_ids(
@@ -934,8 +1003,9 @@ def test_gen_queries_calls_assembly_and_export_with_final_post_filter_outputs(
         candidates: list[QueryBlueprint],
         llm_settings,  # noqa: ANN001
         api_key: str,
+        rate_limiter: InMemoryRateLimiter,
     ) -> list[RealizedQuery]:
-        del llm_settings, api_key
+        del llm_settings, api_key, rate_limiter
         assert candidates == selected_blueprints
         return [
             _make_realized_query("c001", query="Final realized query"),
@@ -994,14 +1064,14 @@ def test_gen_queries_calls_assembly_and_export_with_final_post_filter_outputs(
             }
         )
 
-    monkeypatch.setattr(querygen_api, "run_planning_stage", run_planning_stage)
-    monkeypatch.setattr(querygen_api, "filter_aligned_candidate_ids", filter_aligned_candidate_ids)
-    monkeypatch.setattr(querygen_api, "deduplicate_blueprints", deduplicate_blueprints)
-    monkeypatch.setattr(querygen_api, "chunk_blueprints", chunk_blueprints)
-    monkeypatch.setattr(querygen_api, "run_realization_stage", run_realization_stage)
-    monkeypatch.setattr(querygen_api, "assemble_query_rows", assemble_query_rows)
-    monkeypatch.setattr(querygen_api, "assemble_queries_meta", assemble_queries_meta)
-    monkeypatch.setattr(querygen_api, "export_queries", export_queries)
+    monkeypatch.setattr("pragmata.api.querygen.run_planning_stage", run_planning_stage)
+    monkeypatch.setattr("pragmata.api.querygen.filter_aligned_candidate_ids", filter_aligned_candidate_ids)
+    monkeypatch.setattr("pragmata.api.querygen.deduplicate_blueprints", deduplicate_blueprints)
+    monkeypatch.setattr("pragmata.api.querygen.chunk_blueprints", chunk_blueprints)
+    monkeypatch.setattr("pragmata.api.querygen.run_realization_stage", run_realization_stage)
+    monkeypatch.setattr("pragmata.api.querygen.assemble_query_rows", assemble_query_rows)
+    monkeypatch.setattr("pragmata.api.querygen.assemble_queries_meta", assemble_queries_meta)
+    monkeypatch.setattr("pragmata.api.querygen.export_queries", export_queries)
 
     result = querygen_api.gen_queries(
         **_required_querygen_kwargs(tmp_path),
@@ -1057,9 +1127,9 @@ def test_gen_queries_assembles_and_exports_final_planning_summary_once(
         state=summary_state_2,
     )
 
-    monkeypatch.setattr(querygen_api, "build_candidate_ids", lambda n_queries: ["c001", "c002", "c003"])
-    monkeypatch.setattr(querygen_api, "iter_batch_sizes", lambda n_queries, batch_size: iter([2, 1]))
-    monkeypatch.setattr(querygen_api, "read_planning_summary_artifact", lambda **kwargs: None)
+    monkeypatch.setattr("pragmata.api.querygen.build_candidate_ids", lambda n_queries: ["c001", "c002", "c003"])
+    monkeypatch.setattr("pragmata.api.querygen.iter_batch_sizes", lambda n_queries, batch_size: iter([2, 1]))
+    monkeypatch.setattr("pragmata.api.querygen.read_planning_summary_artifact", lambda **kwargs: None)
 
     returned_states = iter([summary_state_1, summary_state_2])
 
@@ -1070,8 +1140,9 @@ def test_gen_queries_assembles_and_exports_final_planning_summary_once(
         llm_settings,  # noqa: ANN001
         api_key: str,
         prior_summary_state: PlanningSummaryState | None = None,
+        rate_limiter: InMemoryRateLimiter,
     ) -> PlanningSummaryState:
-        del spec, candidates, llm_settings, api_key, prior_summary_state
+        del spec, candidates, llm_settings, api_key, prior_summary_state, rate_limiter
         return next(returned_states)
 
     assemble_calls: list[dict[str, object]] = []
@@ -1104,9 +1175,9 @@ def test_gen_queries_assembles_and_exports_final_planning_summary_once(
             }
         )
 
-    monkeypatch.setattr(querygen_api, "run_planning_summary", run_planning_summary)
-    monkeypatch.setattr(querygen_api, "assemble_planning_summary", assemble_planning_summary)
-    monkeypatch.setattr(querygen_api, "export_planning_summary", export_planning_summary)
+    monkeypatch.setattr("pragmata.api.querygen.run_planning_summary", run_planning_summary)
+    monkeypatch.setattr("pragmata.api.querygen.assemble_planning_summary", assemble_planning_summary)
+    monkeypatch.setattr("pragmata.api.querygen.export_planning_summary", export_planning_summary)
 
     result = querygen_api.gen_queries(
         **_required_querygen_kwargs(tmp_path),
@@ -1134,13 +1205,11 @@ def test_gen_queries_raises_when_provider_secret_resolution_fails(
 ) -> None:
     """Provider-secret resolution failures stop the workflow before stage execution."""
     monkeypatch.setattr(
-        querygen_api,
-        "resolve_api_key",
+        "pragmata.api.querygen.resolve_api_key",
         lambda provider: (_ for _ in ()).throw(RuntimeError("missing secret")),
     )
     monkeypatch.setattr(
-        querygen_api,
-        "build_candidate_ids",
+        "pragmata.api.querygen.build_candidate_ids",
         lambda n_queries: pytest.fail("build_candidate_ids must not run when secret resolution fails"),
     )
 
@@ -1157,28 +1226,23 @@ def test_gen_queries_propagates_planning_failure_and_stops_downstream_work(
 ) -> None:
     """Planning failures propagate and prevent realization, assembly, and export."""
     monkeypatch.setattr(
-        querygen_api,
-        "run_planning_stage",
+        "pragmata.api.querygen.run_planning_stage",
         lambda **kwargs: (_ for _ in ()).throw(RuntimeError("planning failed")),
     )
     monkeypatch.setattr(
-        querygen_api,
-        "run_realization_stage",
+        "pragmata.api.querygen.run_realization_stage",
         lambda **kwargs: pytest.fail("run_realization_stage must not run after planning failure"),
     )
     monkeypatch.setattr(
-        querygen_api,
-        "assemble_query_rows",
+        "pragmata.api.querygen.assemble_query_rows",
         lambda **kwargs: pytest.fail("assemble_query_rows must not run after planning failure"),
     )
     monkeypatch.setattr(
-        querygen_api,
-        "export_queries",
+        "pragmata.api.querygen.export_queries",
         lambda **kwargs: pytest.fail("export_queries must not run after planning failure"),
     )
     monkeypatch.setattr(
-        querygen_api,
-        "export_planning_summary",
+        "pragmata.api.querygen.export_planning_summary",
         lambda **kwargs: pytest.fail("export_planning_summary must not run after planning failure"),
     )
 
@@ -1195,23 +1259,19 @@ def test_gen_queries_propagates_realization_failure_and_stops_downstream_work(
 ) -> None:
     """Realization failures propagate and prevent assembly and export."""
     monkeypatch.setattr(
-        querygen_api,
-        "run_realization_stage",
+        "pragmata.api.querygen.run_realization_stage",
         lambda **kwargs: (_ for _ in ()).throw(RuntimeError("realization failed")),
     )
     monkeypatch.setattr(
-        querygen_api,
-        "assemble_query_rows",
+        "pragmata.api.querygen.assemble_query_rows",
         lambda **kwargs: pytest.fail("assemble_query_rows must not run after realization failure"),
     )
     monkeypatch.setattr(
-        querygen_api,
-        "export_queries",
+        "pragmata.api.querygen.export_queries",
         lambda **kwargs: pytest.fail("export_queries must not run after realization failure"),
     )
     monkeypatch.setattr(
-        querygen_api,
-        "export_planning_summary",
+        "pragmata.api.querygen.export_planning_summary",
         lambda **kwargs: pytest.fail("export_planning_summary must not run after realization failure"),
     )
 
@@ -1232,13 +1292,11 @@ def test_gen_queries_handles_empty_selected_blueprints_after_stage1(
     export_calls: list[dict[str, object]] = []
 
     monkeypatch.setattr(
-        querygen_api,
-        "deduplicate_blueprints",
+        "pragmata.api.querygen.deduplicate_blueprints",
         lambda candidates, near_duplicate_tolerance=0.95: [],
     )
     monkeypatch.setattr(
-        querygen_api,
-        "run_realization_stage",
+        "pragmata.api.querygen.run_realization_stage",
         lambda **kwargs: pytest.fail("run_realization_stage must not run when no blueprints remain"),
     )
 
@@ -1301,9 +1359,9 @@ def test_gen_queries_handles_empty_selected_blueprints_after_stage1(
             }
         )
 
-    monkeypatch.setattr(querygen_api, "assemble_query_rows", assemble_query_rows)
-    monkeypatch.setattr(querygen_api, "assemble_queries_meta", assemble_queries_meta)
-    monkeypatch.setattr(querygen_api, "export_queries", export_queries)
+    monkeypatch.setattr("pragmata.api.querygen.assemble_query_rows", assemble_query_rows)
+    monkeypatch.setattr("pragmata.api.querygen.assemble_queries_meta", assemble_queries_meta)
+    monkeypatch.setattr("pragmata.api.querygen.export_queries", export_queries)
 
     result = querygen_api.gen_queries(
         **_required_querygen_kwargs(tmp_path),
@@ -1383,7 +1441,7 @@ def test_gen_queries_passes_near_duplicate_tolerance_to_deduplication(
         seen["near_duplicate_tolerance"] = near_duplicate_tolerance
         return candidates
 
-    monkeypatch.setattr(querygen_api, "deduplicate_blueprints", deduplicate_blueprints)
+    monkeypatch.setattr("pragmata.api.querygen.deduplicate_blueprints", deduplicate_blueprints)
 
     result = querygen_api.gen_queries(
         **_required_querygen_kwargs(tmp_path),
