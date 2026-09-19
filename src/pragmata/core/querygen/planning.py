@@ -1,5 +1,7 @@
 """Stage-1 planning executor for synthetic query generation."""
 
+from langchain_core.rate_limiters import BaseRateLimiter
+
 from pragmata.core.querygen.llm import LlmInitializationError, build_llm_runnable
 from pragmata.core.querygen.prompts import SYSTEM_PROMPT_PLANNING, USER_PROMPT_PLANNING
 from pragmata.core.schemas.querygen_input import QueryGenSpec, WeightedValue
@@ -133,6 +135,8 @@ def run_planning_stage(
     api_key: str,
     batch_candidate_ids: list[str],
     planning_summary: PlanningSummaryState | None = None,
+    *,
+    rate_limiter: BaseRateLimiter,
 ) -> list[QueryBlueprint]:
     """Run one stage-1 planning invocation.
 
@@ -142,6 +146,7 @@ def run_planning_stage(
         api_key: Provider API key for the configured planning model.
         batch_candidate_ids: Candidate IDs assigned to this single planning invocation.
         planning_summary: Advisory planning summary from earlier planning batches.
+        rate_limiter: Shared rate limiter for the query-generation run.
 
     Returns:
         The list of structured candidate blueprints returned by the planning stage.
@@ -162,9 +167,7 @@ def run_planning_stage(
             model=llm_settings.planning_model,
             api_key=api_key,
             output_schema=output_schema,
-            requests_per_second=llm_settings.requests_per_second,
-            check_every_n_seconds=llm_settings.check_every_n_seconds,
-            max_bucket_size=llm_settings.max_bucket_size,
+            rate_limiter=rate_limiter,
             base_url=llm_settings.base_url,
             model_kwargs=llm_settings.planning_model_kwargs,
         )
