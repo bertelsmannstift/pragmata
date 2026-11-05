@@ -4,6 +4,8 @@ import hashlib
 import json
 from pathlib import Path
 
+from langchain_core.rate_limiters import BaseRateLimiter
+
 from pragmata.core.querygen.llm import LlmInitializationError, build_llm_runnable
 from pragmata.core.querygen.planning import format_string_list, format_weighted_values, normalize_multiline
 from pragmata.core.querygen.prompts import (
@@ -153,6 +155,8 @@ def run_planning_summary(
     llm_settings: LlmSettings,
     api_key: str,
     prior_summary_state: PlanningSummaryState | None = None,
+    *,
+    rate_limiter: BaseRateLimiter,
 ) -> PlanningSummaryState:
     """Run one summary-updater invocation.
 
@@ -162,6 +166,7 @@ def run_planning_summary(
         llm_settings: LLM settings for the query-generation workflow.
         api_key: Provider API key for the configured planning model.
         prior_summary_state: Optional prior planning summary state.
+        rate_limiter: Shared rate limiter for the query-generation run.
 
     Returns:
         The updated planning summary state.
@@ -180,9 +185,7 @@ def run_planning_summary(
             model=llm_settings.planning_model,
             api_key=api_key,
             output_schema=PlanningSummaryState,
-            requests_per_second=llm_settings.requests_per_second,
-            check_every_n_seconds=llm_settings.check_every_n_seconds,
-            max_bucket_size=llm_settings.max_bucket_size,
+            rate_limiter=rate_limiter,
             base_url=llm_settings.base_url,
             model_kwargs=llm_settings.planning_model_kwargs,
         )

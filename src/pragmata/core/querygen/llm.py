@@ -4,9 +4,10 @@ from typing import Any
 
 from langchain.chat_models import init_chat_model
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.rate_limiters import InMemoryRateLimiter
+from langchain_core.rate_limiters import BaseRateLimiter, InMemoryRateLimiter
 from langchain_core.runnables.base import RunnableSerializable
 
+from pragmata.core.settings.querygen_settings import LlmSettings
 from pragmata.core.types import M
 
 _RESERVED_MODEL_KWARGS = {
@@ -22,6 +23,15 @@ _DEFAULT_REQUEST_TIMEOUT_SECONDS = 600
 
 class LlmInitializationError(RuntimeError):
     """Raised when the configured chat model cannot be initialized."""
+
+
+def build_rate_limiter(llm_settings: LlmSettings) -> InMemoryRateLimiter:
+    """Build a rate limiter to share across all stages and batches of one run."""
+    return InMemoryRateLimiter(
+        requests_per_second=llm_settings.requests_per_second,
+        check_every_n_seconds=llm_settings.check_every_n_seconds,
+        max_bucket_size=llm_settings.max_bucket_size,
+    )
 
 
 def _build_prompt_template(
@@ -54,9 +64,7 @@ def build_llm_runnable(
     model: str,
     api_key: str,
     output_schema: type[M],
-    requests_per_second: float,
-    check_every_n_seconds: float,
-    max_bucket_size: int,
+    rate_limiter: BaseRateLimiter,
     base_url: str | None,
     model_kwargs: dict[str, Any],
 ) -> RunnableSerializable:
@@ -69,9 +77,7 @@ def build_llm_runnable(
         model: Provider-specific model identifier.
         api_key: Provider API key.
         output_schema: Pydantic schema class used for structured output.
-        requests_per_second: Rate limiter refill rate.
-        check_every_n_seconds: Rate limiter polling interval.
-        max_bucket_size: Rate limiter burst size.
+        rate_limiter: Shared rate limiter for the query-generation run.
         base_url: Optional provider base URL.
         model_kwargs: Optional extra keyword arguments forwarded to model init.
             A default request ``timeout`` of ``_DEFAULT_REQUEST_TIMEOUT_SECONDS``
@@ -81,6 +87,9 @@ def build_llm_runnable(
         A composed LangChain runnable that accepts prompt variables and returns
         structured output validated against ``output_schema``.
     """
+    if rate_limiter is None:
+        raise ValueError("rate_limiter must not be None.")
+
     overlapping_keys = _RESERVED_MODEL_KWARGS.intersection(model_kwargs)
     if overlapping_keys:
         overlapping = ", ".join(sorted(overlapping_keys))
@@ -94,11 +103,7 @@ def build_llm_runnable(
         "model_provider": model_provider,
         "api_key": api_key,
         "timeout": _DEFAULT_REQUEST_TIMEOUT_SECONDS,
-        "rate_limiter": InMemoryRateLimiter(
-            requests_per_second=requests_per_second,
-            check_every_n_seconds=check_every_n_seconds,
-            max_bucket_size=max_bucket_size,
-        ),
+        "rate_limiter": rate_limiter,
     }
 
     if base_url is not None:

@@ -1,5 +1,7 @@
 """Stage-2 realization executor for synthetic query generation."""
 
+from langchain_core.rate_limiters import BaseRateLimiter
+
 from pragmata.core.querygen.llm import LlmInitializationError, build_llm_runnable
 from pragmata.core.querygen.prompts import SYSTEM_PROMPT_REALIZATION, USER_PROMPT_REALIZATION
 from pragmata.core.schemas.querygen_plan import QueryBlueprint
@@ -76,6 +78,8 @@ def run_realization_stage(
     candidates: list[QueryBlueprint],
     llm_settings: LlmSettings,
     api_key: str,
+    *,
+    rate_limiter: BaseRateLimiter,
 ) -> list[RealizedQuery]:
     """Run one stage-2 realization invocation.
 
@@ -84,6 +88,7 @@ def run_realization_stage(
             realization invocation.
         llm_settings: LLM settings for the query-generation workflow.
         api_key: Provider API key for the configured realization model.
+        rate_limiter: Shared rate limiter for the query-generation run.
 
     Returns:
         The list of realized queries returned by the realization stage.
@@ -100,9 +105,7 @@ def run_realization_stage(
             model=llm_settings.realization_model,
             api_key=api_key,
             output_schema=output_schema,
-            requests_per_second=llm_settings.requests_per_second,
-            check_every_n_seconds=llm_settings.check_every_n_seconds,
-            max_bucket_size=llm_settings.max_bucket_size,
+            rate_limiter=rate_limiter,
             base_url=llm_settings.base_url,
             model_kwargs=llm_settings.realization_model_kwargs,
         )

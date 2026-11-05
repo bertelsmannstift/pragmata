@@ -3,6 +3,7 @@
 from unittest.mock import ANY, Mock
 
 import pytest
+from langchain_core.rate_limiters import InMemoryRateLimiter
 
 from pragmata.core.querygen.llm import LlmInitializationError
 from pragmata.core.querygen.prompts import SYSTEM_PROMPT_REALIZATION, USER_PROMPT_REALIZATION
@@ -14,6 +15,12 @@ from pragmata.core.querygen.realization import (
 from pragmata.core.schemas.querygen_plan import QueryBlueprint
 from pragmata.core.schemas.querygen_realize import RealizedQuery, RealizedQueryList
 from pragmata.core.settings.querygen_settings import LlmSettings
+
+
+@pytest.fixture
+def rate_limiter() -> InMemoryRateLimiter:
+    """Return the shared limiter supplied by the caller."""
+    return InMemoryRateLimiter()
 
 
 @pytest.fixture
@@ -149,6 +156,7 @@ def test_run_realization_stage_wires_realization_assets_and_settings_into_llm_bu
     monkeypatch: pytest.MonkeyPatch,
     llm_settings: LlmSettings,
     expected_prompt_vars_single: dict[str, object],
+    rate_limiter: InMemoryRateLimiter,
 ) -> None:
     mock_runnable = Mock()
     mock_runnable.invoke.return_value = RealizedQueryList(queries=[_make_realized_query()])
@@ -160,6 +168,7 @@ def test_run_realization_stage_wires_realization_assets_and_settings_into_llm_bu
     )
 
     result = run_realization_stage(
+        rate_limiter=rate_limiter,
         candidates=[_make_blueprint()],
         llm_settings=llm_settings,
         api_key="test-api-key",
@@ -174,9 +183,7 @@ def test_run_realization_stage_wires_realization_assets_and_settings_into_llm_bu
         model=llm_settings.realization_model,
         api_key="test-api-key",
         output_schema=ANY,
-        requests_per_second=llm_settings.requests_per_second,
-        check_every_n_seconds=llm_settings.check_every_n_seconds,
-        max_bucket_size=llm_settings.max_bucket_size,
+        rate_limiter=rate_limiter,
         base_url=llm_settings.base_url,
         model_kwargs=llm_settings.realization_model_kwargs,
     )
@@ -193,6 +200,7 @@ def test_run_realization_stage_invokes_runnable_once_and_returns_queries(
     monkeypatch: pytest.MonkeyPatch,
     llm_settings: LlmSettings,
     expected_prompt_vars_single: dict[str, object],
+    rate_limiter: InMemoryRateLimiter,
 ) -> None:
     class FakeRunnable:
         def __init__(self) -> None:
@@ -212,6 +220,7 @@ def test_run_realization_stage_invokes_runnable_once_and_returns_queries(
     )
 
     result = run_realization_stage(
+        rate_limiter=rate_limiter,
         candidates=[_make_blueprint()],
         llm_settings=llm_settings,
         api_key="test-api-key",
@@ -227,6 +236,7 @@ def test_run_realization_stage_invokes_runnable_once_and_returns_queries(
 def test_run_realization_stage_extracts_queries_from_realized_query_list(
     monkeypatch: pytest.MonkeyPatch,
     llm_settings: LlmSettings,
+    rate_limiter: InMemoryRateLimiter,
 ) -> None:
     expected_queries = [
         _make_realized_query("C001"),
@@ -246,6 +256,7 @@ def test_run_realization_stage_extracts_queries_from_realized_query_list(
     )
 
     result = run_realization_stage(
+        rate_limiter=rate_limiter,
         candidates=[_make_blueprint(), _make_blueprint_with_optional_fields()],
         llm_settings=llm_settings,
         api_key="test-api-key",
@@ -257,6 +268,7 @@ def test_run_realization_stage_extracts_queries_from_realized_query_list(
 def test_run_realization_stage_propagates_llm_initialization_error(
     monkeypatch: pytest.MonkeyPatch,
     llm_settings: LlmSettings,
+    rate_limiter: InMemoryRateLimiter,
 ) -> None:
     monkeypatch.setattr(
         "pragmata.core.querygen.realization.build_llm_runnable",
@@ -265,6 +277,7 @@ def test_run_realization_stage_propagates_llm_initialization_error(
 
     with pytest.raises(LlmInitializationError, match="bad config"):
         run_realization_stage(
+            rate_limiter=rate_limiter,
             candidates=[_make_blueprint()],
             llm_settings=llm_settings,
             api_key="test-api-key",
@@ -274,6 +287,7 @@ def test_run_realization_stage_propagates_llm_initialization_error(
 def test_run_realization_stage_wraps_invoke_failures(
     monkeypatch: pytest.MonkeyPatch,
     llm_settings: LlmSettings,
+    rate_limiter: InMemoryRateLimiter,
 ) -> None:
     class FakeRunnable:
         def invoke(self, payload: dict[str, object]) -> RealizedQueryList:
@@ -286,6 +300,7 @@ def test_run_realization_stage_wraps_invoke_failures(
 
     with pytest.raises(RealizationStageError, match="Realization stage invocation failed."):
         run_realization_stage(
+            rate_limiter=rate_limiter,
             candidates=[_make_blueprint()],
             llm_settings=llm_settings,
             api_key="test-api-key",
@@ -294,9 +309,11 @@ def test_run_realization_stage_wraps_invoke_failures(
 
 def test_run_realization_stage_wraps_prompt_var_construction_failures(
     llm_settings: LlmSettings,
+    rate_limiter: InMemoryRateLimiter,
 ) -> None:
     with pytest.raises(ValueError, match="candidates must not be empty"):
         run_realization_stage(
+            rate_limiter=rate_limiter,
             candidates=[],
             llm_settings=llm_settings,
             api_key="test-api-key",

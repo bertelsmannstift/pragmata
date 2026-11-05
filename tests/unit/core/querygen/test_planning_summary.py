@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
+from langchain_core.rate_limiters import InMemoryRateLimiter
 from pydantic import ValidationError
 
 from pragmata.core.querygen.llm import LlmInitializationError
@@ -28,6 +29,12 @@ from pragmata.core.schemas.querygen_output import PlanningSummaryArtifact
 from pragmata.core.schemas.querygen_plan import QueryBlueprint
 from pragmata.core.schemas.querygen_summary import PlanningSummaryState
 from pragmata.core.settings.querygen_settings import LlmSettings
+
+
+@pytest.fixture()
+def rate_limiter() -> InMemoryRateLimiter:
+    """Return the shared limiter supplied by the caller."""
+    return InMemoryRateLimiter()
 
 
 @pytest.fixture()
@@ -468,6 +475,7 @@ def test_run_planning_summary_wires_summary_prompt_assets_and_settings_into_llm_
     make_spec: Callable[..., QueryGenSpec],
     llm_settings: LlmSettings,
     prior_summary_state: PlanningSummaryState,
+    rate_limiter: InMemoryRateLimiter,
 ) -> None:
     spec = make_spec()
     candidates = [_make_blueprint("C001")]
@@ -494,6 +502,7 @@ def test_run_planning_summary_wires_summary_prompt_assets_and_settings_into_llm_
     )
 
     result = run_planning_summary(
+        rate_limiter=rate_limiter,
         spec=spec,
         candidates=candidates,
         llm_settings=llm_settings,
@@ -510,9 +519,7 @@ def test_run_planning_summary_wires_summary_prompt_assets_and_settings_into_llm_
         model=llm_settings.planning_model,
         api_key="test-api-key",
         output_schema=PlanningSummaryState,
-        requests_per_second=llm_settings.requests_per_second,
-        check_every_n_seconds=llm_settings.check_every_n_seconds,
-        max_bucket_size=llm_settings.max_bucket_size,
+        rate_limiter=rate_limiter,
         base_url=llm_settings.base_url,
         model_kwargs=llm_settings.planning_model_kwargs,
     )
@@ -523,6 +530,7 @@ def test_run_planning_summary_invokes_runnable_once_and_returns_summary_state(
     monkeypatch: pytest.MonkeyPatch,
     make_spec: Callable[..., QueryGenSpec],
     llm_settings: LlmSettings,
+    rate_limiter: InMemoryRateLimiter,
 ) -> None:
     spec = make_spec()
     candidates = [_make_blueprint("C001"), _make_blueprint("C002")]
@@ -556,6 +564,7 @@ def test_run_planning_summary_invokes_runnable_once_and_returns_summary_state(
     )
 
     result = run_planning_summary(
+        rate_limiter=rate_limiter,
         spec=spec,
         candidates=candidates,
         llm_settings=llm_settings,
@@ -572,6 +581,7 @@ def test_run_planning_summary_propagates_llm_initialization_error(
     monkeypatch: pytest.MonkeyPatch,
     make_spec: Callable[..., QueryGenSpec],
     llm_settings: LlmSettings,
+    rate_limiter: InMemoryRateLimiter,
 ) -> None:
     spec = make_spec()
 
@@ -582,6 +592,7 @@ def test_run_planning_summary_propagates_llm_initialization_error(
 
     with pytest.raises(LlmInitializationError, match="bad config"):
         run_planning_summary(
+            rate_limiter=rate_limiter,
             spec=spec,
             candidates=[_make_blueprint("C001")],
             llm_settings=llm_settings,
@@ -593,6 +604,7 @@ def test_run_planning_summary_wraps_invoke_failures(
     monkeypatch: pytest.MonkeyPatch,
     make_spec: Callable[..., QueryGenSpec],
     llm_settings: LlmSettings,
+    rate_limiter: InMemoryRateLimiter,
 ) -> None:
     spec = make_spec()
 
@@ -610,6 +622,7 @@ def test_run_planning_summary_wraps_invoke_failures(
         match="Planning stage invocation failed while updating the planning summary.",
     ):
         run_planning_summary(
+            rate_limiter=rate_limiter,
             spec=spec,
             candidates=[_make_blueprint("C001")],
             llm_settings=llm_settings,
@@ -620,11 +633,13 @@ def test_run_planning_summary_wraps_invoke_failures(
 def test_run_planning_summary_propagates_empty_candidates_error(
     make_spec: Callable[..., QueryGenSpec],
     llm_settings: LlmSettings,
+    rate_limiter: InMemoryRateLimiter,
 ) -> None:
     spec = make_spec()
 
     with pytest.raises(ValueError, match="candidates must not be empty"):
         run_planning_summary(
+            rate_limiter=rate_limiter,
             spec=spec,
             candidates=[],
             llm_settings=llm_settings,

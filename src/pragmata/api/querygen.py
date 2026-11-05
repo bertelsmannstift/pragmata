@@ -15,6 +15,7 @@ from pragmata.core.querygen.batching import build_candidate_ids, chunk_blueprint
 from pragmata.core.querygen.deduplication import deduplicate_blueprints
 from pragmata.core.querygen.export import export_planning_summary, export_queries
 from pragmata.core.querygen.filtering import filter_aligned_candidate_ids
+from pragmata.core.querygen.llm import build_rate_limiter
 from pragmata.core.querygen.planning import run_planning_stage
 from pragmata.core.querygen.planning_summary import (
     fingerprint_querygen_spec,
@@ -200,6 +201,7 @@ def gen_queries(
     )
 
     with error_log(paths.run_dir):
+        rate_limiter = build_rate_limiter(settings.llm)
         planning_summary_state: PlanningSummaryState | None = None
 
         if settings.enable_planning_memory:
@@ -226,6 +228,7 @@ def gen_queries(
                 api_key=api_key,
                 batch_candidate_ids=batch_candidate_ids,
                 planning_summary=planning_summary_state,
+                rate_limiter=rate_limiter,
             )
             planning_outputs.extend(batch_blueprints)
 
@@ -236,6 +239,7 @@ def gen_queries(
                     llm_settings=settings.llm,
                     api_key=api_key,
                     prior_summary_state=planning_summary_state,
+                    rate_limiter=rate_limiter,
                 )
 
         filtered_planning_outputs = filter_aligned_candidate_ids(
@@ -267,6 +271,7 @@ def gen_queries(
                     candidates=blueprint_batch,
                     llm_settings=settings.llm,
                     api_key=api_key,
+                    rate_limiter=rate_limiter,
                 )
             )
 

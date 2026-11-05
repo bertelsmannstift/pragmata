@@ -3,6 +3,7 @@
 from unittest.mock import ANY, Mock
 
 import pytest
+from langchain_core.rate_limiters import InMemoryRateLimiter
 
 from pragmata.core.querygen.llm import LlmInitializationError
 from pragmata.core.querygen.planning import (
@@ -17,6 +18,12 @@ from pragmata.core.schemas.querygen_input import QueryGenSpec
 from pragmata.core.schemas.querygen_plan import QueryBlueprint, QueryBlueprintList
 from pragmata.core.schemas.querygen_summary import PlanningSummaryState
 from pragmata.core.settings.querygen_settings import LlmSettings
+
+
+@pytest.fixture
+def rate_limiter() -> InMemoryRateLimiter:
+    """Return the shared limiter supplied by the caller."""
+    return InMemoryRateLimiter()
 
 
 @pytest.fixture
@@ -257,6 +264,7 @@ def test_run_planning_stage_wires_planning_assets_and_settings_into_llm_builder(
     querygen_spec: QueryGenSpec,
     llm_settings: LlmSettings,
     expected_prompt_vars: dict[str, object],
+    rate_limiter: InMemoryRateLimiter,
 ) -> None:
     mock_runnable = Mock()
     mock_runnable.invoke.return_value = QueryBlueprintList(candidates=[_make_blueprint()])
@@ -268,6 +276,7 @@ def test_run_planning_stage_wires_planning_assets_and_settings_into_llm_builder(
     )
 
     result = run_planning_stage(
+        rate_limiter=rate_limiter,
         spec=querygen_spec,
         llm_settings=llm_settings,
         api_key="test-api-key",
@@ -283,9 +292,7 @@ def test_run_planning_stage_wires_planning_assets_and_settings_into_llm_builder(
         model=llm_settings.planning_model,
         api_key="test-api-key",
         output_schema=ANY,
-        requests_per_second=llm_settings.requests_per_second,
-        check_every_n_seconds=llm_settings.check_every_n_seconds,
-        max_bucket_size=llm_settings.max_bucket_size,
+        rate_limiter=rate_limiter,
         base_url=llm_settings.base_url,
         model_kwargs=llm_settings.planning_model_kwargs,
     )
@@ -303,6 +310,7 @@ def test_run_planning_stage_wires_optional_planning_summary_through_to_runnable(
     querygen_spec: QueryGenSpec,
     llm_settings: LlmSettings,
     planning_summary_state: PlanningSummaryState,
+    rate_limiter: InMemoryRateLimiter,
 ) -> None:
     mock_runnable = Mock()
     mock_runnable.invoke.return_value = QueryBlueprintList(candidates=[_make_blueprint()])
@@ -313,6 +321,7 @@ def test_run_planning_stage_wires_optional_planning_summary_through_to_runnable(
     )
 
     run_planning_stage(
+        rate_limiter=rate_limiter,
         spec=querygen_spec,
         llm_settings=llm_settings,
         api_key="test-api-key",
@@ -355,6 +364,7 @@ def test_run_planning_stage_invokes_runnable_once_and_returns_candidates(
     querygen_spec: QueryGenSpec,
     llm_settings: LlmSettings,
     expected_prompt_vars: dict[str, object],
+    rate_limiter: InMemoryRateLimiter,
 ) -> None:
     class FakeRunnable:
         def __init__(self) -> None:
@@ -374,6 +384,7 @@ def test_run_planning_stage_invokes_runnable_once_and_returns_candidates(
     )
 
     result = run_planning_stage(
+        rate_limiter=rate_limiter,
         spec=querygen_spec,
         llm_settings=llm_settings,
         api_key="test-api-key",
@@ -391,6 +402,7 @@ def test_run_planning_stage_extracts_candidates_from_query_blueprint_list(
     monkeypatch: pytest.MonkeyPatch,
     querygen_spec: QueryGenSpec,
     llm_settings: LlmSettings,
+    rate_limiter: InMemoryRateLimiter,
 ) -> None:
     expected_candidates = [
         _make_blueprint("C001"),
@@ -419,6 +431,7 @@ def test_run_planning_stage_extracts_candidates_from_query_blueprint_list(
     )
 
     result = run_planning_stage(
+        rate_limiter=rate_limiter,
         spec=querygen_spec,
         llm_settings=llm_settings,
         api_key="test-api-key",
@@ -432,6 +445,7 @@ def test_run_planning_stage_propagates_llm_initialization_error(
     monkeypatch: pytest.MonkeyPatch,
     querygen_spec: QueryGenSpec,
     llm_settings: LlmSettings,
+    rate_limiter: InMemoryRateLimiter,
 ) -> None:
     monkeypatch.setattr(
         "pragmata.core.querygen.planning.build_llm_runnable",
@@ -440,6 +454,7 @@ def test_run_planning_stage_propagates_llm_initialization_error(
 
     with pytest.raises(LlmInitializationError, match="bad config"):
         run_planning_stage(
+            rate_limiter=rate_limiter,
             spec=querygen_spec,
             llm_settings=llm_settings,
             api_key="test-api-key",
@@ -451,6 +466,7 @@ def test_run_planning_stage_wraps_invoke_failures(
     monkeypatch: pytest.MonkeyPatch,
     querygen_spec: QueryGenSpec,
     llm_settings: LlmSettings,
+    rate_limiter: InMemoryRateLimiter,
 ) -> None:
     class FakeRunnable:
         def invoke(self, payload: dict[str, object]) -> QueryBlueprintList:
@@ -463,6 +479,7 @@ def test_run_planning_stage_wraps_invoke_failures(
 
     with pytest.raises(PlanningStageError, match="Planning stage invocation failed."):
         run_planning_stage(
+            rate_limiter=rate_limiter,
             spec=querygen_spec,
             llm_settings=llm_settings,
             api_key="test-api-key",
@@ -473,9 +490,11 @@ def test_run_planning_stage_wraps_invoke_failures(
 def test_run_planning_stage_propagates_empty_batch_error(
     querygen_spec: QueryGenSpec,
     llm_settings: LlmSettings,
+    rate_limiter: InMemoryRateLimiter,
 ) -> None:
     with pytest.raises(ValueError, match="batch_candidate_ids must not be empty"):
         run_planning_stage(
+            rate_limiter=rate_limiter,
             spec=querygen_spec,
             llm_settings=llm_settings,
             api_key="test-api-key",
