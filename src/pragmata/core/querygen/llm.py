@@ -4,9 +4,10 @@ from typing import Any
 
 from langchain.chat_models import init_chat_model
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.rate_limiters import BaseRateLimiter
+from langchain_core.rate_limiters import BaseRateLimiter, InMemoryRateLimiter
 from langchain_core.runnables.base import RunnableSerializable
 
+from pragmata.core.settings.querygen_settings import LlmSettings
 from pragmata.core.types import M
 
 _RESERVED_MODEL_KWARGS = {
@@ -22,6 +23,15 @@ _DEFAULT_REQUEST_TIMEOUT_SECONDS = 600
 
 class LlmInitializationError(RuntimeError):
     """Raised when the configured chat model cannot be initialized."""
+
+
+def build_rate_limiter(llm_settings: LlmSettings) -> InMemoryRateLimiter:
+    """Build a rate limiter to share across all stages and batches of one run."""
+    return InMemoryRateLimiter(
+        requests_per_second=llm_settings.requests_per_second,
+        check_every_n_seconds=llm_settings.check_every_n_seconds,
+        max_bucket_size=llm_settings.max_bucket_size,
+    )
 
 
 def _build_prompt_template(
@@ -77,6 +87,9 @@ def build_llm_runnable(
         A composed LangChain runnable that accepts prompt variables and returns
         structured output validated against ``output_schema``.
     """
+    if rate_limiter is None:
+        raise ValueError("rate_limiter must not be None.")
+
     overlapping_keys = _RESERVED_MODEL_KWARGS.intersection(model_kwargs)
     if overlapping_keys:
         overlapping = ", ".join(sorted(overlapping_keys))

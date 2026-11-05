@@ -5,7 +5,6 @@ from itertools import islice
 from pathlib import Path
 from typing import Any
 
-from langchain_core.rate_limiters import InMemoryRateLimiter
 from pydantic import BaseModel, ConfigDict, PositiveInt
 
 from pragmata.api._error_log import error_log
@@ -16,6 +15,7 @@ from pragmata.core.querygen.batching import build_candidate_ids, chunk_blueprint
 from pragmata.core.querygen.deduplication import deduplicate_blueprints
 from pragmata.core.querygen.export import export_planning_summary, export_queries
 from pragmata.core.querygen.filtering import filter_aligned_candidate_ids
+from pragmata.core.querygen.llm import build_rate_limiter
 from pragmata.core.querygen.planning import run_planning_stage
 from pragmata.core.querygen.planning_summary import (
     fingerprint_querygen_spec,
@@ -201,11 +201,7 @@ def gen_queries(
     )
 
     with error_log(paths.run_dir):
-        rate_limiter = InMemoryRateLimiter(
-            requests_per_second=settings.llm.requests_per_second,
-            check_every_n_seconds=settings.llm.check_every_n_seconds,
-            max_bucket_size=settings.llm.max_bucket_size,
-        )
+        rate_limiter = build_rate_limiter(settings.llm)
         planning_summary_state: PlanningSummaryState | None = None
 
         if settings.enable_planning_memory:
