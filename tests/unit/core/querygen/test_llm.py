@@ -8,7 +8,13 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.rate_limiters import InMemoryRateLimiter
 from pydantic import BaseModel
 
-from pragmata.core.querygen.llm import LlmInitializationError, _build_prompt_template, build_llm_runnable
+from pragmata.core.querygen.llm import (
+    LlmInitializationError,
+    _build_prompt_template,
+    build_llm_runnable,
+    build_rate_limiter,
+)
+from pragmata.core.settings.querygen_settings import LlmSettings
 
 
 class _DummyOutputSchema(BaseModel):
@@ -54,6 +60,36 @@ def mock_llm_setup(
         "structured": mock_structured,
         "retry": mock_retry,
     }
+
+
+@pytest.mark.parametrize(
+    "llm_settings",
+    [LlmSettings(), LlmSettings(requests_per_second=2.5, check_every_n_seconds=0.2, max_bucket_size=3)],
+)
+def test_build_rate_limiter_uses_settings(llm_settings: LlmSettings) -> None:
+    limiter = build_rate_limiter(llm_settings)
+
+    assert isinstance(limiter, InMemoryRateLimiter)
+    assert limiter.requests_per_second == llm_settings.requests_per_second
+    assert limiter.check_every_n_seconds == llm_settings.check_every_n_seconds
+    assert limiter.max_bucket_size == llm_settings.max_bucket_size
+
+
+def test_build_llm_runnable_rejects_none_rate_limiter(mock_llm_setup: dict[str, Any]) -> None:
+    with pytest.raises(ValueError, match="rate_limiter must not be None"):
+        build_llm_runnable(
+            system_text="s",
+            user_text="u",
+            model_provider="p",
+            model="m",
+            api_key="k",
+            output_schema=_DummyOutputSchema,
+            rate_limiter=None,  # type: ignore[arg-type]
+            base_url=None,
+            model_kwargs={},
+        )
+
+    mock_llm_setup["init"].assert_not_called()
 
 
 def test_build_prompt_template_returns_chat_prompt_template() -> None:
