@@ -80,7 +80,10 @@ def wilson_interval(successes: int, n: int, *, ci: float = 0.95) -> tuple[float,
 def percentile_bootstrap(
     n_units: int,
     statistic: Callable[[NDArray[np.intp]], float],
-    *, n_resamples: int = 1000, ci: float = 0.95, seed: int | None = None,
+    *,
+    n_resamples: int = 1000,
+    ci: float = 0.95,
+    seed: int | None = None,
 ) -> tuple[float, float]:
     """Percentile bootstrap CI. Resamples unit indices [0, n_units) with replacement,
     applies `statistic` to each resample, drops NaN replicates (as IAA does)."""
@@ -97,7 +100,7 @@ class MetricScore(BaseModel):
     ci_lower: Rate
     ci_upper: Rate
     method: Literal["wilson", "bootstrap"]
-    n: PositiveInt            # effective denominator (queries)
+    n: PositiveInt  # effective denominator (queries)
 ```
 
 Each metric field changes from `Rate` -> `MetricScore`.
@@ -122,13 +125,16 @@ Lives in `api/eval.py` alongside `train_evaluator` (no separate `api/eval_score.
 
 ```python
 def score(
-    *, base_dir: str | Path | Unset = UNSET,
-    score_id: str | None = None,               # OUTPUT identifier (see below)
+    *,
+    base_dir: str | Path | Unset = UNSET,
+    score_id: str | None = None,  # OUTPUT identifier (see below)
     path: str | Path | Unset = UNSET,
     export_id: str | Unset = UNSET,
     prediction_id: str | Unset = UNSET,
     task: Task,
-    n_resamples: int = 1000, ci: float = 0.95, seed: int | None = None,
+    n_resamples: int = 1000,
+    ci: float = 0.95,
+    seed: int | None = None,
     config_path: str | Path | Unset = UNSET,
 ) -> RetrievalScoreReport | GroundingScoreReport | GenerationScoreReport: ...
 ```

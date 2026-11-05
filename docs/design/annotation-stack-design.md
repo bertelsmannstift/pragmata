@@ -224,22 +224,24 @@ The CLI is a thin wrapper over a Python API, matching [`config-and-settings.md`]
 # src/pragmata/api/annotation_stack.py (proposed)
 from pragmata.core.settings.settings_base import UNSET, Unset
 
+
 def up(
     *,
     external_postgres: str | Unset = UNSET,
     external_elastic: str | Unset = UNSET,
     external_redis: str | Unset = UNSET,
-    profile: str | Unset = UNSET,             # explicit override; normally derived from the external_* kwargs
-    pull: str | Unset = UNSET,                # "missing" (default) | "always" | "never"
+    profile: str | Unset = UNSET,  # explicit override; normally derived from the external_* kwargs
+    pull: str | Unset = UNSET,  # "missing" (default) | "always" | "never"
     health_timeout_seconds: int | Unset = UNSET,  # default 120
     config_path: str | Path | Unset = UNSET,
 ) -> StackUpResult:
     """Start the annotation stack. Idempotent; safe to re-invoke on a running stack."""
     ...
 
+
 def down(
     *,
-    volumes: bool = False,                    # if True, also removes named volumes (destructive)
+    volumes: bool = False,  # if True, also removes named volumes (destructive)
     config_path: str | Path | Unset = UNSET,
 ) -> StackDownResult:
     """Stop the annotation stack. With volumes=True, also wipes persistent data."""
@@ -260,6 +262,7 @@ def up_command(
     config: str | None = _config_opt,
 ) -> None:
     from pragmata import annotation
+
     result = annotation.up(
         external_postgres=UNSET if external_postgres is None else external_postgres,
         external_elastic=UNSET if external_elastic is None else external_elastic,
@@ -273,6 +276,7 @@ This means programmatic use is supported on day one:
 
 ```python
 from pragmata import annotation
+
 annotation.up(external_postgres="postgresql://user:pass@db.internal/argilla")
 annotation.setup(users=[...])
 # ... import / export / iaa ...
