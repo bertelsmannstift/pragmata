@@ -1,5 +1,6 @@
 """Dataframe imports for eval workflows."""
 
+import logging
 from pathlib import Path
 
 import pandas as pd
@@ -14,6 +15,8 @@ from pragmata.core.schemas.eval_input import (
     validate_eval_train_frame,
 )
 from pragmata.core.schemas.eval_output import ScoreInputSource
+
+logger = logging.getLogger(__name__)
 
 
 def import_eval_train_frame(
@@ -57,7 +60,9 @@ def import_eval_score_frame(
     path: Path,
     task: Task,
     source: ScoreInputSource,
-) -> pd.DataFrame:
+    skip_incomplete_panels: bool = False,
+    allow_incomplete_panels: bool = False,
+) -> tuple[pd.DataFrame, int]:
     """Read, prepare, and validate a labeled eval scoring dataframe.
 
     Direct paths and annotation exports are already Pragmata-shaped and are read
@@ -81,13 +86,25 @@ def import_eval_score_frame(
         task: Annotation task that determines the dataframe contract.
         source: Provenance of the input; ``source.kind`` decides whether the
             frame needs tlmtc text-column restoration.
+        skip_incomplete_panels: Drop retrieval panels whose labeled chunks do not
+            cover ``n_retrieved_chunks`` and score the rest. Mutually exclusive
+            with ``allow_incomplete_panels``; see ``_guard_complete_panels``.
+        allow_incomplete_panels: Score such panels as-is. Mutually exclusive with
+            ``skip_incomplete_panels``; see ``_guard_complete_panels``.
 
     Returns:
-        Validated dataframe with Pragmata task columns, one row per scoring unit.
+        Tuple of the validated dataframe with Pragmata task columns, one row per
+        scoring unit, and the number of incomplete retrieval panels dropped
+        (non-zero only with ``skip_incomplete_panels``; reported so the score
+        artifact records that its population was reduced).
 
     Raises:
-        EvalInputSchemaError: If the frame violates the score contract or retains a
-            duplicate scoring unit after majority consolidation.
+        EvalInputSchemaError: If the frame violates the score contract, retains a
+            duplicate scoring unit after majority consolidation, contains an
+            incomplete retrieval panel in the default mode, or if skipping removes
+            every panel.
+        ValueError: If both ``skip_incomplete_panels`` and
+            ``allow_incomplete_panels`` are set.
     """
     frame = pd.read_csv(path, encoding="utf-8")
     if source.kind == "model_prediction":
@@ -95,7 +112,12 @@ def import_eval_score_frame(
     validated = validate_eval_score_frame(frame, task=task)
     consolidated = consolidate_labels_by_majority(validated, task=task)
     _guard_unique_scoring_units(consolidated, task=task)
-    return consolidated
+    return _guard_complete_panels(
+        consolidated,
+        task=task,
+        skip_incomplete=skip_incomplete_panels,
+        allow_incomplete=allow_incomplete_panels,
+    )
 
 
 def _restore_pragmata_text_columns(frame: pd.DataFrame, *, task: Task) -> pd.DataFrame:
@@ -113,6 +135,76 @@ def _guard_unique_scoring_units(frame: pd.DataFrame, *, task: Task) -> None:
         _reject_duplicates(frame, ["record_uuid"], task, "query")
 
 
+def _guard_complete_panels(
+    frame: pd.DataFrame,
+    *,
+    task: Task,
+    skip_incomplete: bool,
+    allow_incomplete: bool,
+) -> tuple[pd.DataFrame, int]:
+    """Apply the incomplete-retrieval-panel policy; return the frame and drop count.
+
+    Every retrieval metric averages over a query's chunk set, so a partial panel is
+    not a smaller sample of the same quantity - it changes the metric. Precision@K
+    over 2 labeled chunks of a K=5 retrieval has the wrong denominator, and the
+    rank-sensitive metrics (MRR, NDCG) are biased upward because annotators work
+    top-down, so the unjudged low-rank chunks can never lower the score.
+
+    Three mutually exclusive modes, chosen by the caller because neither remedy is
+    safe to apply on their behalf:
+
+    - default: fail, naming the first short panel.
+    - ``skip_incomplete`` (CLI: ``--skip-incomplete-panels``): drop short panels and
+      score the rest. Each retained panel's metric is then computed correctly, but
+      the population becomes "queries whose panels were completed" - completion is
+      not random, so the drop count is returned and reported on the score artifact.
+    - ``allow_incomplete`` (CLI: ``--allow-incomplete-panels``): score everything
+      as-is, for callers who accept the bias, e.g. coverage comparisons.
+
+    The check needs ``n_retrieved_chunks`` (the query's true K, carried by annotation
+    exports). Where no panel carries a known K the completeness of the input is
+    unknowable here, so the frame passes with a warning rather than a hard failure -
+    direct-path and prediction inputs are not required to carry export metadata.
+    """
+    if skip_incomplete and allow_incomplete:
+        raise ValueError("skip_incomplete_panels and allow_incomplete_panels are mutually exclusive; pass at most one.")
+    if task != Task.RETRIEVAL or allow_incomplete:
+        return frame, 0
+    panels = _panels_with_known_k(frame)
+    if panels.empty:
+        logger.warning(
+            "score input: retrieval panel completeness unverifiable (no panel carries "
+            "n_retrieved_chunks metadata) - metrics over partial panels are biased upward, "
+            "see import_eval_score_frame."
+        )
+        return frame, 0
+    short = panels[panels["n_chunks"] < panels["k"]]
+    if short.empty:
+        return frame, 0
+    if skip_incomplete:
+        kept = frame[~frame["record_uuid"].isin(short.index)]
+        if kept.empty:
+            raise EvalInputSchemaError(
+                f"Scoring input for {task.value} has no complete panel to score: all "
+                f"{len(short)} panel(s) have fewer labeled chunks than n_retrieved_chunks."
+            )
+        logger.info(
+            "score input: skipped %d incomplete retrieval panel(s) of %d; the reported "
+            "population is queries whose panels were completed.",
+            len(short),
+            len(panels),
+        )
+        return kept, len(short)
+    raise EvalInputSchemaError(
+        f"Scoring input for {task.value} has {len(short)} panel(s) with fewer labeled chunks "
+        f"than n_retrieved_chunks (e.g. record_uuid {short.index[0]!r}: "
+        f"{int(short.iloc[0]['n_chunks'])} of {int(short.iloc[0]['k'])}); partial panels bias "
+        f"every retrieval metric, so pass skip_incomplete_panels=True "
+        f"(--skip-incomplete-panels) to score only the complete panels, or "
+        f"allow_incomplete_panels=True (--allow-incomplete-panels) to score anyway."
+    )
+
+
 def _reject_duplicates(frame: pd.DataFrame, keys: list[str], task: Task, unit: str) -> None:
     duplicated = frame.duplicated(subset=keys, keep=False)
     if duplicated.any():
@@ -120,3 +212,19 @@ def _reject_duplicates(frame: pd.DataFrame, keys: list[str], task: Task, unit: s
             f"Scoring input for {task.value} has {int(duplicated.sum())} row(s) with a duplicate "
             f"{unit} key {tuple(keys)}; each unit must be unique so metric denominators are not double-counted."
         )
+
+
+def _panels_with_known_k(frame: pd.DataFrame) -> pd.DataFrame:
+    """Count distinct labeled chunks and K per retrieval panel, keeping only panels with a known K.
+
+    ``n_retrieved_chunks`` is absent from direct-path and prediction inputs, and is the
+    ``-1`` sentinel on export records predating the metadata backfill; both mean "K
+    unknown here", so such panels cannot be checked for completeness.
+    """
+    if "n_retrieved_chunks" not in frame.columns:
+        return pd.DataFrame(columns=["n_chunks", "k"])
+    per_query = frame.groupby("record_uuid").agg(
+        n_chunks=("chunk_id", "nunique"),
+        k=("n_retrieved_chunks", "max"),
+    )
+    return per_query[per_query["k"] > 0]

@@ -185,6 +185,18 @@ def score_command(
         "--seed",
         help="RNG seed for reproducible bootstrap intervals.",
     ),
+    skip_incomplete_panels: bool = typer.Option(
+        False,
+        "--skip-incomplete-panels",
+        help="Drop retrieval panels whose labeled chunks do not cover the retrieval and "
+        "score the rest; the report records how many were dropped.",
+    ),
+    allow_incomplete_panels: bool = typer.Option(
+        False,
+        "--allow-incomplete-panels",
+        help="Score retrieval panels whose labeled chunks do not cover the retrieval. "
+        "Off by default: partial panels bias every retrieval metric.",
+    ),
     config_path: str | None = typer.Option(
         None,
         "--config",
@@ -207,9 +219,17 @@ def score_command(
         n_resamples=UNSET if n_resamples is None else n_resamples,
         ci=UNSET if ci is None else ci,
         seed=UNSET if seed is None else seed,
+        skip_incomplete_panels=UNSET if not skip_incomplete_panels else True,
+        allow_incomplete_panels=UNSET if not allow_incomplete_panels else True,
         config_path=UNSET if config_path is None else config_path,
     )
 
+    # getattr, not an isinstance check: the CLI layer does not import pragmata.core
+    # (enforced by test_cli_does_not_import_core), and only the retrieval report
+    # carries the field.
+    n_panels_skipped = getattr(report, "n_panels_skipped", 0)
+    if n_panels_skipped:
+        typer.echo(f"skipped {n_panels_skipped} incomplete panel(s); n counts completed panels only")
     typer.echo(f"\n{report.task.value} scores (n={report.n_examples}, {report.ci_level:.0%} CI):")
     for name, metric in report.metric_scores():
         if metric is None:

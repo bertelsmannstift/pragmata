@@ -211,6 +211,18 @@ def test_eval_score_settings_construction_with_prediction_id() -> None:
     assert settings.task == Task.GROUNDING
 
 
+def test_eval_score_settings_rejects_both_incomplete_panel_modes() -> None:
+    """skip_incomplete_panels and allow_incomplete_panels are mutually exclusive."""
+    with pytest.raises(ValidationError, match="mutually exclusive"):
+        EvalScoreSettings.model_validate(
+            {
+                "task": "retrieval",
+                "skip_incomplete_panels": True,
+                "allow_incomplete_panels": True,
+            }
+        )
+
+
 def test_eval_score_settings_generates_distinct_score_ids() -> None:
     """EvalScoreSettings generates a default score_id for each instance."""
     first = EvalScoreSettings.model_validate({"task": "retrieval"})
